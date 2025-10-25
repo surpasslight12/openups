@@ -1,6 +1,11 @@
 CC ?= gcc
-CFLAGS ?= -O2 -std=c11 -Wall -Wextra -pedantic -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
-LDFLAGS ?=
+# C23 标准 + 安全和性能优化标志
+CFLAGS ?= -O3 -std=c2x -Wall -Wextra -Wpedantic -Werror=implicit-function-declaration \
+          -Werror=format-security -Wformat=2 -Wstrict-overflow=5 \
+          -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=3 \
+          -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
+          -march=native -mtune=native -flto
+LDFLAGS ?= -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto
 
 BIN_DIR := bin
 SRC_DIR := src
@@ -17,9 +22,13 @@ SRCS := $(SRC_DIR)/main.c \
 
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BIN_DIR)/%.o)
 
-.PHONY: all clean run install uninstall
+.PHONY: all clean run install uninstall test help
 
 all: $(TARGET)
+
+test: all
+	@echo "Running test suite..."
+	@./test.sh
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)

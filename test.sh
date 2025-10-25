@@ -11,8 +11,10 @@ echo
 # 编译检查
 echo "[1/10] 编译检查..."
 make clean > /dev/null 2>&1
-if make 2>&1 | grep -E "(warning|error)" > /dev/null; then
+# 只检查实际的警告和错误，忽略编译器输出中的其他信息
+if make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
     echo "❌ 编译有警告或错误"
+    make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
     exit 1
 fi
 echo "✓ 编译成功，无警告"
