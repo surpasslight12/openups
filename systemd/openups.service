@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenUPS Network Monitor
+Documentation=https://github.com/surpasslight12/openups_c
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/openups
+Restart=on-failure
+RestartSec=10
+WatchdogSec=30
+
+# 环境变量配置
+Environment="OPENUPS_TARGET=1.1.1.1"
+Environment="OPENUPS_INTERVAL=10"
+Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_DRY_RUN=true"
+Environment="OPENUPS_SYSLOG=true"
+
+# 安全策略
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log
+
+# 资源限制
+MemoryLimit=50M
+TasksMax=10
+
+[Install]
+WantedBy=multi-user.target
