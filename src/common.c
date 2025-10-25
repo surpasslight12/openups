@@ -89,3 +89,18 @@ bool str_equals(const char* a, const char* b) {
     if (!a || !b) return false;
     return strcmp(a, b) == 0;
 }
+
+bool is_safe_path(const char* path) {
+    if (!path || strlen(path) == 0) return false;
+    
+    /* 检查危险字符 */
+    const char* dangerous = ";|&$`<>\"'(){}[]!\\*?";
+    for (const char* p = path; *p; p++) {
+        if (strchr(dangerous, *p)) return false;
+    }
+    
+    /* 检查路径遍历 */
+    if (strstr(path, "..")) return false;
+    
+    return true;
+}

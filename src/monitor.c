@@ -108,13 +108,16 @@ bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
     /* 初始化 systemd 通知器 */
     if (config->enable_systemd) {
         monitor->systemd = (systemd_notifier_t*)malloc(sizeof(systemd_notifier_t));
-        if (monitor->systemd) {
-            systemd_notifier_init(monitor->systemd);
-            if (systemd_notifier_is_enabled(monitor->systemd)) {
-                logger_debug(logger, "systemd integration enabled");
-            } else {
-                logger_debug(logger, "systemd not detected, integration disabled");
-            }
+        if (!monitor->systemd) {
+            snprintf(error_msg, error_size, "Failed to allocate systemd notifier");
+            icmp_pinger_destroy(&monitor->pinger);
+            return false;
+        }
+        systemd_notifier_init(monitor->systemd);
+        if (systemd_notifier_is_enabled(monitor->systemd)) {
+            logger_debug(logger, "systemd integration enabled");
+        } else {
+            logger_debug(logger, "systemd not detected, integration disabled");
         }
     } else {
         monitor->systemd = NULL;
@@ -233,16 +236,18 @@ static void trigger_shutdown(monitor_t* monitor) {
     switch (monitor->config->shutdown_mode) {
         case SHUTDOWN_MODE_IMMEDIATE:
             if (strlen(monitor->config->shutdown_cmd) > 0) {
-                strncpy(shutdown_cmd, monitor->config->shutdown_cmd, sizeof(shutdown_cmd) - 1);
+                snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
+                        monitor->config->shutdown_cmd);
             } else {
-                strncpy(shutdown_cmd, "/sbin/shutdown -h now", sizeof(shutdown_cmd) - 1);
+                snprintf(shutdown_cmd, sizeof(shutdown_cmd), "/sbin/shutdown -h now");
             }
             logger_warn(monitor->logger, "Triggering immediate shutdown");
             break;
             
         case SHUTDOWN_MODE_DELAYED:
             if (strlen(monitor->config->shutdown_cmd) > 0) {
-                strncpy(shutdown_cmd, monitor->config->shutdown_cmd, sizeof(shutdown_cmd) - 1);
+                snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
+                        monitor->config->shutdown_cmd);
             } else {
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd),
                         "/sbin/shutdown -h +%d", monitor->config->delay_minutes);
@@ -264,7 +269,13 @@ static void trigger_shutdown(monitor_t* monitor) {
                 logger_error(monitor->logger, "Custom script not specified");
                 return;
             }
-            strncpy(shutdown_cmd, monitor->config->custom_script, sizeof(shutdown_cmd) - 1);
+            /* 验证脚本路径安全性 */
+            if (!is_safe_path(monitor->config->custom_script)) {
+                logger_error(monitor->logger, "Custom script path contains unsafe characters");
+                return;
+            }
+            snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
+                    monitor->config->custom_script);
             {
                 char msg[256];
                 snprintf(msg, sizeof(msg), "Executing custom script: %s", shutdown_cmd);

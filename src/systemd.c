@@ -19,10 +19,19 @@ static bool send_notify(systemd_notifier_t* notifier, const char* message) {
     /* 处理抽象命名空间（@ 前缀） */
     if (notifier->notify_socket[0] == '@') {
         addr.sun_path[0] = '\0';
-        strncpy(addr.sun_path + 1, notifier->notify_socket + 1, 
-               sizeof(addr.sun_path) - 2);
+        /* 使用 memcpy 而不是 strncpy，因为可能包含 null 字节 */
+        size_t len = strlen(notifier->notify_socket + 1);
+        if (len >= sizeof(addr.sun_path) - 1) {
+            len = sizeof(addr.sun_path) - 2;
+        }
+        memcpy(addr.sun_path + 1, notifier->notify_socket + 1, len);
     } else {
-        strncpy(addr.sun_path, notifier->notify_socket, sizeof(addr.sun_path) - 1);
+        size_t len = strlen(notifier->notify_socket);
+        if (len >= sizeof(addr.sun_path)) {
+            len = sizeof(addr.sun_path) - 1;
+        }
+        memcpy(addr.sun_path, notifier->notify_socket, len);
+        addr.sun_path[len] = '\0';
     }
     
     ssize_t sent = sendto(notifier->sockfd, message, strlen(message), 0,

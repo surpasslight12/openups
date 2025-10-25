@@ -8,7 +8,7 @@
 
 void config_init_default(config_t* config) {
     /* 网络配置 */
-    strncpy(config->target, "1.1.1.1", sizeof(config->target) - 1);
+    snprintf(config->target, sizeof(config->target), "1.1.1.1");
     config->interval_sec = 10;
     config->fail_threshold = 5;
     config->timeout_ms = 2000;
@@ -40,7 +40,7 @@ void config_load_from_env(config_t* config) {
     /* 网络配置 */
     value = getenv("OPENUPS_TARGET");
     if (value) {
-        strncpy(config->target, value, sizeof(config->target) - 1);
+        snprintf(config->target, sizeof(config->target), "%s", value);
     }
     
     config->interval_sec = get_env_int("OPENUPS_INTERVAL", config->interval_sec);
@@ -61,12 +61,12 @@ void config_load_from_env(config_t* config) {
     
     value = getenv("OPENUPS_SHUTDOWN_CMD");
     if (value) {
-        strncpy(config->shutdown_cmd, value, sizeof(config->shutdown_cmd) - 1);
+        snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", value);
     }
     
     value = getenv("OPENUPS_CUSTOM_SCRIPT");
     if (value) {
-        strncpy(config->custom_script, value, sizeof(config->custom_script) - 1);
+        snprintf(config->custom_script, sizeof(config->custom_script), "%s", value);
     }
     
     /* 行为配置 */
@@ -113,7 +113,7 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
                            long_options, &option_index)) != -1) {
         switch (c) {
             case 't':
-                strncpy(config->target, optarg, sizeof(config->target) - 1);
+                snprintf(config->target, sizeof(config->target), "%s", optarg);
                 break;
             case 'i':
                 config->interval_sec = atoi(optarg);
@@ -137,10 +137,10 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
                 config->delay_minutes = atoi(optarg);
                 break;
             case 'C':
-                strncpy(config->shutdown_cmd, optarg, sizeof(config->shutdown_cmd) - 1);
+                snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", optarg);
                 break;
             case 'P':
-                strncpy(config->custom_script, optarg, sizeof(config->custom_script) - 1);
+                snprintf(config->custom_script, sizeof(config->custom_script), "%s", optarg);
                 break;
             case 'L':
                 config->log_level = string_to_log_level(optarg);
@@ -223,6 +223,26 @@ bool config_validate(const config_t* config, char* error_msg, size_t error_size)
         strlen(config->custom_script) == 0) {
         snprintf(error_msg, error_size, "Custom script path required for custom mode");
         return false;
+    }
+    
+    /* 验证自定义脚本路径安全性 */
+    if (strlen(config->custom_script) > 0 && !is_safe_path(config->custom_script)) {
+        snprintf(error_msg, error_size, "Custom script path contains unsafe characters");
+        return false;
+    }
+    
+    /* 验证自定义关机命令安全性 */
+    if (strlen(config->shutdown_cmd) > 0) {
+        /* 允许基本的 shutdown 命令格式 */
+        if (strncmp(config->shutdown_cmd, "shutdown", 8) != 0 &&
+            strncmp(config->shutdown_cmd, "/sbin/shutdown", 14) != 0 &&
+            strncmp(config->shutdown_cmd, "systemctl", 9) != 0) {
+            /* 对其他命令进行安全检查 */
+            if (!is_safe_path(config->shutdown_cmd)) {
+                snprintf(error_msg, error_size, "Shutdown command contains unsafe characters");
+                return false;
+            }
+        }
     }
     
     return true;

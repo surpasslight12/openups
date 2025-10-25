@@ -1,3 +1,7 @@
+/* 必须在包含任何头文件之前定义 BSD 宏 */
+#define __USE_BSD
+#define __FAVOR_BSD
+
 #include "icmp.h"
 #include "common.h"
 #include <stdio.h>
@@ -5,7 +9,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#define __USE_BSD
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
