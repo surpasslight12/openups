@@ -1,6 +1,9 @@
-# Contributing to OpenUPS C
+# OpenUPS C 贡献指南
 
-感谢您对 OpenUPS C 项目的关注！我们欢迎所有形式的贡献，包括但不限于：
+**版本**: v1.1.0  
+**欢迎贡献！** 🎉
+
+感谢你对 OpenUPS C 项目的关注。本文档将帮助你了解如何为项目做出贡献。
 
 - 🐛 报告 bug
 - 💡 提出新功能建议
@@ -28,8 +31,9 @@
 **环境**
 - OS: Linux (发行版和版本)
 - Kernel: uname -r 输出
-- Compiler: gcc --version 或 clang --version
+- Compiler: gcc --version (需要 GCC 14.0+ 或 Clang 15.0+)
 - OpenUPS 版本: ./bin/openups --version
+- C 标准: C23 (C2x)
 
 **问题描述**
 清晰描述遇到的问题

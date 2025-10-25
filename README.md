@@ -253,7 +253,25 @@ cat QUALITY_REPORT.md
 | LTO | ❌ | **✅** | 启用 🚀 |
 | 安全评分 | 6/10 | **10/10** | **+67%** 🔒 |
 
-## 📄 许可证
+## � 完整文档
+
+### 核心文档
+- 📖 [README.md](README.md) - 项目介绍（本文件）
+- 🚀 [QUICKSTART.md](QUICKSTART.md) - 5 分钟快速上手
+- 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计详解
+
+### 技术报告
+- 📊 [QUALITY_REPORT.md](QUALITY_REPORT.md) - 代码质量评估
+- ⚡ [UPGRADE_REPORT_v1.1.0.md](UPGRADE_REPORT_v1.1.0.md) - v1.1.0 升级详解
+- 📋 [MANIFEST.md](MANIFEST.md) - 完整项目清单
+- 🎉 [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) - 发布说明
+
+### 开发文档
+- 📝 [CHANGELOG.md](CHANGELOG.md) - 版本变更记录
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
+- ⚖️ [LICENSE](LICENSE) - MIT 许可证
+
+## �📄 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 

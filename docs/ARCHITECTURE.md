@@ -1,13 +1,19 @@
 # OpenUPS C 架构说明
 
+**版本**: v1.1.0  
+**C 标准**: C23 (C2x)  
+**更新**: 2025-10-26
+
 ## 概览
 
 OpenUPS C 是 OpenUPS 项目的 C 语言实现版本，采用**模块化架构**设计：
 
 - **模块化设计**：7 个独立模块，职责单一
-- **零第三方依赖**：仅使用 C11 标准库和 Linux 系统调用
+- **零第三方依赖**：仅使用 C23 标准库和 Linux 系统调用
 - **原生 ICMP**：raw socket 实现，无需系统 ping 命令
 - **systemd 深度集成**：sd_notify、watchdog、状态通知
+- **高性能优化**：-O3 + LTO + CPU native 优化
+- **安全加固**：10/10 安全评分，Full RELRO + PIE + Stack Canary
 
 ---
 
