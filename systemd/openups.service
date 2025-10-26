@@ -11,11 +11,22 @@ Restart=on-failure
 RestartSec=10
 WatchdogSec=30
 
+# 日志配置
+# 标准输出/错误输出到 journald（可通过 journalctl -u openups 查看）
+StandardOutput=journal
+StandardError=journal
+# 日志标识符，方便过滤和查询
+SyslogIdentifier=openups
+# 日志级别：info 级别及以上才记录到 journal
+SyslogLevelPrefix=yes
+
 # 环境变量配置
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_DRY_RUN=true"
+# 启用 syslog 会同时输出到系统日志（/var/log/syslog）和 journald
+# 如果只想用 journald，可以设为 false
 Environment="OPENUPS_SYSLOG=true"
 
 # 安全策略

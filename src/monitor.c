@@ -333,7 +333,13 @@ int monitor_run(monitor_t* monitor) {
     /* 通知 systemd 就绪 */
     if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
         systemd_notifier_ready(monitor->systemd);
-        systemd_notifier_status(monitor->systemd, "Running");
+        char status_msg[256];
+        snprintf(status_msg, sizeof(status_msg), 
+                "Monitoring %s (interval=%ds, threshold=%d)",
+                monitor->config->target,
+                monitor->config->interval_sec,
+                monitor->config->fail_threshold);
+        systemd_notifier_status(monitor->systemd, status_msg);
     }
     
     /* 主监控循环 */
@@ -350,8 +356,31 @@ int monitor_run(monitor_t* monitor) {
         
         if (success) {
             handle_ping_success(monitor, &result);
+            
+            /* 更新 systemd 状态 - 显示成功统计 */
+            if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
+                char status_msg[256];
+                double success_rate = metrics_success_rate(&monitor->metrics);
+                snprintf(status_msg, sizeof(status_msg),
+                        "OK: %lu/%lu pings (%.1f%%), latency %.2fms",
+                        monitor->metrics.successful_pings,
+                        monitor->metrics.total_pings,
+                        success_rate,
+                        result.latency_ms);
+                systemd_notifier_status(monitor->systemd, status_msg);
+            }
         } else {
             handle_ping_failure(monitor, &result);
+            
+            /* 更新 systemd 状态 - 显示失败警告 */
+            if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
+                char status_msg[256];
+                snprintf(status_msg, sizeof(status_msg),
+                        "WARNING: %d consecutive failures (threshold: %d)",
+                        monitor->consecutive_fails,
+                        monitor->config->fail_threshold);
+                systemd_notifier_status(monitor->systemd, status_msg);
+            }
             
             /* 检查是否达到失败阈值 */
             if (monitor->consecutive_fails >= monitor->config->fail_threshold) {
