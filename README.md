@@ -138,8 +138,9 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --no-dry-run
 | `--shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式 |
 | `--dry-run` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式 |
 | `--ipv6` | `OPENUPS_IPV6` | `false` | 使用 IPv6 |
+| `--log-level` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别（silent\|error\|warn\|info\|debug） |
 | `--syslog` | `OPENUPS_SYSLOG` | `false` | 启用 syslog |
-| `--log-level` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别 |
+| `--no-timestamp` | `OPENUPS_NO_TIMESTAMP` | `false` | 禁用时间戳（systemd 推荐） |
 
 完整参数列表：`./bin/openups --help`
 

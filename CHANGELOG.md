@@ -12,6 +12,19 @@
 ### ⚡ 性能升级
 
 #### Changed
+- **日志系统简化**: 从 5 个参数简化为 3 个核心参数
+  - 移除 `-v/--verbose` 和 `-q/--quiet` 别名
+  - 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
+  - 新增 `LOG_LEVEL_SILENT` 静默模式
+  - 移除 `verbose` 字段，统一使用 `log_level`
+  - 更清晰的语义，避免参数混淆
+
+- **systemd journald 深度集成**
+  - 新增 `OPENUPS_NO_TIMESTAMP` 环境变量支持
+  - systemd 环境下自动禁用程序时间戳，使用 journald 时间戳
+  - 避免双重时间戳，日志输出更简洁
+  - 完全利用 journald 的结构化日志功能
+
 - **C 标准升级**: C11 → **C2x (C23)**
   - 使用最新的 C 语言标准
   - 支持最新的编译器优化
@@ -52,6 +65,11 @@
   - 所有警告级别提升
   - 关键警告转为编译错误
   - 更好的代码质量保证
+
+- 📝 **文档更新**
+  - 所有文档同步更新日志系统改进
+  - systemd 服务文件优化（MemoryLimit → MemoryMax）
+  - 新增 journald 集成最佳实践文档
 
 #### Tools
 - 🧪 **新增工具**
