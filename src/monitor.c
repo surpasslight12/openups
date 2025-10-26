@@ -277,9 +277,10 @@ static void trigger_shutdown(monitor_t* monitor) {
             snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
                     monitor->config->custom_script);
             {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Executing custom script: %s", shutdown_cmd);
-                logger_warn(monitor->logger, msg);
+                /* 使用 KV 日志避免潜在的消息截断问题 */
+                const char* k[] = {"script"};
+                const char* v[] = {shutdown_cmd};
+                logger_warn_kv(monitor->logger, "Executing custom script", k, v, 1);
             }
             break;
     }
