@@ -31,3 +31,8 @@ core
 # 测试和日志
 *.log
 test_output/
+
+# 临时报告和生成的文档
+docs/reports/
+*_REPORT*.md
+MANIFEST.md
