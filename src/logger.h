@@ -5,22 +5,22 @@
 
 /* 日志级别 */
 typedef enum {
-    LOG_LEVEL_DEBUG = 0,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR
+    LOG_LEVEL_SILENT = -1,  /* 完全静默，不输出任何日志 */
+    LOG_LEVEL_ERROR = 0,    /* 仅输出错误 */
+    LOG_LEVEL_WARN = 1,     /* 输出警告和错误 */
+    LOG_LEVEL_INFO = 2,     /* 输出信息、警告和错误（默认） */
+    LOG_LEVEL_DEBUG = 3     /* 输出所有日志，包括调试信息 */
 } log_level_t;
 
 /* 日志器结构 */
 typedef struct {
     log_level_t level;
-    bool verbose;
     bool enable_timestamp;
     bool use_syslog;
 } logger_t;
 
 /* 初始化日志器 */
-void logger_init(logger_t* logger, log_level_t level, bool verbose, 
+void logger_init(logger_t* logger, log_level_t level,
                  bool enable_timestamp, bool use_syslog);
 
 /* 销毁日志器 */

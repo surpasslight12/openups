@@ -25,9 +25,11 @@ Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_DRY_RUN=true"
-# 启用 syslog 会同时输出到系统日志（/var/log/syslog）和 journald
-# 如果只想用 journald，可以设为 false
-Environment="OPENUPS_SYSLOG=true"
+Environment="OPENUPS_LOG_LEVEL=info"
+# 禁用程序时间戳，使用 journald 的时间戳（推荐）
+Environment="OPENUPS_NO_TIMESTAMP=true"
+# 注意：推荐使用 journald（默认），syslog 可选
+# Environment="OPENUPS_SYSLOG=true"
 
 # 安全策略
 # 说明：
@@ -42,7 +44,7 @@ ProtectHome=true
 ReadWritePaths=/var/log
 
 # 资源限制
-MemoryLimit=50M
+MemoryMax=50M
 TasksMax=10
 
 [Install]

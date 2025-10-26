@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     
     /* 初始化日志器 */
     logger_t logger;
-    logger_init(&logger, config.log_level, config.verbose,
+    logger_init(&logger, config.log_level,
                 config.enable_timestamp, config.use_syslog);
     
     /* 打印配置（debug 模式） */

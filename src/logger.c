@@ -7,10 +7,9 @@
 #include <syslog.h>
 #include <time.h>
 
-void logger_init(logger_t* logger, log_level_t level, bool verbose,
+void logger_init(logger_t* logger, log_level_t level,
                  bool enable_timestamp, bool use_syslog) {
     logger->level = level;
-    logger->verbose = verbose;
     logger->enable_timestamp = enable_timestamp;
     logger->use_syslog = use_syslog;
     
@@ -27,15 +26,22 @@ void logger_destroy(logger_t* logger) {
 
 static int level_to_syslog_priority(log_level_t level) {
     switch (level) {
-        case LOG_LEVEL_DEBUG: return LOG_DEBUG;
-        case LOG_LEVEL_INFO:  return LOG_INFO;
-        case LOG_LEVEL_WARN:  return LOG_WARNING;
-        case LOG_LEVEL_ERROR: return LOG_ERR;
-        default:              return LOG_INFO;
+        case LOG_LEVEL_SILENT: return LOG_INFO;
+        case LOG_LEVEL_ERROR:  return LOG_ERR;
+        case LOG_LEVEL_WARN:   return LOG_WARNING;
+        case LOG_LEVEL_INFO:   return LOG_INFO;
+        case LOG_LEVEL_DEBUG:  return LOG_DEBUG;
+        default:               return LOG_INFO;
     }
 }
 
 static void log_message(logger_t* logger, log_level_t level, const char* msg) {
+    /* SILENT 级别不输出任何日志 */
+    if (logger->level == LOG_LEVEL_SILENT) {
+        return;
+    }
+    
+    /* 检查日志级别 */
     if (level < logger->level) {
         return;
     }
@@ -116,18 +122,21 @@ void logger_error_kv(logger_t* logger, const char* msg, const char** keys,
 
 const char* log_level_to_string(log_level_t level) {
     switch (level) {
-        case LOG_LEVEL_DEBUG: return "DEBUG";
-        case LOG_LEVEL_INFO:  return "INFO";
-        case LOG_LEVEL_WARN:  return "WARN";
-        case LOG_LEVEL_ERROR: return "ERROR";
-        default:              return "UNKNOWN";
+        case LOG_LEVEL_SILENT: return "SILENT";
+        case LOG_LEVEL_ERROR:  return "ERROR";
+        case LOG_LEVEL_WARN:   return "WARN";
+        case LOG_LEVEL_INFO:   return "INFO";
+        case LOG_LEVEL_DEBUG:  return "DEBUG";
+        default:               return "UNKNOWN";
     }
 }
 
 log_level_t string_to_log_level(const char* str) {
-    if (strcasecmp(str, "debug") == 0) return LOG_LEVEL_DEBUG;
-    if (strcasecmp(str, "info") == 0)  return LOG_LEVEL_INFO;
-    if (strcasecmp(str, "warn") == 0)  return LOG_LEVEL_WARN;
+    if (strcasecmp(str, "silent") == 0 || strcasecmp(str, "none") == 0) 
+        return LOG_LEVEL_SILENT;
     if (strcasecmp(str, "error") == 0) return LOG_LEVEL_ERROR;
-    return LOG_LEVEL_INFO;
+    if (strcasecmp(str, "warn") == 0)  return LOG_LEVEL_WARN;
+    if (strcasecmp(str, "info") == 0)  return LOG_LEVEL_INFO;
+    if (strcasecmp(str, "debug") == 0) return LOG_LEVEL_DEBUG;
+    return LOG_LEVEL_INFO;  /* 默认 */
 }

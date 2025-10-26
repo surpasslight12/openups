@@ -68,7 +68,6 @@ openups_c/
 ```c
 typedef struct {
     log_level_t level;
-    bool verbose;
     bool enable_timestamp;
     bool use_syslog;
 } logger_t;
@@ -82,7 +81,7 @@ void logger_info_kv(logger_t* logger, const char* msg,
 **特性**：
 - 同时输出到控制台和 syslog
 - 结构化键值对格式
-- 可配置日志级别（DEBUG/INFO/WARN/ERROR）
+- 可配置日志级别（SILENT/ERROR/WARN/INFO/DEBUG）
 
 **日志格式**：`[TIMESTAMP] [LEVEL] message key1=value1 key2=value2`
 

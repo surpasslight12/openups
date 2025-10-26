@@ -161,7 +161,8 @@ git checkout -b fix/bug-description
 make
 
 # 测试
-./bin/openups --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --verbose
+./bin/openups --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --log-level debug
+```
 
 # 调试版本
 make clean

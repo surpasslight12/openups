@@ -193,7 +193,8 @@ static void handle_ping_success(monitor_t* monitor, const ping_result_t* result)
     monitor->consecutive_fails = 0;
     metrics_record_success(&monitor->metrics, result->latency_ms);
     
-    if (monitor->config->verbose) {
+    /* DEBUG 级别才输出每次成功的 ping 详细信息 */
+    if (monitor->logger->level >= LOG_LEVEL_DEBUG) {
         const char* keys[] = {"target", "latency_ms"};
         char latency_str[32];
         snprintf(latency_str, sizeof(latency_str), "%.2f", result->latency_ms);

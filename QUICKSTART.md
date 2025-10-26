@@ -34,7 +34,7 @@ sudo ./bin/openups \
   --interval 10 \
   --threshold 5 \
   --timeout 2000 \
-  --verbose
+  --log-level debug
 ```
 
 ### 场景 2: 监控 IPv6 连接
@@ -281,7 +281,10 @@ OpenUPS C 版本自动化测试
 sudo ./bin/openups --target 8.8.8.8 --log-level debug
 
 # 安静模式（仅错误）
-sudo ./bin/openups --target 8.8.8.8 --quiet
+```bash
+# 安静模式（仅警告和错误）
+sudo ./bin/openups --target 8.8.8.8 --log-level warn
+```
 ```
 
 ### 自定义 ping 参数

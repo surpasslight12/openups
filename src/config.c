@@ -25,7 +25,6 @@ void config_init_default(config_t* config) {
     
     /* 行为配置 */
     config->enable_timestamp = true;
-    config->verbose = false;
     config->log_level = LOG_LEVEL_INFO;
     config->use_syslog = false;
     
@@ -77,6 +76,11 @@ void config_load_from_env(config_t* config) {
     
     config->use_syslog = get_env_bool("OPENUPS_SYSLOG", config->use_syslog);
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
+    
+    /* NO_TIMESTAMP 的处理：如果设置为 true，则 enable_timestamp 设为 false */
+    if (get_env_bool("OPENUPS_NO_TIMESTAMP", false)) {
+        config->enable_timestamp = false;
+    }
 }
 
 bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
@@ -95,13 +99,11 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
         {"ipv6",            no_argument,       0, '6'},
         {"dry-run",         no_argument,       0, 'd'},
         {"no-dry-run",      no_argument,       0, 'N'},
-        {"verbose",         no_argument,       0, 'V'},
-        {"quiet",           no_argument,       0, 'q'},
         {"syslog",          no_argument,       0, 'Y'},
         {"no-timestamp",    no_argument,       0, 'T'},
         {"no-systemd",      no_argument,       0, 'M'},
         {"no-watchdog",     no_argument,       0, 'W'},
-        {"version",         no_argument,       0, 'v'},
+        {"version",         no_argument,       0, 'Z'},  /* version 改用 Z */
         {"help",            no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
@@ -109,7 +111,7 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
     int c;
     int option_index = 0;
     
-    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6dqvhV", 
+    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6dh", 
                            long_options, &option_index)) != -1) {
         switch (c) {
             case 't':
@@ -154,12 +156,6 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
             case 'N':
                 config->dry_run = false;
                 break;
-            case 'V':
-                config->verbose = true;
-                break;
-            case 'q':
-                config->log_level = LOG_LEVEL_WARN;
-                break;
             case 'Y':
                 config->use_syslog = true;
                 break;
@@ -172,7 +168,7 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
             case 'W':
                 config->enable_watchdog = false;
                 break;
-            case 'v':
+            case 'Z':  /* --version */
                 config_print_version();
                 exit(0);
             case 'h':
@@ -280,14 +276,12 @@ void config_print_usage(void) {
     printf("      --dry-run             Do not actually shutdown (default)\n");
     printf("      --no-dry-run          Actually run shutdown command\n");
     printf("  -6, --ipv6                Use IPv6 ping\n");
-    printf("      --log-level <level>   debug|info|warn|error (default: info)\n");
-    printf("      --verbose             Log each successful ping\n");
-    printf("  -q, --quiet               Only warnings and errors\n");
+    printf("      --log-level <level>   silent|error|warn|info|debug (default: info)\n");
     printf("      --syslog              Enable syslog logging\n");
     printf("      --no-timestamp        Disable timestamp in logs\n");
     printf("      --no-systemd          Disable systemd integration\n");
     printf("      --no-watchdog         Disable systemd watchdog\n");
-    printf("  -v, --version             Show version information\n");
+    printf("      --version             Show version information\n");
     printf("  -h, --help                Show this help message\n\n");
     printf("Environment Variables:\n");
     printf("  OPENUPS_TARGET            Override target host\n");

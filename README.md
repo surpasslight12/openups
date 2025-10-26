@@ -74,7 +74,7 @@ make
 
 ```bash
 # 测试 ICMP ping（需要 root 或 CAP_NET_RAW）
-sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --verbose
+sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
 
 # 或授予 capability
 sudo setcap cap_net_raw+ep ./bin/openups
@@ -173,7 +173,12 @@ kill -USR1 $(pidof openups)
 ### 调试模式
 
 ```bash
-./bin/openups --log-level debug --verbose --target 127.0.0.1
+### 调试模式
+
+```bash
+# 详细日志输出（包含每次 ping 的延迟）
+./bin/openups --log-level debug --target 127.0.0.1
+```
 ```
 
 ## 🛠️ 开发
