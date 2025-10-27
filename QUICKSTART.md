@@ -186,15 +186,7 @@ sudo journalctl -u openups | tail -20
 
 输出示例：
 ```
-[INFO] Statistics summary
-       total_pings=150
-       successful_pings=148
-       failed_pings=2
-       success_rate=98.67%
-       min_latency=0.23ms
-       max_latency=15.42ms
-       avg_latency=1.85ms
-       uptime=1500s
+[INFO] Statistics: total=150 successful=148 failed=2 success_rate=98.67% min_latency=0.23ms max_latency=15.42ms avg_latency=1.85ms uptime=1500s
 ```
 
 ---

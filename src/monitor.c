@@ -15,9 +15,7 @@ static void signal_handler(int signum) {
     if (g_monitor) {
         if (signum == SIGINT || signum == SIGTERM) {
             g_monitor->stop_flag = 1;
-            char msg[64];
-            snprintf(msg, sizeof(msg), "Received signal %d, shutting down...", signum);
-            logger_info(g_monitor->logger, msg);
+            logger_info(g_monitor->logger, "Received signal %d, shutting down...", signum);
             
             if (g_monitor->systemd && systemd_notifier_is_enabled(g_monitor->systemd)) {
                 systemd_notifier_stopping(g_monitor->systemd);
@@ -142,29 +140,17 @@ void monitor_destroy(monitor_t* monitor) {
 }
 
 void monitor_print_statistics(monitor_t* monitor) {
-    const char* keys[] = {
-        "total_pings", "successful", "failed", "success_rate",
-        "min_latency_ms", "max_latency_ms", "avg_latency_ms", "uptime_sec"
-    };
-    
-    char total_str[32], success_str[32], failed_str[32], rate_str[32];
-    char min_str[32], max_str[32], avg_str[32], uptime_str[32];
-    
-    snprintf(total_str, sizeof(total_str), "%lu", monitor->metrics.total_pings);
-    snprintf(success_str, sizeof(success_str), "%lu", monitor->metrics.successful_pings);
-    snprintf(failed_str, sizeof(failed_str), "%lu", monitor->metrics.failed_pings);
-    snprintf(rate_str, sizeof(rate_str), "%.2f%%", metrics_success_rate(&monitor->metrics));
-    snprintf(min_str, sizeof(min_str), "%.2f", monitor->metrics.min_latency);
-    snprintf(max_str, sizeof(max_str), "%.2f", monitor->metrics.max_latency);
-    snprintf(avg_str, sizeof(avg_str), "%.2f", metrics_avg_latency(&monitor->metrics));
-    snprintf(uptime_str, sizeof(uptime_str), "%lu", metrics_uptime_seconds(&monitor->metrics));
-    
-    const char* values[] = {
-        total_str, success_str, failed_str, rate_str,
-        min_str, max_str, avg_str, uptime_str
-    };
-    
-    logger_info_kv(monitor->logger, "Statistics", keys, values, 8);
+    logger_info(monitor->logger, 
+                "Statistics: total=%lu successful=%lu failed=%lu success_rate=%.2f%% "
+                "min_latency=%.2fms max_latency=%.2fms avg_latency=%.2fms uptime=%lus",
+                monitor->metrics.total_pings,
+                monitor->metrics.successful_pings,
+                monitor->metrics.failed_pings,
+                metrics_success_rate(&monitor->metrics),
+                monitor->metrics.min_latency,
+                monitor->metrics.max_latency,
+                metrics_avg_latency(&monitor->metrics),
+                metrics_uptime_seconds(&monitor->metrics));
 }
 
 /* 执行 ping（带重试） */
@@ -195,11 +181,8 @@ static void handle_ping_success(monitor_t* monitor, const ping_result_t* result)
     
     /* DEBUG 级别才输出每次成功的 ping 详细信息 */
     if (monitor->logger->level >= LOG_LEVEL_DEBUG) {
-        const char* keys[] = {"target", "latency_ms"};
-        char latency_str[32];
-        snprintf(latency_str, sizeof(latency_str), "%.2f", result->latency_ms);
-        const char* values[] = {monitor->config->target, latency_str};
-        logger_info_kv(monitor->logger, "Ping successful", keys, values, 2);
+        logger_debug(monitor->logger, "Ping successful to %s, latency: %.2fms",
+                    monitor->config->target, result->latency_ms);
     }
 }
 
@@ -208,27 +191,19 @@ static void handle_ping_failure(monitor_t* monitor, const ping_result_t* result)
     monitor->consecutive_fails++;
     metrics_record_failure(&monitor->metrics);
     
-    const char* keys[] = {"target", "error", "consecutive_failures"};
-    char fails_str[32];
-    snprintf(fails_str, sizeof(fails_str), "%d", monitor->consecutive_fails);
-    const char* values[] = {monitor->config->target, result->error_msg, fails_str};
-    logger_warn_kv(monitor->logger, "Ping failed", keys, values, 3);
+    logger_warn(monitor->logger, "Ping failed to %s: %s (consecutive failures: %d)",
+                monitor->config->target, result->error_msg, monitor->consecutive_fails);
 }
 
 /* 触发关机 */
 static void trigger_shutdown(monitor_t* monitor) {
-    const char* keys[] = {"mode", "dry_run"};
-    const char* values[] = {
-        shutdown_mode_to_string(monitor->config->shutdown_mode),
-        monitor->config->dry_run ? "true" : "false"
-    };
-    logger_warn_kv(monitor->logger, "Shutdown threshold reached", keys, values, 2);
+    logger_warn(monitor->logger, "Shutdown threshold reached (mode: %s, dry_run: %s)",
+                shutdown_mode_to_string(monitor->config->shutdown_mode),
+                monitor->config->dry_run ? "true" : "false");
     
     if (monitor->config->dry_run) {
-        char msg[256];
-        snprintf(msg, sizeof(msg), "[DRY-RUN] Would trigger shutdown: mode=%s",
-                shutdown_mode_to_string(monitor->config->shutdown_mode));
-        logger_info(monitor->logger, msg);
+        logger_info(monitor->logger, "[DRY-RUN] Would trigger shutdown: mode=%s",
+                   shutdown_mode_to_string(monitor->config->shutdown_mode));
         return;
     }
     
@@ -253,12 +228,8 @@ static void trigger_shutdown(monitor_t* monitor) {
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd),
                         "/sbin/shutdown -h +%d", monitor->config->delay_minutes);
             }
-            {
-                char msg[256];
-                snprintf(msg, sizeof(msg), "Triggering delayed shutdown (%d minutes)",
-                        monitor->config->delay_minutes);
-                logger_warn(monitor->logger, msg);
-            }
+            logger_warn(monitor->logger, "Triggering delayed shutdown (%d minutes)",
+                       monitor->config->delay_minutes);
             break;
             
         case SHUTDOWN_MODE_LOG_ONLY:
@@ -277,23 +248,15 @@ static void trigger_shutdown(monitor_t* monitor) {
             }
             snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
                     monitor->config->custom_script);
-            {
-                /* 使用 KV 日志避免潜在的消息截断问题 */
-                const char* k[] = {"script"};
-                const char* v[] = {shutdown_cmd};
-                logger_warn_kv(monitor->logger, "Executing custom script", k, v, 1);
-            }
+            logger_warn(monitor->logger, "Executing custom script: %s", shutdown_cmd);
             break;
     }
     
     /* 执行关机命令 */
     int code = system(shutdown_cmd);
     if (code != 0) {
-        const char* keys[] = {"exit_code", "command"};
-        char code_str[32];
-        snprintf(code_str, sizeof(code_str), "%d", code);
-        const char* values[] = {code_str, shutdown_cmd};
-        logger_error_kv(monitor->logger, "Shutdown command failed", keys, values, 2);
+        logger_error(monitor->logger, "Shutdown command failed (exit code: %d, command: %s)",
+                    code, shutdown_cmd);
     } else {
         logger_info(monitor->logger, "Shutdown command executed successfully");
     }
@@ -319,17 +282,12 @@ static void sleep_with_stop(monitor_t* monitor, int seconds) {
 
 int monitor_run(monitor_t* monitor) {
     /* 打印启动信息 */
-    const char* keys[] = {"target", "interval", "threshold", "ipv6"};
-    char interval_str[32], threshold_str[32];
-    snprintf(interval_str, sizeof(interval_str), "%ds", monitor->config->interval_sec);
-    snprintf(threshold_str, sizeof(threshold_str), "%d", monitor->config->fail_threshold);
-    const char* values[] = {
-        monitor->config->target,
-        interval_str,
-        threshold_str,
-        monitor->config->use_ipv6 ? "true" : "false"
-    };
-    logger_info_kv(monitor->logger, "Starting OpenUPS monitor", keys, values, 4);
+    logger_info(monitor->logger, 
+                "Starting OpenUPS monitor: target=%s interval=%ds threshold=%d ipv6=%s",
+                monitor->config->target,
+                monitor->config->interval_sec,
+                monitor->config->fail_threshold,
+                monitor->config->use_ipv6 ? "true" : "false");
     
     /* 通知 systemd 就绪 */
     if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {

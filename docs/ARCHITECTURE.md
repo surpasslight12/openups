@@ -62,7 +62,7 @@ openups_c/
 
 ### 2. logger 模块 (`logger.c/h`)
 
-**职责**：结构化日志系统
+**职责**：自然语序日志系统
 
 **关键 API**：
 ```c
@@ -73,17 +73,22 @@ typedef struct {
 } logger_t;
 
 void logger_init(logger_t* logger, ...);
-void logger_info(logger_t* logger, const char* msg);
-void logger_info_kv(logger_t* logger, const char* msg, 
-                    const char** keys, const char** values, int count);
+void logger_info(logger_t* logger, const char* fmt, ...)
+    __attribute__((format(printf, 2, 3)));
 ```
 
 **特性**：
 - 同时输出到控制台和 syslog
-- 结构化键值对格式
+- printf 风格的可变参数格式化
+- 自然语序输出（不使用 key=value 格式）
 - 可配置日志级别（SILENT/ERROR/WARN/INFO/DEBUG）
+- 编译时格式检查（`__attribute__((format(printf, 2, 3)))`）
 
-**日志格式**：`[TIMESTAMP] [LEVEL] message key1=value1 key2=value2`
+**日志格式**：`[TIMESTAMP] [LEVEL] natural language message`
+
+**示例**：
+- `[2025-10-27 22:08:23.466] [INFO] Starting OpenUPS monitor: target=127.0.0.1 interval=1s threshold=3 ipv6=false`
+- `[2025-10-27 22:08:23.566] [DEBUG] Ping successful to 127.0.0.1, latency: 0.01ms`
 
 **依赖**：common
 

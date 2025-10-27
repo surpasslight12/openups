@@ -140,16 +140,15 @@ LOG_LEVEL_WARN = 1,     // 警告 + 错误
 LOG_LEVEL_INFO = 2,     // 信息 + 警告 + 错误（默认）
 LOG_LEVEL_DEBUG = 3     // 所有日志 + 详细输出
 
-// ✅ 使用统一的日志接口
-logger_debug(logger, "Debug message");
-logger_info(logger, "Info message");
-logger_warn(logger, "Warning message");
-logger_error(logger, "Error message");
+// ✅ 使用统一的日志接口（printf 风格）
+logger_debug(logger, "Debug message: value=%d", 123);
+logger_info(logger, "Info message: target=%s", "1.1.1.1");
+logger_warn(logger, "Warning message: count=%d", 5);
+logger_error(logger, "Error message: %s", strerror(errno));
 
-// ✅ 结构化日志（键值对）
-const char* keys[] = {"target", "interval", "threshold"};
-const char* values[] = {"1.1.1.1", "10", "5"};
-logger_info_kv(logger, "Starting monitor", keys, values, 3);
+// ✅ 自然语序日志（不使用 key=value 格式）
+logger_info(logger, "Starting monitor: target=%s interval=%ds threshold=%d",
+            "1.1.1.1", 10, 5);
 ```
 
 #### systemd journald 集成

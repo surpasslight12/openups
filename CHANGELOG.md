@@ -7,11 +7,19 @@
 
 ---
 
-## [1.1.0] - 2025-10-26
+## [1.1.0] - 2025-10-27
 
-### ⚡ 性能升级
+### ⚡ 性能升级 & 代码优化
 
 #### Changed
+- **日志系统全面重构**: 从 key=value 格式改为自然语序
+  - 移除所有 `logger_*_kv()` 函数
+  - 使用 printf 风格的可变参数函数
+  - 添加 `__attribute__((format(printf, 2, 3)))` 编译时检查
+  - 日志输出更易读：`Ping successful to 127.0.0.1, latency: 0.01ms`
+  - 代码简化约 60 行（monitor.c）
+  - 性能提升：减少字符串拷贝和临时缓冲区分配
+
 - **日志系统简化**: 从 5 个参数简化为 3 个核心参数
   - 移除 `-v/--verbose` 和 `-q/--quiet` 别名
   - 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
@@ -106,11 +114,12 @@
   - 状态更新通知
   - 支持抽象命名空间的 UNIX socket
   
-- 📝 **结构化日志系统**
-  - 支持 DEBUG/INFO/WARN/ERROR 级别
-  - 键值对格式的结构化日志
+- 📝 **自然语序日志系统**
+  - 支持 DEBUG/INFO/WARN/INFO/DEBUG 级别
+  - printf 风格的可变参数格式化
   - 可选的 syslog 输出
   - 时间戳可配置
+  - 编译时格式检查（`__attribute__((format(printf, 2, 3)))`）
   
 - 🔧 **灵活的配置系统**
   - 命令行参数解析（使用 getopt_long）

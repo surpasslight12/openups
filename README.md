@@ -197,7 +197,7 @@ make CC=gcc CFLAGS="-g -O0 -std=c11 -Wall -Wextra"
 - **systemd.c/h**：systemd 通知和 watchdog 集成
 - **monitor.c/h**：监控循环和关机触发逻辑
 - **config.c/h**：配置解析和验证
-- **logger.c/h**：结构化日志（支持 syslog）
+- **logger.c/h**：自然语序日志系统（支持 syslog）
 - **common.c/h**：通用工具函数
 
 ## 📝 更新日志
@@ -209,7 +209,7 @@ make CC=gcc CFLAGS="-g -O0 -std=c11 -Wall -Wextra"
 - 🌐 原生 ICMP 实现（IPv4/IPv6）
 - ⚙️ 深度 systemd 集成（notify、watchdog）
 - 🔒 安全加固（CAP_NET_RAW）
-- 📝 结构化日志系统
+- 📝 自然语序日志系统（printf 风格）
 
 ## 🧪 测试
 

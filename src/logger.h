@@ -26,17 +26,11 @@ void logger_init(logger_t* logger, log_level_t level,
 /* 销毁日志器 */
 void logger_destroy(logger_t* logger);
 
-/* 基本日志 */
-void logger_debug(logger_t* logger, const char* msg);
-void logger_info(logger_t* logger, const char* msg);
-void logger_warn(logger_t* logger, const char* msg);
-void logger_error(logger_t* logger, const char* msg);
-
-/* 带键值对的结构化日志 */
-void logger_debug_kv(logger_t* logger, const char* msg, const char** keys, const char** values, int count);
-void logger_info_kv(logger_t* logger, const char* msg, const char** keys, const char** values, int count);
-void logger_warn_kv(logger_t* logger, const char* msg, const char** keys, const char** values, int count);
-void logger_error_kv(logger_t* logger, const char* msg, const char** keys, const char** values, int count);
+/* 基本日志函数（使用 printf 风格格式化）*/
+void logger_debug(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_info(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_warn(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_error(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 
 /* 日志级别转换 */
 const char* log_level_to_string(log_level_t level);

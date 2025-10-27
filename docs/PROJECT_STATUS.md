@@ -70,7 +70,7 @@ Oct 26 22:17:40 pve openups[508333]: [2025-10-26 22:17:40.977] [DEBUG] ...
 **修改后的日志格式**:
 ```
 Oct 26 22:37:19 codeserver openups[36631]: [DEBUG] systemd integration enabled
-Oct 26 22:37:19 codeserver openups[36631]: [INFO] Starting OpenUPS monitor target=1.1.1.1
+Oct 26 22:37:19 codeserver openups[36631]: [INFO] Starting OpenUPS monitor: target=1.1.1.1 interval=10s threshold=5 ipv6=false
 ```
 
 **影响的文件**:

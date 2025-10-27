@@ -6,6 +6,7 @@
 #include <strings.h>
 #include <syslog.h>
 #include <time.h>
+#include <stdarg.h>
 
 void logger_init(logger_t* logger, log_level_t level,
                  bool enable_timestamp, bool use_syslog) {
@@ -42,7 +43,7 @@ static void log_message(logger_t* logger, log_level_t level, const char* msg) {
     }
     
     /* 检查日志级别 */
-    if (level < logger->level) {
+    if (level > logger->level) {
         return;
     }
     
@@ -66,58 +67,60 @@ static void log_message(logger_t* logger, log_level_t level, const char* msg) {
     }
 }
 
-static void log_message_kv(logger_t* logger, log_level_t level, const char* msg,
-                           const char** keys, const char** values, int count) {
-    if (level < logger->level) {
+void logger_debug(logger_t* logger, const char* fmt, ...) {
+    if (logger->level < LOG_LEVEL_DEBUG) {
         return;
     }
     
-    /* 构建带键值对的消息 */
     char buffer[2048];
-    int offset = snprintf(buffer, sizeof(buffer), "%s", msg);
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
     
-    for (int i = 0; i < count && offset < (int)sizeof(buffer) - 1; i++) {
-        offset += snprintf(buffer + offset, sizeof(buffer) - offset,
-                          " %s=%s", keys[i], values[i]);
+    log_message(logger, LOG_LEVEL_DEBUG, buffer);
+}
+
+void logger_info(logger_t* logger, const char* fmt, ...) {
+    if (logger->level < LOG_LEVEL_INFO) {
+        return;
     }
     
-    log_message(logger, level, buffer);
+    char buffer[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    
+    log_message(logger, LOG_LEVEL_INFO, buffer);
 }
 
-void logger_debug(logger_t* logger, const char* msg) {
-    log_message(logger, LOG_LEVEL_DEBUG, msg);
+void logger_warn(logger_t* logger, const char* fmt, ...) {
+    if (logger->level < LOG_LEVEL_WARN) {
+        return;
+    }
+    
+    char buffer[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    
+    log_message(logger, LOG_LEVEL_WARN, buffer);
 }
 
-void logger_info(logger_t* logger, const char* msg) {
-    log_message(logger, LOG_LEVEL_INFO, msg);
-}
-
-void logger_warn(logger_t* logger, const char* msg) {
-    log_message(logger, LOG_LEVEL_WARN, msg);
-}
-
-void logger_error(logger_t* logger, const char* msg) {
-    log_message(logger, LOG_LEVEL_ERROR, msg);
-}
-
-void logger_debug_kv(logger_t* logger, const char* msg, const char** keys,
-                     const char** values, int count) {
-    log_message_kv(logger, LOG_LEVEL_DEBUG, msg, keys, values, count);
-}
-
-void logger_info_kv(logger_t* logger, const char* msg, const char** keys,
-                    const char** values, int count) {
-    log_message_kv(logger, LOG_LEVEL_INFO, msg, keys, values, count);
-}
-
-void logger_warn_kv(logger_t* logger, const char* msg, const char** keys,
-                    const char** values, int count) {
-    log_message_kv(logger, LOG_LEVEL_WARN, msg, keys, values, count);
-}
-
-void logger_error_kv(logger_t* logger, const char* msg, const char** keys,
-                     const char** values, int count) {
-    log_message_kv(logger, LOG_LEVEL_ERROR, msg, keys, values, count);
+void logger_error(logger_t* logger, const char* fmt, ...) {
+    if (logger->level < LOG_LEVEL_ERROR) {
+        return;
+    }
+    
+    char buffer[2048];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    
+    log_message(logger, LOG_LEVEL_ERROR, buffer);
 }
 
 const char* log_level_to_string(log_level_t level) {
