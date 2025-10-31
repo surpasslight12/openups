@@ -165,9 +165,11 @@ make
 ```
 
 # 调试版本
+```bash
 make clean
-make CC=gcc CFLAGS="-g -O0 -std=c11 -Wall -Wextra"
+make CC=gcc CFLAGS="-g -O0 -std=c2x -Wall -Wextra"
 gdb --args ./bin/openups --target 127.0.0.1 --log-level debug
+```
 ```
 
 #### 3. 提交代码
