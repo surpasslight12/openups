@@ -1,14 +1,21 @@
 #include "monitor.h"
 #include "common.h"
+#include <assert.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <signal.h>
 #include <sys/time.h>
+#include <unistd.h>
 
-/* 全局监控器实例用于信号处理 */
-static monitor_t* g_monitor = NULL;
+/* 编译时检查 */
+static_assert(sizeof(sig_atomic_t) >= sizeof(int), "sig_atomic_t must be at least int size");
+
+/* 全局监控器实例用于信号处理
+ * 注意: 此全局变量在信号处理程序中访问，但只有 stop_flag 和 print_stats_flag
+ * 是 sig_atomic_t 类型，保证原子性访问。其他字段不在信号处理程序中修改。
+ */
+static monitor_t* g_monitor = nullptr;
 
 /* 信号处理函数 */
 static void signal_handler(int signum) {
@@ -17,8 +24,8 @@ static void signal_handler(int signum) {
             g_monitor->stop_flag = 1;
             logger_info(g_monitor->logger, "Received signal %d, shutting down...", signum);
             
-            if (g_monitor->systemd && systemd_notifier_is_enabled(g_monitor->systemd)) {
-                systemd_notifier_stopping(g_monitor->systemd);
+            if (g_monitor->systemd != nullptr && systemd_notifier_is_enabled(g_monitor->systemd)) {
+                (void)systemd_notifier_stopping(g_monitor->systemd);
             }
         } else if (signum == SIGUSR1) {
             g_monitor->print_stats_flag = 1;
@@ -26,7 +33,11 @@ static void signal_handler(int signum) {
     }
 }
 
-void monitor_setup_signals(monitor_t* monitor) {
+void monitor_setup_signals(monitor_t* restrict monitor) {
+    if (monitor == nullptr) {
+        return;
+    }
+    
     g_monitor = monitor;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
@@ -87,8 +98,13 @@ static uint64_t metrics_uptime_seconds(const metrics_t* metrics) {
     return now - metrics->start_time;
 }
 
-bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
-                  char* error_msg, size_t error_size) {
+bool monitor_init(monitor_t* restrict monitor, config_t* restrict config, 
+                  logger_t* restrict logger, char* restrict error_msg, size_t error_size) {
+    if (monitor == nullptr || config == nullptr || logger == nullptr || 
+        error_msg == nullptr || error_size == 0) {
+        return false;
+    }
+    
     monitor->config = config;
     monitor->logger = logger;
     monitor->stop_flag = 0;
@@ -106,7 +122,7 @@ bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
     /* 初始化 systemd 通知器 */
     if (config->enable_systemd) {
         monitor->systemd = (systemd_notifier_t*)malloc(sizeof(systemd_notifier_t));
-        if (!monitor->systemd) {
+        if (monitor->systemd == nullptr) {
             snprintf(error_msg, error_size, "Failed to allocate systemd notifier");
             icmp_pinger_destroy(&monitor->pinger);
             return false;
@@ -118,7 +134,7 @@ bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
             logger_debug(logger, "systemd not detected, integration disabled");
         }
     } else {
-        monitor->systemd = NULL;
+        monitor->systemd = nullptr;
     }
     
     /* 设置信号处理 */
@@ -127,19 +143,27 @@ bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
     return true;
 }
 
-void monitor_destroy(monitor_t* monitor) {
-    icmp_pinger_destroy(&monitor->pinger);
-    
-    if (monitor->systemd) {
-        systemd_notifier_destroy(monitor->systemd);
-        free(monitor->systemd);
-        monitor->systemd = NULL;
+void monitor_destroy(monitor_t* restrict monitor) {
+    if (monitor == nullptr) {
+        return;
     }
     
-    g_monitor = NULL;
+    icmp_pinger_destroy(&monitor->pinger);
+    
+    if (monitor->systemd != nullptr) {
+        systemd_notifier_destroy(monitor->systemd);
+        free(monitor->systemd);
+        monitor->systemd = nullptr;
+    }
+    
+    g_monitor = nullptr;
 }
 
-void monitor_print_statistics(monitor_t* monitor) {
+void monitor_print_statistics(monitor_t* restrict monitor) {
+    if (monitor == nullptr || monitor->logger == nullptr) {
+        return;
+    }
+    
     logger_info(monitor->logger, 
                 "Statistics: total=%lu successful=%lu failed=%lu success_rate=%.2f%% "
                 "min_latency=%.2fms max_latency=%.2fms avg_latency=%.2fms uptime=%lus",
@@ -154,7 +178,11 @@ void monitor_print_statistics(monitor_t* monitor) {
 }
 
 /* 执行 ping（带重试） */
-static bool perform_ping(monitor_t* monitor, ping_result_t* result) {
+static bool perform_ping(monitor_t* restrict monitor, ping_result_t* restrict result) {
+    if (monitor == nullptr || result == nullptr) {
+        return false;
+    }
+    
     for (int attempt = 0; attempt <= monitor->config->max_retries; attempt++) {
         *result = icmp_pinger_ping(&monitor->pinger,
                                    monitor->config->target,
@@ -270,17 +298,21 @@ static void sleep_with_stop(monitor_t* monitor, int seconds) {
         }
         
         /* 发送 watchdog 心跳 */
-        if (monitor->systemd && 
+        if (monitor->systemd != nullptr && 
             systemd_notifier_is_enabled(monitor->systemd) &&
             monitor->config->enable_watchdog) {
-            systemd_notifier_watchdog(monitor->systemd);
+            (void)systemd_notifier_watchdog(monitor->systemd);
         }
         
         sleep(1);
     }
 }
 
-int monitor_run(monitor_t* monitor) {
+int monitor_run(monitor_t* restrict monitor) {
+    if (monitor == nullptr || monitor->config == nullptr || monitor->logger == nullptr) {
+        return -1;
+    }
+    
     /* 打印启动信息 */
     logger_info(monitor->logger, 
                 "Starting OpenUPS monitor: target=%s interval=%ds threshold=%d ipv6=%s",
@@ -290,15 +322,15 @@ int monitor_run(monitor_t* monitor) {
                 monitor->config->use_ipv6 ? "true" : "false");
     
     /* 通知 systemd 就绪 */
-    if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
-        systemd_notifier_ready(monitor->systemd);
+    if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
+        (void)systemd_notifier_ready(monitor->systemd);
         char status_msg[256];
         snprintf(status_msg, sizeof(status_msg), 
                 "Monitoring %s (interval=%ds, threshold=%d)",
                 monitor->config->target,
                 monitor->config->interval_sec,
                 monitor->config->fail_threshold);
-        systemd_notifier_status(monitor->systemd, status_msg);
+        (void)systemd_notifier_status(monitor->systemd, status_msg);
     }
     
     /* 主监控循环 */
@@ -317,7 +349,7 @@ int monitor_run(monitor_t* monitor) {
             handle_ping_success(monitor, &result);
             
             /* 更新 systemd 状态 - 显示成功统计 */
-            if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
+            if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
                 char status_msg[256];
                 double success_rate = metrics_success_rate(&monitor->metrics);
                 snprintf(status_msg, sizeof(status_msg),
@@ -326,19 +358,19 @@ int monitor_run(monitor_t* monitor) {
                         monitor->metrics.total_pings,
                         success_rate,
                         result.latency_ms);
-                systemd_notifier_status(monitor->systemd, status_msg);
+                (void)systemd_notifier_status(monitor->systemd, status_msg);
             }
         } else {
             handle_ping_failure(monitor, &result);
             
             /* 更新 systemd 状态 - 显示失败警告 */
-            if (monitor->systemd && systemd_notifier_is_enabled(monitor->systemd)) {
+            if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
                 char status_msg[256];
                 snprintf(status_msg, sizeof(status_msg),
                         "WARNING: %d consecutive failures (threshold: %d)",
                         monitor->consecutive_fails,
                         monitor->config->fail_threshold);
-                systemd_notifier_status(monitor->systemd, status_msg);
+                (void)systemd_notifier_status(monitor->systemd, status_msg);
             }
             
             /* 检查是否达到失败阈值 */
@@ -371,6 +403,8 @@ int monitor_run(monitor_t* monitor) {
     return 0;
 }
 
-void monitor_stop(monitor_t* monitor) {
-    monitor->stop_flag = 1;
+void monitor_stop(monitor_t* restrict monitor) {
+    if (monitor != nullptr) {
+        monitor->stop_flag = 1;
+    }
 }

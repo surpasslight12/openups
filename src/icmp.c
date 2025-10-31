@@ -4,19 +4,24 @@
 
 #include "icmp.h"
 #include "common.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <arpa/inet.h>
+#include <assert.h>
 #include <errno.h>
-#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/icmp6.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
-#include <netinet/icmp6.h>
-#include <arpa/inet.h>
-#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <sys/time.h>
+#include <unistd.h>
+
+/* 编译时检查 ICMP 结构体大小 */
+static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
+static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes");
 
 /* ICMP 校验和计算 */
 static uint16_t calculate_checksum(const void* data, size_t len) {
@@ -41,8 +46,12 @@ static uint16_t calculate_checksum(const void* data, size_t len) {
     return ~sum;
 }
 
-bool icmp_pinger_init(icmp_pinger_t* pinger, bool use_ipv6, 
-                      char* error_msg, size_t error_size) {
+bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, 
+                      char* restrict error_msg, size_t error_size) {
+    if (pinger == nullptr || error_msg == nullptr || error_size == 0) {
+        return false;
+    }
+    
     pinger->use_ipv6 = use_ipv6;
     
     /* 创建 raw socket */
@@ -60,7 +69,11 @@ bool icmp_pinger_init(icmp_pinger_t* pinger, bool use_ipv6,
     return true;
 }
 
-void icmp_pinger_destroy(icmp_pinger_t* pinger) {
+void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
+    if (pinger == nullptr) {
+        return;
+    }
+    
     if (pinger->sockfd >= 0) {
         close(pinger->sockfd);
         pinger->sockfd = -1;
@@ -68,15 +81,20 @@ void icmp_pinger_destroy(icmp_pinger_t* pinger) {
 }
 
 /* 解析目标地址 */
-static bool resolve_target(const char* target, bool use_ipv6, 
-                          struct sockaddr_storage* addr, socklen_t* addr_len,
-                          char* error_msg, size_t error_size) {
+static bool resolve_target(const char* restrict target, bool use_ipv6, 
+                          struct sockaddr_storage* restrict addr, socklen_t* restrict addr_len,
+                          char* restrict error_msg, size_t error_size) {
+    if (target == nullptr || addr == nullptr || addr_len == nullptr || 
+        error_msg == nullptr || error_size == 0) {
+        return false;
+    }
+    
     struct addrinfo hints, *result;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = use_ipv6 ? AF_INET6 : AF_INET;
     hints.ai_socktype = SOCK_RAW;
     
-    int ret = getaddrinfo(target, NULL, &hints, &result);
+    int ret = getaddrinfo(target, nullptr, &hints, &result);
     if (ret != 0) {
         snprintf(error_msg, error_size, "Failed to resolve target: %s", 
                 gai_strerror(ret));
@@ -91,14 +109,19 @@ static bool resolve_target(const char* target, bool use_ipv6,
 }
 
 /* IPv4 Ping 实现 */
-static ping_result_t ping_ipv4(icmp_pinger_t* pinger, struct sockaddr_in* dest_addr,
+static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_in* restrict dest_addr,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
+    
+    if (pinger == nullptr || dest_addr == nullptr) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
+        return result;
+    }
     
     /* 构建 ICMP Echo Request */
     size_t packet_len = sizeof(struct icmphdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
-    if (!packet) {
+    if (packet == nullptr) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Memory allocation failed");
         return result;
     }
@@ -126,10 +149,10 @@ static ping_result_t ping_ipv4(icmp_pinger_t* pinger, struct sockaddr_in* dest_a
     
     /* 发送 ICMP Echo Request */
     struct timeval send_time;
-    gettimeofday(&send_time, NULL);
+    gettimeofday(&send_time, nullptr);
     
     ssize_t sent = sendto(pinger->sockfd, packet, packet_len, 0,
-                         (struct sockaddr*)dest_addr, sizeof(*dest_addr));
+                          (struct sockaddr*)dest_addr, sizeof(*dest_addr));
     if (sent < 0) {
         snprintf(result.error_msg, sizeof(result.error_msg), 
                 "Failed to send packet: %s", strerror(errno));
@@ -146,7 +169,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* pinger, struct sockaddr_in* dest_a
                                (struct sockaddr*)&recv_addr, &recv_addr_len);
     
     struct timeval recv_time;
-    gettimeofday(&recv_time, NULL);
+    gettimeofday(&recv_time, nullptr);
     
     if (received < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -184,14 +207,19 @@ static ping_result_t ping_ipv4(icmp_pinger_t* pinger, struct sockaddr_in* dest_a
 }
 
 /* IPv6 Ping 实现 */
-static ping_result_t ping_ipv6(icmp_pinger_t* pinger, struct sockaddr_in6* dest_addr,
+static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_in6* restrict dest_addr,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
+    
+    if (pinger == nullptr || dest_addr == nullptr) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
+        return result;
+    }
     
     /* 构建 ICMPv6 Echo Request */
     size_t packet_len = sizeof(struct icmp6_hdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
-    if (!packet) {
+    if (packet == nullptr) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Memory allocation failed");
         return result;
     }
@@ -217,10 +245,10 @@ static ping_result_t ping_ipv6(icmp_pinger_t* pinger, struct sockaddr_in6* dest_
     
     /* 发送 ICMPv6 Echo Request */
     struct timeval send_time;
-    gettimeofday(&send_time, NULL);
+    gettimeofday(&send_time, nullptr);
     
     ssize_t sent = sendto(pinger->sockfd, packet, packet_len, 0,
-                         (struct sockaddr*)dest_addr, sizeof(*dest_addr));
+                          (struct sockaddr*)dest_addr, sizeof(*dest_addr));
     if (sent < 0) {
         snprintf(result.error_msg, sizeof(result.error_msg), 
                 "Failed to send packet: %s", strerror(errno));
@@ -237,7 +265,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* pinger, struct sockaddr_in6* dest_
                                (struct sockaddr*)&recv_addr, &recv_addr_len);
     
     struct timeval recv_time;
-    gettimeofday(&recv_time, NULL);
+    gettimeofday(&recv_time, nullptr);
     
     if (received < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -272,9 +300,14 @@ static ping_result_t ping_ipv6(icmp_pinger_t* pinger, struct sockaddr_in6* dest_
     return result;
 }
 
-ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
+ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger, const char* restrict target,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
+    
+    if (pinger == nullptr || target == nullptr) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
+        return result;
+    }
     
     /* 解析目标地址 */
     struct sockaddr_storage addr;

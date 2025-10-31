@@ -20,20 +20,20 @@ typedef struct {
 } logger_t;
 
 /* 初始化日志器 */
-void logger_init(logger_t* logger, log_level_t level,
+void logger_init(logger_t* restrict logger, log_level_t level,
                  bool enable_timestamp, bool use_syslog);
 
 /* 销毁日志器 */
-void logger_destroy(logger_t* logger);
+void logger_destroy(logger_t* restrict logger);
 
 /* 基本日志函数（使用 printf 风格格式化）*/
-void logger_debug(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-void logger_info(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-void logger_warn(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-void logger_error(logger_t* logger, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_info(logger_t* restrict logger, const char* restrict fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...) __attribute__((format(printf, 2, 3)));
+void logger_error(logger_t* restrict logger, const char* restrict fmt, ...) __attribute__((format(printf, 2, 3)));
 
 /* 日志级别转换 */
-const char* log_level_to_string(log_level_t level);
-log_level_t string_to_log_level(const char* str);
+[[nodiscard]] const char* log_level_to_string(log_level_t level);
+[[nodiscard]] log_level_t string_to_log_level(const char* restrict str);
 
 #endif /* OPENUPS_LOGGER_H */

@@ -1,12 +1,18 @@
 #include "config.h"
 #include "common.h"
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <getopt.h>
 
-void config_init_default(config_t* config) {
+void config_init_default(config_t* restrict config) {
+    if (config == nullptr) {
+        return;
+    }
+    
     /* 网络配置 */
     snprintf(config->target, sizeof(config->target), "1.1.1.1");
     config->interval_sec = 10;
@@ -33,7 +39,11 @@ void config_init_default(config_t* config) {
     config->enable_watchdog = true;
 }
 
-void config_load_from_env(config_t* config) {
+void config_load_from_env(config_t* restrict config) {
+    if (config == nullptr) {
+        return;
+    }
+    
     const char* value;
     
     /* 网络配置 */
@@ -51,7 +61,7 @@ void config_load_from_env(config_t* config) {
     
     /* 关机配置 */
     value = getenv("OPENUPS_SHUTDOWN_MODE");
-    if (value) {
+    if (value != nullptr) {
         config->shutdown_mode = string_to_shutdown_mode(value);
     }
     
@@ -59,18 +69,18 @@ void config_load_from_env(config_t* config) {
     config->dry_run = get_env_bool("OPENUPS_DRY_RUN", config->dry_run);
     
     value = getenv("OPENUPS_SHUTDOWN_CMD");
-    if (value) {
+    if (value != nullptr) {
         snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", value);
     }
     
     value = getenv("OPENUPS_CUSTOM_SCRIPT");
-    if (value) {
+    if (value != nullptr) {
         snprintf(config->custom_script, sizeof(config->custom_script), "%s", value);
     }
     
     /* 行为配置 */
     value = getenv("OPENUPS_LOG_LEVEL");
-    if (value) {
+    if (value != nullptr) {
         config->log_level = string_to_log_level(value);
     }
     
@@ -83,7 +93,11 @@ void config_load_from_env(config_t* config) {
     }
 }
 
-bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
+bool config_load_from_cmdline(config_t* restrict config, int argc, char** restrict argv) {
+    if (config == nullptr || argv == nullptr) {
+        return false;
+    }
+    
     static struct option long_options[] = {
         {"target",          required_argument, 0, 't'},
         {"interval",        required_argument, 0, 'i'},
@@ -184,8 +198,12 @@ bool config_load_from_cmdline(config_t* config, int argc, char** argv) {
     return true;
 }
 
-bool config_validate(const config_t* config, char* error_msg, size_t error_size) {
-    if (strlen(config->target) == 0) {
+bool config_validate(const config_t* restrict config, char* restrict error_msg, size_t error_size) {
+    if (config == nullptr || error_msg == nullptr || error_size == 0) {
+        return false;
+    }
+    
+    if (config->target[0] == '\0') {
         snprintf(error_msg, error_size, "Target host cannot be empty");
         return false;
     }
@@ -244,7 +262,11 @@ bool config_validate(const config_t* config, char* error_msg, size_t error_size)
     return true;
 }
 
-void config_print(const config_t* config) {
+void config_print(const config_t* restrict config) {
+    if (config == nullptr) {
+        return;
+    }
+    
     printf("Configuration:\n");
     printf("  Target: %s\n", config->target);
     printf("  Interval: %d seconds\n", config->interval_sec);
@@ -310,7 +332,11 @@ const char* shutdown_mode_to_string(shutdown_mode_t mode) {
     }
 }
 
-shutdown_mode_t string_to_shutdown_mode(const char* str) {
+shutdown_mode_t string_to_shutdown_mode(const char* restrict str) {
+    if (str == nullptr) {
+        return SHUTDOWN_MODE_IMMEDIATE;
+    }
+    
     if (strcasecmp(str, "immediate") == 0) return SHUTDOWN_MODE_IMMEDIATE;
     if (strcasecmp(str, "delayed") == 0)   return SHUTDOWN_MODE_DELAYED;
     if (strcasecmp(str, "log-only") == 0)  return SHUTDOWN_MODE_LOG_ONLY;

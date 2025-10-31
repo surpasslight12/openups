@@ -42,19 +42,19 @@ typedef struct {
 } config_t;
 
 /* 初始化默认配置 */
-void config_init_default(config_t* config);
+void config_init_default(config_t* restrict config);
 
 /* 从环境变量加载 */
-void config_load_from_env(config_t* config);
+void config_load_from_env(config_t* restrict config);
 
 /* 从命令行加载 */
-bool config_load_from_cmdline(config_t* config, int argc, char** argv);
+[[nodiscard]] bool config_load_from_cmdline(config_t* restrict config, int argc, char** restrict argv);
 
 /* 验证配置 */
-bool config_validate(const config_t* config, char* error_msg, size_t error_size);
+[[nodiscard]] bool config_validate(const config_t* restrict config, char* restrict error_msg, size_t error_size);
 
 /* 打印配置 */
-void config_print(const config_t* config);
+void config_print(const config_t* restrict config);
 
 /* 打印帮助信息 */
 void config_print_usage(void);
@@ -63,7 +63,7 @@ void config_print_usage(void);
 void config_print_version(void);
 
 /* 枚举转换 */
-const char* shutdown_mode_to_string(shutdown_mode_t mode);
-shutdown_mode_t string_to_shutdown_mode(const char* str);
+[[nodiscard]] const char* shutdown_mode_to_string(shutdown_mode_t mode);
+[[nodiscard]] shutdown_mode_t string_to_shutdown_mode(const char* restrict str);
 
 #endif /* OPENUPS_CONFIG_H */

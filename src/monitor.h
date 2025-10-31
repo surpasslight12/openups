@@ -36,22 +36,23 @@ typedef struct {
 } monitor_t;
 
 /* 初始化监控器 */
-bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger,
-                  char* error_msg, size_t error_size);
+[[nodiscard]] bool monitor_init(monitor_t* restrict monitor, config_t* restrict config, 
+                                logger_t* restrict logger, char* restrict error_msg, 
+                                size_t error_size);
 
 /* 销毁监控器 */
-void monitor_destroy(monitor_t* monitor);
+void monitor_destroy(monitor_t* restrict monitor);
 
 /* 运行监控循环 */
-int monitor_run(monitor_t* monitor);
+[[nodiscard]] int monitor_run(monitor_t* restrict monitor);
 
 /* 停止监控 */
-void monitor_stop(monitor_t* monitor);
+void monitor_stop(monitor_t* restrict monitor);
 
 /* 打印统计信息 */
-void monitor_print_statistics(monitor_t* monitor);
+void monitor_print_statistics(monitor_t* restrict monitor);
 
 /* 信号处理 */
-void monitor_setup_signals(monitor_t* monitor);
+void monitor_setup_signals(monitor_t* restrict monitor);
 
 #endif /* OPENUPS_MONITOR_H */

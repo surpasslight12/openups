@@ -8,8 +8,12 @@
 #include <time.h>
 #include <stdarg.h>
 
-void logger_init(logger_t* logger, log_level_t level,
+void logger_init(logger_t* restrict logger, log_level_t level,
                  bool enable_timestamp, bool use_syslog) {
+    if (logger == nullptr) {
+        return;
+    }
+    
     logger->level = level;
     logger->enable_timestamp = enable_timestamp;
     logger->use_syslog = use_syslog;
@@ -19,7 +23,11 @@ void logger_init(logger_t* logger, log_level_t level,
     }
 }
 
-void logger_destroy(logger_t* logger) {
+void logger_destroy(logger_t* restrict logger) {
+    if (logger == nullptr) {
+        return;
+    }
+    
     if (logger->use_syslog) {
         closelog();
     }
@@ -36,7 +44,11 @@ static int level_to_syslog_priority(log_level_t level) {
     }
 }
 
-static void log_message(logger_t* logger, log_level_t level, const char* msg) {
+static void log_message(logger_t* restrict logger, log_level_t level, const char* restrict msg) {
+    if (logger == nullptr || msg == nullptr) {
+        return;
+    }
+    
     /* SILENT 级别不输出任何日志 */
     if (logger->level == LOG_LEVEL_SILENT) {
         return;
@@ -49,7 +61,9 @@ static void log_message(logger_t* logger, log_level_t level, const char* msg) {
     
     char timestamp[64];
     if (logger->enable_timestamp) {
-        get_timestamp_str(timestamp, sizeof(timestamp));
+        if (get_timestamp_str(timestamp, sizeof(timestamp)) == nullptr) {
+            timestamp[0] = '\0';
+        }
     }
     
     const char* level_str = log_level_to_string(level);
@@ -67,8 +81,8 @@ static void log_message(logger_t* logger, log_level_t level, const char* msg) {
     }
 }
 
-void logger_debug(logger_t* logger, const char* fmt, ...) {
-    if (logger->level < LOG_LEVEL_DEBUG) {
+void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...) {
+    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_DEBUG) {
         return;
     }
     
@@ -81,8 +95,8 @@ void logger_debug(logger_t* logger, const char* fmt, ...) {
     log_message(logger, LOG_LEVEL_DEBUG, buffer);
 }
 
-void logger_info(logger_t* logger, const char* fmt, ...) {
-    if (logger->level < LOG_LEVEL_INFO) {
+void logger_info(logger_t* restrict logger, const char* restrict fmt, ...) {
+    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_INFO) {
         return;
     }
     
@@ -95,8 +109,8 @@ void logger_info(logger_t* logger, const char* fmt, ...) {
     log_message(logger, LOG_LEVEL_INFO, buffer);
 }
 
-void logger_warn(logger_t* logger, const char* fmt, ...) {
-    if (logger->level < LOG_LEVEL_WARN) {
+void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...) {
+    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_WARN) {
         return;
     }
     
@@ -109,8 +123,8 @@ void logger_warn(logger_t* logger, const char* fmt, ...) {
     log_message(logger, LOG_LEVEL_WARN, buffer);
 }
 
-void logger_error(logger_t* logger, const char* fmt, ...) {
-    if (logger->level < LOG_LEVEL_ERROR) {
+void logger_error(logger_t* restrict logger, const char* restrict fmt, ...) {
+    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_ERROR) {
         return;
     }
     
@@ -134,7 +148,11 @@ const char* log_level_to_string(log_level_t level) {
     }
 }
 
-log_level_t string_to_log_level(const char* str) {
+log_level_t string_to_log_level(const char* restrict str) {
+    if (str == nullptr) {
+        return LOG_LEVEL_INFO;  /* 默认 */
+    }
+    
     if (strcasecmp(str, "silent") == 0 || strcasecmp(str, "none") == 0) 
         return LOG_LEVEL_SILENT;
     if (strcasecmp(str, "error") == 0) return LOG_LEVEL_ERROR;

@@ -19,13 +19,15 @@ typedef struct {
 } icmp_pinger_t;
 
 /* 初始化 ICMP pinger */
-bool icmp_pinger_init(icmp_pinger_t* pinger, bool use_ipv6, char* error_msg, size_t error_size);
+[[nodiscard]] bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, 
+                                     char* restrict error_msg, size_t error_size);
 
 /* 销毁 ICMP pinger */
-void icmp_pinger_destroy(icmp_pinger_t* pinger);
+void icmp_pinger_destroy(icmp_pinger_t* restrict pinger);
 
 /* 执行 ping */
-ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target, 
-                               int timeout_ms, int packet_size);
+[[nodiscard]] ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger, 
+                                             const char* restrict target, 
+                                             int timeout_ms, int packet_size);
 
 #endif /* OPENUPS_ICMP_H */
