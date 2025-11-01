@@ -17,16 +17,17 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int), "sig_atomic_t must be at leas
  */
 static monitor_t* g_monitor = nullptr;
 
-/* 信号处理函数 */
+/* 信号处理函数
+ * 注意：信号处理程序必须是异步信号安全的。
+ * 只能修改 sig_atomic_t 类型的变量，不能调用非安全函数。
+ * 日志记录和 systemd 通知会在主循环中处理。
+ */
 static void signal_handler(int signum) {
     if (g_monitor) {
         if (signum == SIGINT || signum == SIGTERM) {
             g_monitor->stop_flag = 1;
-            logger_info(g_monitor->logger, "Received signal %d, shutting down...", signum);
-            
-            if (g_monitor->systemd != nullptr && systemd_notifier_is_enabled(g_monitor->systemd)) {
-                (void)systemd_notifier_stopping(g_monitor->systemd);
-            }
+            /* 不要在信号处理程序中调用 logger_info 或 systemd_notifier_stopping
+             * 这些函数不是异步信号安全的，会在主循环中处理 */
         } else if (signum == SIGUSR1) {
             g_monitor->print_stats_flag = 1;
         }
@@ -394,6 +395,16 @@ int monitor_run(monitor_t* restrict monitor) {
         
         /* 休眠（带 watchdog 心跳） */
         sleep_with_stop(monitor, monitor->config->interval_sec);
+    }
+    
+    /* 处理停止信号（在循环外记录日志是安全的） */
+    if (monitor->stop_flag) {
+        logger_info(monitor->logger, "Received shutdown signal, stopping gracefully...");
+        
+        /* 通知 systemd 正在停止 */
+        if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
+            (void)systemd_notifier_stopping(monitor->systemd);
+        }
     }
     
     /* 打印最终统计 */

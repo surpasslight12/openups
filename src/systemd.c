@@ -1,4 +1,5 @@
 #include "systemd.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,8 +36,12 @@ static bool send_notify(systemd_notifier_t* restrict notifier, const char* restr
         addr.sun_path[len] = '\0';
     }
     
-    ssize_t sent = sendto(notifier->sockfd, message, strlen(message), 0,
-                          (struct sockaddr*)&addr, sizeof(addr));
+    /* 重试发送直到成功或遇到非 EINTR 错误 */
+    ssize_t sent;
+    do {
+        sent = sendto(notifier->sockfd, message, strlen(message), 0,
+                      (struct sockaddr*)&addr, sizeof(addr));
+    } while (sent < 0 && errno == EINTR);
     
     return sent >= 0;
 }
