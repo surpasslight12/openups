@@ -166,8 +166,8 @@ void monitor_print_statistics(monitor_t* restrict monitor) {
     }
     
     logger_info(monitor->logger, 
-                "Statistics: total=%lu successful=%lu failed=%lu success_rate=%.2f%% "
-                "min_latency=%.2fms max_latency=%.2fms avg_latency=%.2fms uptime=%lus",
+                "Statistics: %lu total pings, %lu successful, %lu failed (%.2f%% success rate), "
+                "latency min %.2fms / max %.2fms / avg %.2fms, uptime %lus",
                 monitor->metrics.total_pings,
                 monitor->metrics.successful_pings,
                 monitor->metrics.failed_pings,
@@ -226,12 +226,12 @@ static void handle_ping_failure(monitor_t* monitor, const ping_result_t* result)
 
 /* 触发关机 */
 static void trigger_shutdown(monitor_t* monitor) {
-    logger_warn(monitor->logger, "Shutdown threshold reached (mode: %s, dry_run: %s)",
+    logger_warn(monitor->logger, "Shutdown threshold reached, mode is %s%s",
                 shutdown_mode_to_string(monitor->config->shutdown_mode),
-                monitor->config->dry_run ? "true" : "false");
+                monitor->config->dry_run ? " (dry-run enabled)" : "");
     
     if (monitor->config->dry_run) {
-        logger_info(monitor->logger, "[DRY-RUN] Would trigger shutdown: mode=%s",
+        logger_info(monitor->logger, "[DRY-RUN] Would trigger shutdown in %s mode",
                    shutdown_mode_to_string(monitor->config->shutdown_mode));
         return;
     }
@@ -257,7 +257,7 @@ static void trigger_shutdown(monitor_t* monitor) {
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd),
                         "/sbin/shutdown -h +%d", monitor->config->delay_minutes);
             }
-            logger_warn(monitor->logger, "Triggering delayed shutdown (%d minutes)",
+            logger_warn(monitor->logger, "Triggering shutdown in %d minutes",
                        monitor->config->delay_minutes);
             break;
             
@@ -284,7 +284,7 @@ static void trigger_shutdown(monitor_t* monitor) {
     /* 执行关机命令 */
     int code = system(shutdown_cmd);
     if (code != 0) {
-        logger_error(monitor->logger, "Shutdown command failed (exit code: %d, command: %s)",
+        logger_error(monitor->logger, "Shutdown command failed with exit code %d: %s",
                     code, shutdown_cmd);
     } else {
         logger_info(monitor->logger, "Shutdown command executed successfully");
@@ -316,18 +316,19 @@ int monitor_run(monitor_t* restrict monitor) {
     
     /* 打印启动信息 */
     logger_info(monitor->logger, 
-                "Starting OpenUPS monitor: target=%s interval=%ds threshold=%d ipv6=%s",
+                "Starting OpenUPS monitor for target %s, checking every %d seconds, "
+                "shutdown after %d consecutive failures (IPv%s)",
                 monitor->config->target,
                 monitor->config->interval_sec,
                 monitor->config->fail_threshold,
-                monitor->config->use_ipv6 ? "true" : "false");
+                monitor->config->use_ipv6 ? "6" : "4");
     
     /* 通知 systemd 就绪 */
     if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
         (void)systemd_notifier_ready(monitor->systemd);
         char status_msg[256];
         snprintf(status_msg, sizeof(status_msg), 
-                "Monitoring %s (interval=%ds, threshold=%d)",
+                "Monitoring %s, checking every %ds, threshold %d failures",
                 monitor->config->target,
                 monitor->config->interval_sec,
                 monitor->config->fail_threshold);
@@ -368,7 +369,7 @@ int monitor_run(monitor_t* restrict monitor) {
             if (monitor->systemd != nullptr && systemd_notifier_is_enabled(monitor->systemd)) {
                 char status_msg[256];
                 snprintf(status_msg, sizeof(status_msg),
-                        "WARNING: %d consecutive failures (threshold: %d)",
+                        "WARNING: %d consecutive failures, threshold is %d",
                         monitor->consecutive_fails,
                         monitor->config->fail_threshold);
                 (void)systemd_notifier_status(monitor->systemd, status_msg);

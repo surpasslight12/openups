@@ -45,7 +45,7 @@ clean:
 
 run: $(TARGET)
 	@echo "Running $(TARGET) in dry-run mode..."
-	sudo $(TARGET) --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --verbose
+	sudo $(TARGET) --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --log-level debug
 
 # 安装到系统
 install: $(TARGET)

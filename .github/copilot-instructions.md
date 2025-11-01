@@ -113,11 +113,11 @@ logger_t logger;
 logger_init(&logger, LOG_LEVEL_INFO, true, false);
 //                   ^level          ^timestamp ^syslog
 
-// printf 风格（编译时检查）
-logger_info(&logger, "Starting monitor: target=%s interval=%ds", 
+// printf 风格（编译时检查）- 使用自然语序
+logger_info(&logger, "Starting monitor for target %s, checking every %ds", 
             config.target, config.interval_sec);
 logger_debug(&logger, "Ping successful, latency: %.2fms", latency);
-logger_warn(&logger, "Consecutive failures reached threshold: %d/%d",
+logger_warn(&logger, "Reached %d consecutive failures, threshold is %d",
             fails, threshold);
 logger_error(&logger, "Failed to create socket: %s", strerror(errno));
 

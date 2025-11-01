@@ -259,9 +259,9 @@ OpenUPS 自动化测试
 
 - [README.md](README.md) - 项目介绍
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计
-- [QUALITY_REPORT.md](QUALITY_REPORT.md) - 代码质量报告
-- [OPTIMIZATION_REPORT.md](OPTIMIZATION_REPORT.md) - 优化报告
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md) - 开发指南
 - [CHANGELOG.md](CHANGELOG.md) - 变更记录
+- [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
 
 ---
 

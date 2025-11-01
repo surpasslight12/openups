@@ -319,7 +319,7 @@ void config_print_usage(void) {
 
 void config_print_version(void) {
     printf("%s version %s\n", PROGRAM_NAME, VERSION);
-    printf("C implementation of OpenUPS network monitor\n");
+    printf("OpenUPS network monitor\n");
 }
 
 const char* shutdown_mode_to_string(shutdown_mode_t mode) {

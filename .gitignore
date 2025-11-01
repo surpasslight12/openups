@@ -31,11 +31,3 @@ core
 # 测试和日志
 *.log
 test_output/
-
-# 临时报告和生成的文档
-docs/reports/
-docs/temp/
-*_REPORT*.md
-MANIFEST.md
-
-# 说明：docs/archive/ 目录会提交到 Git，用于保存重要的历史文档

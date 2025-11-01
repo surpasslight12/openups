@@ -178,19 +178,21 @@ kill -USR1 $(pidof openups)
 ./bin/openups --log-level debug --target 127.0.0.1
 ```
 
-## � 完整文档
+## 📚 完整文档
 
-### 核心文档
+### 用户文档
 - 📖 [README.md](README.md) - 项目介绍（本文件）
 - 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
-- 🏗️ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计详解
-- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
 - 📋 [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
-### 文档导航
-- 📚 [docs/README.md](docs/README.md) - 完整文档索引
-- 🤖 [.github/copilot-instructions.md](.github/copilot-instructions.md) - AI 编码助手指导
-- 📝 [.github/DOCUMENTATION.md](.github/DOCUMENTATION.md) - 文档组织规范
+### 开发者文档
+- 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计和模块说明
+- 🛠️ [DEVELOPMENT.md](docs/DEVELOPMENT.md) - 开发指南和代码规范
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
+
+### AI 辅助
+- 🤖 [copilot-instructions.md](.github/copilot-instructions.md) - AI 编码助手指导
+- � [docs/README.md](docs/README.md) - 完整文档索引
 
 ## 📝 更新日志
 
@@ -219,16 +221,6 @@ kill -USR1 $(pidof openups)
 - ✅ 边界条件测试
 - ✅ 代码质量检查
 
-查看详细的质量报告：
-```bash
-cat QUALITY_REPORT.md
-```
-
-查看性能和安全升级报告：
-```bash
-./check_upgrade.sh
-```
-
 ## 📊 代码质量
 
 | 指标 | 值 |
@@ -251,20 +243,10 @@ cat QUALITY_REPORT.md
 | LTO | ❌ | **✅** | 启用 🚀 |
 | 安全评分 | 6/10 | **10/10** | **+67%** 🔒 |
 
-## � 完整文档
+## 📚 更多资源
 
-### 核心文档
-- 📖 [README.md](README.md) - 项目介绍（本文件）
-- 🚀 [QUICKSTART.md](QUICKSTART.md) - 5 分钟快速上手
-- 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计详解
-
-### 技术报告
-- 📊 [QUALITY_REPORT.md](QUALITY_REPORT.md) - 代码质量评估
-- ⚡ [UPGRADE_REPORT_v1.1.0.md](UPGRADE_REPORT_v1.1.0.md) - v1.1.0 升级详解
-- 📋 [MANIFEST.md](MANIFEST.md) - 完整项目清单
-- 🎉 [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) - 发布说明
-
-### 开发文档
+- 📚 [架构设计](docs/ARCHITECTURE.md) - 模块设计和技术细节
+- 🛠️ [开发指南](docs/DEVELOPMENT.md) - 开发规范和最佳实践
 - 📝 [CHANGELOG.md](CHANGELOG.md) - 版本变更记录
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
 - ⚖️ [LICENSE](LICENSE) - MIT 许可证
