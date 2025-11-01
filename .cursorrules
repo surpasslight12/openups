@@ -1,8 +1,8 @@
-# OpenUPS C - AI Context & Coding Standards
+# OpenUPS - AI Context & Coding Standards
 
 ## 项目概述
 
-**OpenUPS C** 是一个轻量级、高性能的 Linux 网络监控工具，使用 C23 标准编写。
+**OpenUPS** 是一个轻量级、高性能的 Linux 网络监控工具，使用 C23 标准编写。
 
 ### 核心特性
 - 原生 ICMP ping 实现（IPv4/IPv6）
@@ -262,38 +262,6 @@ char buffer[256];
 - [x] 命令注入防护
 - [x] 整数溢出检查
 - [x] 内存分配失败处理
-
-## Git 提交规范
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-### Type
-- **feat**: 新功能
-- **fix**: 修复 bug
-- **docs**: 文档更新
-- **style**: 代码格式（不影响功能）
-- **refactor**: 重构
-- **perf**: 性能优化
-- **test**: 测试相关
-- **chore**: 构建/工具链
-
-### 示例
-```
-feat(logger): 简化日志系统参数
-
-- 移除 -v/--verbose 和 -q/--quiet 别名
-- 统一使用 --log-level 参数
-- 新增 SILENT 日志级别
-- 更新所有文档
-
-Closes #123
-```
 
 ## 最新更新 (v1.1.0)
 

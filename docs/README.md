@@ -1,6 +1,6 @@
-# OpenUPS C - 文档目录
+# OpenUPS - 文档目录
 
-本目录包含 OpenUPS C 项目的所有技术文档。
+本目录包含 OpenUPS 项目的所有技术文档。
 
 ## 📚 文档列表
 

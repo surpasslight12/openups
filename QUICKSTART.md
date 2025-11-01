@@ -1,10 +1,10 @@
-# OpenUPS C - 快速开始指南
+# OpenUPS - 快速开始指南
 
 ## 🚀 5 分钟快速上手
 
 ### 1. 编译项目
 ```bash
-cd /home/light/github/openups_c
+cd /home/light/github/openups
 make
 ```
 
@@ -232,14 +232,14 @@ sudo journalctl -u openups -f | grep -i error
 
 运行测试套件：
 ```bash
-cd /home/light/github/openups_c
+cd /home/light/github/openups
 ./test.sh
 ```
 
 预期输出：
 ```
 ========================================
-OpenUPS C 版本自动化测试
+OpenUPS 自动化测试
 ========================================
 
 [1/10] 编译检查...                ✓
@@ -302,4 +302,4 @@ sudo -E ./bin/openups
 
 ---
 
-**需要帮助？** 查看 [GitHub Issues](https://github.com/surpasslight12/openups_c/issues) 或阅读完整文档。
+**需要帮助？** 查看 [GitHub Issues](https://github.com/surpasslight12/openups/issues) 或阅读完整文档。

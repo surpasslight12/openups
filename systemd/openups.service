@@ -1,6 +1,6 @@
 [Unit]
-Description=OpenUPS Network Monitor
-Documentation=https://github.com/surpasslight12/openups_c
+Description=OpenUPS Network Monitor with Auto-Shutdown
+Documentation=https://github.com/surpasslight12/openups
 After=network-online.target
 Wants=network-online.target
 

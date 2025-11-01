@@ -1,4 +1,4 @@
-# .gitignore for OpenUPS C
+# .gitignore for OpenUPS
 
 # 构建输出
 bin/

@@ -63,7 +63,7 @@ uninstall:
 
 # 帮助信息
 help:
-	@echo "OpenUPS C Makefile"
+	@echo "OpenUPS Makefile"
 	@echo ""
 	@echo "Targets:"
 	@echo "  all        - Build the project (default)"

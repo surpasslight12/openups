@@ -1,4 +1,4 @@
-# OpenUPS C - 项目状态报告
+# OpenUPS - 项目状态报告
 
 **版本**: v1.1.0  
 **更新日期**: 2025-10-26  
@@ -9,7 +9,7 @@
 ## 📊 项目概览
 
 ### 基本信息
-- **项目名称**: OpenUPS C
+- **项目名称**: OpenUPS
 - **描述**: 轻量级、高性能的 Linux 网络监控工具
 - **语言**: C23 (C2x)
 - **许可证**: MIT
@@ -368,10 +368,10 @@ main (v1.1.0)
 ## 📞 支持与反馈
 
 ### 问题报告
-- GitHub Issues: https://github.com/surpasslight12/openups_c/issues
+- GitHub Issues: https://github.com/surpasslight12/openups/issues
 
 ### 文档
-- GitHub Pages: https://github.com/surpasslight12/openups_c
+- GitHub Pages: https://github.com/surpasslight12/openups
 
 ### 许可证
 MIT License - 查看 LICENSE 文件

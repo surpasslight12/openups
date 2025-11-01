@@ -1,11 +1,11 @@
-# OpenUPS C - Network Monitor with Auto-Shutdown
+# OpenUPS - Network Monitor with Auto-Shutdown
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![C23](https://img.shields.io/badge/C-23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![systemd](https://img.shields.io/badge/systemd-integrated-green.svg)](https://systemd.io/)
 [![Security](https://img.shields.io/badge/security-10%2F10-brightgreen.svg)](check_upgrade.sh)
 
-**OpenUPS C** 是 OpenUPS 项目的 C 语言实现版本，是一个**轻量级、高性能、高安全**的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
+**OpenUPS** 是一个**轻量级、高性能、高安全**的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
 
 ## ✨ 特性
 
@@ -144,7 +144,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --no-dry-run
 
 完整参数列表：`./bin/openups --help`
 
-## 🔒 权限与安全
+## 🔒 安全特性
 
 ### 方式 1：使用 capability（推荐）
 
@@ -280,12 +280,6 @@ cat QUALITY_REPORT.md
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 📚 相关项目
-
-- [openups_cpp](https://github.com/surpasslight12/openups_cpp) - C++ 实现版本（原始版本）
-- [openups_rust](https://github.com/surpasslight12/openups_rust) - Rust 实现版本
-- [openups_python](https://github.com/surpasslight12/openups_python) - Python 实现版本
 
 ---
 
