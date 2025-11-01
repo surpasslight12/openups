@@ -178,23 +178,19 @@ kill -USR1 $(pidof openups)
 ./bin/openups --log-level debug --target 127.0.0.1
 ```
 
-## 🛠️ 开发
+## � 完整文档
 
-### 构建调试版本
+### 核心文档
+- 📖 [README.md](README.md) - 项目介绍（本文件）
+- 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
+- 🏗️ [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计详解
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
+- 📋 [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
-```bash
-make clean
-make CC=gcc CFLAGS="-g -O0 -std=c2x -Wall -Wextra"
-```
-
-### 代码结构
-
-- **icmp.c/h**：ICMP ping 核心实现，支持 IPv4/IPv6
-- **systemd.c/h**：systemd 通知和 watchdog 集成
-- **monitor.c/h**：监控循环和关机触发逻辑
-- **config.c/h**：配置解析和验证
-- **logger.c/h**：自然语序日志系统（支持 syslog）
-- **common.c/h**：通用工具函数
+### 文档导航
+- 📚 [docs/README.md](docs/README.md) - 完整文档索引
+- 🤖 [.github/copilot-instructions.md](.github/copilot-instructions.md) - AI 编码助手指导
+- 📝 [.github/DOCUMENTATION.md](.github/DOCUMENTATION.md) - 文档组织规范
 
 ## 📝 更新日志
 
