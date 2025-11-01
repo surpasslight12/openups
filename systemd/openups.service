@@ -6,7 +6,13 @@ Wants=network-online.target
 
 [Service]
 Type=notify
+# 延迟启动：在执行主程序前等待 300 秒（5分钟）
+# 可根据需要修改等待时间（单位：秒）
+ExecStartPre=/bin/sleep 300
 ExecStart=/usr/local/bin/openups
+# 启动超时时间：必须大于 ExecStartPre 的等待时间 + 程序启动时间
+# 设置为 360 秒（6分钟），留出足够余量
+TimeoutStartSec=360
 Restart=on-failure
 RestartSec=10
 WatchdogSec=30
