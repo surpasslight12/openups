@@ -258,10 +258,9 @@ OpenUPS 自动化测试
 ## 📚 相关文档
 
 - [README.md](README.md) - 项目介绍
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计
-- [DEVELOPMENT.md](docs/DEVELOPMENT.md) - 开发指南
-- [CHANGELOG.md](CHANGELOG.md) - 变更记录
+- [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
 - [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
+- [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
 ---
 

@@ -180,19 +180,11 @@ kill -USR1 $(pidof openups)
 
 ## 📚 完整文档
 
-### 用户文档
 - 📖 [README.md](README.md) - 项目介绍（本文件）
 - 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
-- 📋 [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
-
-### 开发者文档
-- 🏗️ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计和模块说明
-- 🛠️ [DEVELOPMENT.md](docs/DEVELOPMENT.md) - 开发指南和代码规范
+- 🔧 [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
-
-### AI 辅助
-- 🤖 [copilot-instructions.md](.github/copilot-instructions.md) - AI 编码助手指导
-- � [docs/README.md](docs/README.md) - 完整文档索引
+- 📋 [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 
 ## 📝 更新日志
 
@@ -245,8 +237,8 @@ kill -USR1 $(pidof openups)
 
 ## 📚 更多资源
 
-- 📚 [架构设计](docs/ARCHITECTURE.md) - 模块设计和技术细节
-- 🛠️ [开发指南](docs/DEVELOPMENT.md) - 开发规范和最佳实践
+- 🔧 [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
+- 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
 - 📝 [CHANGELOG.md](CHANGELOG.md) - 版本变更记录
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
 - ⚖️ [LICENSE](LICENSE) - MIT 许可证
