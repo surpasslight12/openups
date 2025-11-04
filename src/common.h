@@ -7,7 +7,7 @@
 #include <time.h>
 
 /* 版本信息 */
-#define VERSION "1.1.1"
+#define VERSION "1.2.0"
 #define PROGRAM_NAME "openups"
 
 /* 获取当前时间戳（毫秒级） */

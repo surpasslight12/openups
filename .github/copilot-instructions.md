@@ -506,11 +506,14 @@ MemoryMax=50M
 
 ## 关键版本变更
 
-### v1.1.1 - CLI 参数优化（2025-11-04）
+### v1.2.0 - CLI 参数系统全面重构（2025-11-04）
 - ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
+- ✅ 支持 4 种布尔格式：yes|no, true|false, 1|0, on|off
 - ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
 - ✅ 版本参数改为 `-v/--version`（原 `-Z`）
-- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`
+- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`（共 14 个环境变量）
+- ✅ 帮助文档重组：5 个类别 + 5 个示例
+- ✅ 80+ 测试用例全部通过
 - ❌ 移除向后兼容：不再支持 `OPENUPS_NO_TIMESTAMP`（改用 `OPENUPS_TIMESTAMP`）
 
 ### v1.1.0 - 日志系统简化（2025-10-26）
