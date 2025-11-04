@@ -124,7 +124,7 @@ logger_warn(&logger, "Reached %d consecutive failures, threshold is %d",
 logger_error(&logger, "Failed to create socket: %s", strerror(errno));
 
 // systemd journald 集成（避免双重时间戳）
-Environment="OPENUPS_NO_TIMESTAMP=true"  // systemd 服务中设置
+Environment="OPENUPS_TIMESTAMP=no"  // systemd 服务中设置
 ```
 
 ### 配置系统（3 层优先级）
@@ -135,6 +135,7 @@ typedef struct {
     int fail_threshold;
     log_level_t log_level;      // v1.1.0: 统一日志级别
     bool enable_timestamp;      // 时间戳开关（systemd 场景下禁用）
+    - **时间戳开关
     bool use_syslog;
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only/custom
     bool dry_run;               // 默认 true（防止误操作）
@@ -270,8 +271,9 @@ Environment="OPENUPS_TARGET=192.168.1.1"
 Environment="OPENUPS_INTERVAL=60"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_LOG_LEVEL=info"
-Environment="OPENUPS_NO_TIMESTAMP=true"  # 避免双重时间戳
-Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳（推荐）
+Environment="OPENUPS_DRY_RUN=no"
+Environment="OPENUPS_WATCHDOG=yes"
 
 # 安全限制
 CapabilityBoundingSet=CAP_NET_RAW
@@ -315,33 +317,230 @@ MemoryMax=50M
 - `CHANGELOG.md` - 版本记录
 - `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
 
-## v1.1.0 关键变更（重要）
+## 关键版本变更
 
-### 日志系统简化（2025-10-26）
+### v1.1.1 - CLI 参数优化（2025-11-04）
+- ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
+- ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
+- ✅ 版本参数改为 `-v/--version`（原 `-Z`）
+- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`
+
+### v1.1.0 - 日志系统简化（2025-10-26）
 - ❌ 移除 `-v/--verbose`, `-q/--quiet` 别名
 - ✅ 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
 - ✅ 新增 `LOG_LEVEL_SILENT` 静默模式
 - ✅ 移除 `config.verbose` 和 `logger.verbose` 字段
 
 ### systemd journald 深度集成
-- ✅ 新增 `OPENUPS_NO_TIMESTAMP` 环境变量
-- ✅ systemd 服务自动禁用程序时间戳（避免双重时间戳）
+- ✅ `OPENUPS_TIMESTAMP` 环境变量控制日志时间戳
+- ✅ systemd 服务推荐禁用程序时间戳（避免双重时间戳）
 - ✅ 日志格式：`Oct 26 22:37:19 host openups[pid]: [LEVEL] message`
 
-**迁移注意**: 旧代码使用 `--verbose` 需改为 `--log-level debug`，使用 `--quiet` 需改为 `--log-level error` 或 `--log-level silent`。
+**参数格式**:
+- `--no-dry-run` → `--dry-run=no` 或 `-dno`
+- `--no-timestamp` → `--timestamp=no` 或 `-Tno`
+- `--no-systemd` → `--systemd=no` 或 `-Mno`
+- `--no-watchdog` → `--watchdog=no` 或 `-Wno`
+```
+
+### ICMP Ping 实现（原生 raw socket）
+```c
+// 初始化（需要 CAP_NET_RAW）
+icmp_pinger_t pinger;
+if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
+    logger_error(&logger, error_msg);
+    return false;
+}
+
+// 执行 ping（微秒级延迟测量）
+ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1", 
+                                        2000, 56);  // timeout_ms, packet_size
+if (result.success) {
+    logger_debug(&logger, "Ping successful, latency: %.2fms", result.latency_ms);
+} else {
+    logger_warn(&logger, "Ping failed: %s", result.error_msg);
+}
+
+// 关键实现细节
+// - IPv4: 手动计算 ICMP 校验和（calculate_checksum）
+// - IPv6: 内核自动处理校验和
+// - 编译时断言：static_assert(sizeof(struct icmphdr) >= 8, ...)
+```
+
+### systemd 集成（深度整合）
+```c
+// 初始化（检测 NOTIFY_SOCKET）
+systemd_notifier_t systemd;
+systemd_notifier_init(&systemd);
+
+if (systemd.enabled) {
+    systemd_notifier_ready(&systemd);  // 通知启动完成
+    
+    // 主循环中
+    systemd_notifier_status(&systemd, "Monitoring target=1.1.1.1");
+    systemd_notifier_watchdog(&systemd);  // 每秒发送心跳
+}
+
+// 工作原理
+// - 通过 UNIX domain socket 发送通知到 $NOTIFY_SOCKET
+// - 支持抽象命名空间（@ 前缀）
+// - watchdog: 从 $WATCHDOG_USEC 读取超时时间
+```
+
+## 开发工作流
+
+### 编译
+```bash
+# 完整编译（-O3 + LTO + native + 所有安全标志）
+make
+
+# 调试版本
+make clean
+make CC=gcc CFLAGS="-g -O0 -std=c2x -Wall -Wextra"
+
+# 安装到系统
+sudo make install  # → /usr/local/bin/openups + setcap cap_net_raw+ep
+```
+
+### 测试
+```bash
+# 基本测试（需要 root 或 CAP_NET_RAW）
+sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 3 --dry-run --log-level debug
+
+# 授予 capability 后
+sudo setcap cap_net_raw+ep ./bin/openups
+./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run
+
+# 自动化测试套件（10 个测试用例）
+./test.sh
+# 测试包括：编译检查、功能测试、输入验证、安全性测试、边界条件
+```
+
+### 调试
+```bash
+# GDB 调试
+gdb --args ./bin/openups --target 127.0.0.1 --log-level debug
+
+# 发送信号查看统计
+kill -USR1 $(pidof openups)  # 输出成功率、延迟、运行时长
+
+# journalctl 查看 systemd 日志
+journalctl -u openups -f
+```
+
+## 常见任务模式
+
+### 添加新配置项
+1. 在 `config.h` 的 `config_t` 添加字段
+2. `config_init_default()` 设置默认值
+3. `config_load_from_env()` 添加环境变量 `OPENUPS_*`
+4. `config_load_from_cmdline()` 添加 `--xxx` 选项
+5. `config_validate()` 添加验证逻辑
+6. `config_print_usage()` 添加帮助文本
+7. 更新 README.md 配置表格
+
+### 添加新日志级别或函数
+1. `logger.h` 中 `log_level_t` 添加枚举值
+2. `logger.c` 中 `log_level_to_string()` 添加字符串映射
+3. `string_to_log_level()` 添加解析逻辑
+4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
+
+### 修改 ICMP 行为
+- 重点文件：`src/icmp.c`
+- 关键函数：`icmp_pinger_ping()`, `calculate_checksum()`
+- 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
+
+### systemd 服务配置
+```ini
+[Service]
+# 环境变量（推荐方式）
+Environment="OPENUPS_TARGET=192.168.1.1"
+Environment="OPENUPS_INTERVAL=60"
+Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_LOG_LEVEL=info"
+Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳（推荐）
+Environment="OPENUPS_DRY_RUN=no"
+Environment="OPENUPS_WATCHDOG=yes"
+
+# 安全限制
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+MemoryMax=50M
+```
+
+## 性能和安全注意事项
+
+### 性能优化技术
+- **C23 标准**: 使用 `nullptr`, `static_assert`, `restrict` 关键字
+- **编译优化**: `-O3 -flto -march=native -mtune=native`（Makefile 默认）
+- **内存管理**: 关键路径使用栈上固定大小缓冲区（避免 malloc）
+- **循环优化**: 监控循环 99% 时间在 `sleep()`，CPU 占用 < 1%
+
+### 安全清单（必须保持 10/10）
+- [x] Full RELRO (`-Wl,-z,relro,-z,now`)
+- [x] PIE (`-fPIE -pie`)
+- [x] Stack Canary (`-fstack-protector-strong`)
+- [x] NX Stack (`-Wl,-z,noexecstack`)
+- [x] FORTIFY_SOURCE=3 (`-D_FORTIFY_SOURCE=3`)
+- [x] 所有字符串操作使用 `snprintf`（禁止 `strcpy/strcat/sprintf`）
+- [x] 路径验证（`is_safe_path()`）
+- [x] 命令注入防护（白名单 + 字符过滤）
+
+### 编译器要求
+- **最低要求**: GCC 14.0+ 或 Clang 15.0+（C23 支持）
+- **推荐**: GCC 14.2+
+- **检查**: `gcc --version` 和 `gcc -std=c2x -E -dM - < /dev/null | grep __STDC_VERSION__`
+
+## 文档更新规则
+
+修改代码后必须同步更新：
+- `README.md` - 功能和配置表格
+- `QUICKSTART.md` - 使用示例
+- `TECHNICAL.md` - 架构变更和技术细节
+- `CHANGELOG.md` - 版本记录
+- `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
+
+## 关键版本变更
+
+### v1.1.1 - CLI 参数优化（2025-11-04）
+- ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
+- ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
+- ✅ 版本参数改为 `-v/--version`（原 `-Z`）
+- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`
+- ❌ 移除向后兼容：不再支持 `OPENUPS_NO_TIMESTAMP`（改用 `OPENUPS_TIMESTAMP`）
+
+### v1.1.0 - 日志系统简化（2025-10-26）
+- ❌ 移除 `-v/--verbose`, `-q/--quiet` 别名
+- ✅ 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
+- ✅ 新增 `LOG_LEVEL_SILENT` 静默模式
+- ✅ 移除 `config.verbose` 和 `logger.verbose` 字段
+
+### systemd journald 深度集成
+- ✅ `OPENUPS_TIMESTAMP` 环境变量控制日志时间戳
+- ✅ systemd 服务推荐禁用程序时间戳（避免双重时间戳）
+- ✅ 日志格式：`Oct 26 22:37:19 host openups[pid]: [LEVEL] message`
+
+**参数格式**:
+- 长选项：`--dry-run=no`, `--timestamp=no`, `--systemd=no`, `--watchdog=no`
+- 短选项：`-dno`, `-Tno`, `-Mno`, `-Wno` (值必须直接连接，无空格)
 
 ## 快速参考
 
 ```bash
-# 最小化测试命令（干跑模式，调试日志）
-sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --log-level debug
+# 最小化测试命令（默认 dry-run 模式）
+sudo ./bin/openups -t 127.0.0.1 -i 1 -n 2 -L debug
 
 # 生产环境配置（systemd）
 Environment="OPENUPS_TARGET=192.168.1.1"
 Environment="OPENUPS_INTERVAL=60"
 Environment="OPENUPS_THRESHOLD=5"
-Environment="OPENUPS_NO_TIMESTAMP=true"
-Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳
+Environment="OPENUPS_DRY_RUN=no"
+Environment="OPENUPS_WATCHDOG=yes"
 
 # 编译 + 测试流程
 make clean && make && ./test.sh

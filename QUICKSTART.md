@@ -16,10 +16,10 @@ make
 ### 3. 测试运行（需要 root 权限）
 ```bash
 # Dry-run 模式（默认，不会真正关机）
-sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3 --dry-run
+sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3
 
 # 实际运行模式（小心使用！）
-sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3 --no-dry-run
+sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3 --dry-run=no
 ```
 
 ---
@@ -53,8 +53,8 @@ sudo ./bin/openups \
 sudo ./bin/openups \
   --target 8.8.8.8 \
   --shutdown-mode delayed \
-  --delay-minutes 5 \
-  --no-dry-run
+  --delay 5 \
+  --dry-run=no
 ```
 
 ### 场景 4: 仅记录日志（不关机）
@@ -79,9 +79,9 @@ chmod +x /tmp/my-script.sh
 # 使用自定义脚本
 sudo ./bin/openups \
   --target 8.8.8.8 \
-  --custom-script /tmp/my-script.sh \
+  --script /tmp/my-script.sh \
   --shutdown-mode custom \
-  --no-dry-run
+  --dry-run=no
 ```
 
 ---
@@ -104,7 +104,8 @@ sudo systemctl edit openups
 Environment="OPENUPS_TARGET=8.8.8.8"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
-Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_DRY_RUN=no"
+Environment="OPENUPS_TIMESTAMP=no"
 ```
 
 ### 3. 启动服务
@@ -204,11 +205,11 @@ sudo setcap cap_net_raw+ep /usr/local/bin/openups
 
 ### 2. 始终先在 dry-run 模式测试
 ```bash
-# 测试配置
-sudo ./bin/openups --target 8.8.8.8 --threshold 2 --dry-run
+# 测试配置（默认 dry-run 模式）
+sudo ./bin/openups --target 8.8.8.8 --threshold 2
 
 # 确认无误后再启用实际关机
-sudo ./bin/openups --target 8.8.8.8 --threshold 2 --no-dry-run
+sudo ./bin/openups --target 8.8.8.8 --threshold 2 --dry-run=no
 ```
 
 ### 3. 使用 systemd 管理
@@ -296,7 +297,7 @@ sudo ./bin/openups \
 export OPENUPS_TARGET=8.8.8.8
 export OPENUPS_INTERVAL=10
 export OPENUPS_THRESHOLD=5
-export OPENUPS_DRY_RUN=false
+export OPENUPS_DRY_RUN=no
 
 sudo -E ./bin/openups
 ```

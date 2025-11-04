@@ -30,12 +30,12 @@ SyslogLevelPrefix=yes
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
-Environment="OPENUPS_DRY_RUN=true"
+Environment="OPENUPS_DRY_RUN=yes"
 Environment="OPENUPS_LOG_LEVEL=info"
 # 禁用程序时间戳，使用 journald 的时间戳（推荐）
-Environment="OPENUPS_NO_TIMESTAMP=true"
+Environment="OPENUPS_TIMESTAMP=no"
 # 注意：推荐使用 journald（默认），syslog 可选
-# Environment="OPENUPS_SYSLOG=true"
+# Environment="OPENUPS_SYSLOG=yes"
 
 # 安全策略
 # 说明：

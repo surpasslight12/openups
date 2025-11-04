@@ -107,8 +107,8 @@ openups --help
 ### 实际关机模式
 
 ```bash
-# 禁用 dry-run，真实执行关机
-sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --no-dry-run
+# 生产模式（真实关机）
+sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 ```
 
 ### IPv6 监控
@@ -120,27 +120,49 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --no-dry-run
 ### 自定义关机脚本
 
 ```bash
-./bin/openups --shutdown-mode custom --custom-script /usr/local/bin/my-shutdown.sh --no-dry-run
+./bin/openups --shutdown-mode custom --script /usr/local/bin/my-shutdown.sh --dry-run=no
 ```
 
 ## ⚙️ 配置参数
 
 **配置优先级**：CLI 参数 > 环境变量 > 默认值
 
-| 参数 | 环境变量 | 默认值 | 说明 |
-|------|---------|--------|------|
-| `--target` | `OPENUPS_TARGET` | `1.1.1.1` | 监控目标主机/IP |
-| `--interval` | `OPENUPS_INTERVAL` | `10` | ping 间隔（秒） |
-| `--threshold` | `OPENUPS_THRESHOLD` | `5` | 连续失败阈值 |
-| `--timeout` | `OPENUPS_TIMEOUT` | `2000` | 单次超时（毫秒） |
-| `--packet-size` | `OPENUPS_PACKET_SIZE` | `56` | ICMP payload 大小 |
-| `--retries` | `OPENUPS_RETRIES` | `2` | 每轮重试次数 |
-| `--shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式 |
-| `--dry-run` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式 |
-| `--ipv6` | `OPENUPS_IPV6` | `false` | 使用 IPv6 |
-| `--log-level` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别（silent\|error\|warn\|info\|debug） |
-| `--syslog` | `OPENUPS_SYSLOG` | `false` | 启用 syslog |
-| `--no-timestamp` | `OPENUPS_NO_TIMESTAMP` | `false` | 禁用时间戳（systemd 推荐） |
+### 网络参数
+
+| CLI 参数 | 环境变量 | 默认值 | 说明 |
+|---------|---------|--------|------|
+| `-t, --target <host>` | `OPENUPS_TARGET` | `1.1.1.1` | 监控目标主机/IP |
+| `-i, --interval <sec>` | `OPENUPS_INTERVAL` | `10` | ping 间隔（秒） |
+| `-n, --threshold <num>` | `OPENUPS_THRESHOLD` | `5` | 连续失败阈值 |
+| `-w, --timeout <ms>` | `OPENUPS_TIMEOUT` | `2000` | 单次超时（毫秒） |
+| `-s, --packet-size <bytes>` | `OPENUPS_PACKET_SIZE` | `56` | ICMP payload 大小 |
+| `-r, --retries <num>` | `OPENUPS_RETRIES` | `2` | 每轮重试次数 |
+| `-6, --ipv6[=yes\|no]` | `OPENUPS_IPV6` | `no` | 启用 IPv6 模式 |
+
+### 关机参数
+
+| CLI 参数 | 环境变量 | 默认值 | 说明 |
+|---------|---------|--------|------|
+| `-S, --shutdown-mode <mode>` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式：immediate\|delayed\|log-only\|custom |
+| `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
+| `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令 |
+| `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
+| `-d, --dry-run[=yes\|no]` | `OPENUPS_DRY_RUN` | `yes` | Dry-run 模式（不实际关机） |
+
+### 日志参数
+
+| CLI 参数 | 环境变量 | 默认值 | 说明 |
+|---------|---------|--------|------|
+| `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别：silent\|error\|warn\|info\|debug |
+| `-Y, --syslog[=yes\|no]` | `OPENUPS_SYSLOG` | `no` | 启用 syslog 输出 |
+| `-T, --timestamp[=yes\|no]` | `OPENUPS_TIMESTAMP` | `yes` | 启用日志时间戳 |
+
+### 系统集成
+
+| CLI 参数 | 环境变量 | 默认值 | 说明 |
+|---------|---------|--------|------|
+| `-M, --systemd[=yes\|no]` | `OPENUPS_SYSTEMD` | `yes` | 启用 systemd 集成 |
+| `-W, --watchdog[=yes\|no]` | `OPENUPS_WATCHDOG` | `yes` | 启用 systemd watchdog |
 
 完整参数列表：`./bin/openups --help`
 

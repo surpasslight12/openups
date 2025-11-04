@@ -7,6 +7,40 @@
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **CLI 参数系统重构**: 合并冗余参数，统一布尔参数格式
+  - 合并 `--dry-run`/`--no-dry-run` → `--dry-run[=yes|no]`
+  - 合并 `--no-timestamp` → `--timestamp[=yes|no]`
+  - 合并 `--no-systemd` → `--systemd[=yes|no]`
+  - 合并 `--no-watchdog` → `--watchdog[=yes|no]`
+  - 所有布尔参数支持可选值：yes|no, true|false, 1|0, on|off
+  - 短参数优化：`-v` (version), `-M` (systemd), `-W` (watchdog)
+  - 长参数别名：`--delay-minutes` → `--delay`, `--custom-script` → `--script`
+
+- **环境变量扩充**: 新增缺失的环境变量支持
+  - `OPENUPS_WATCHDOG` - 控制 systemd watchdog
+  - `OPENUPS_TIMESTAMP` - 控制日志时间戳
+  - 所有 CLI 参数现在都有对应的环境变量
+
+- **帮助文档优化**: 按类别组织参数，添加使用示例
+  - 分为 5 个类别：网络、关机、日志、系统集成、通用
+  - 添加 5 个实用示例（包括短选项组合）
+  - 环境变量分类展示
+
+### Removed
+- **移除向后兼容代码**: 保持项目简洁
+  - 移除 `OPENUPS_NO_TIMESTAMP` 环境变量支持
+  - 统一使用 `OPENUPS_TIMESTAMP` 控制日志时间戳
+  - 项目为独立维护，不需要向后兼容性负担
+
+### Fixed
+- 布尔参数解析统一处理，支持多种格式
+- `get_env_bool()` 函数支持 yes/no, on/off 格式
+
+---
+
 ## [1.1.1] - 2025-11-04
 
 ### Changed

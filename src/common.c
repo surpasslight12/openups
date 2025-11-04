@@ -98,10 +98,13 @@ bool get_env_bool(const char* restrict name, bool default_value) {
         return default_value;
     }
     
-    if (strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0) {
+    /* 支持多种格式：true/false, yes/no, 1/0, on/off */
+    if (strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0 || 
+        strcmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
         return true;
     }
-    if (strcasecmp(value, "false") == 0 || strcmp(value, "0") == 0) {
+    if (strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0 || 
+        strcmp(value, "0") == 0 || strcasecmp(value, "off") == 0) {
         return false;
     }
     

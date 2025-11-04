@@ -8,6 +8,22 @@
 #include <string.h>
 #include <strings.h>
 
+/* 解析布尔参数（支持 true/false, yes/no, 1/0） */
+static bool parse_bool_arg(const char* arg) {
+    if (arg == nullptr) {
+        return true;
+    }
+    if (strcasecmp(arg, "true") == 0 || strcasecmp(arg, "yes") == 0 || 
+        strcasecmp(arg, "1") == 0 || strcasecmp(arg, "on") == 0) {
+        return true;
+    }
+    if (strcasecmp(arg, "false") == 0 || strcasecmp(arg, "no") == 0 || 
+        strcasecmp(arg, "0") == 0 || strcasecmp(arg, "off") == 0) {
+        return false;
+    }
+    return true;  /* 默认为 true */
+}
+
 void config_init_default(config_t* restrict config) {
     if (config == nullptr) {
         return;
@@ -86,11 +102,8 @@ void config_load_from_env(config_t* restrict config) {
     
     config->use_syslog = get_env_bool("OPENUPS_SYSLOG", config->use_syslog);
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
-    
-    /* NO_TIMESTAMP 的处理：如果设置为 true，则 enable_timestamp 设为 false */
-    if (get_env_bool("OPENUPS_NO_TIMESTAMP", false)) {
-        config->enable_timestamp = false;
-    }
+    config->enable_watchdog = get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
+    config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
 }
 
 bool config_load_from_cmdline(config_t* restrict config, int argc, char** restrict argv) {
@@ -99,25 +112,33 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
     }
     
     static struct option long_options[] = {
+        /* 网络参数 */
         {"target",          required_argument, 0, 't'},
         {"interval",        required_argument, 0, 'i'},
         {"threshold",       required_argument, 0, 'n'},
         {"timeout",         required_argument, 0, 'w'},
         {"packet-size",     required_argument, 0, 's'},
         {"retries",         required_argument, 0, 'r'},
+        {"ipv6",            optional_argument, 0, '6'},
+        
+        /* 关机参数 */
         {"shutdown-mode",   required_argument, 0, 'S'},
-        {"delay-minutes",   required_argument, 0, 'D'},
+        {"delay",           required_argument, 0, 'D'},
         {"shutdown-cmd",    required_argument, 0, 'C'},
-        {"custom-script",   required_argument, 0, 'P'},
+        {"script",          required_argument, 0, 'P'},
+        {"dry-run",         optional_argument, 0, 'd'},
+        
+        /* 日志参数 */
         {"log-level",       required_argument, 0, 'L'},
-        {"ipv6",            no_argument,       0, '6'},
-        {"dry-run",         no_argument,       0, 'd'},
-        {"no-dry-run",      no_argument,       0, 'N'},
-        {"syslog",          no_argument,       0, 'Y'},
-        {"no-timestamp",    no_argument,       0, 'T'},
-        {"no-systemd",      no_argument,       0, 'M'},
-        {"no-watchdog",     no_argument,       0, 'W'},
-        {"version",         no_argument,       0, 'Z'},  /* version 改用 Z */
+        {"syslog",          optional_argument, 0, 'Y'},
+        {"timestamp",       optional_argument, 0, 'T'},
+        
+        /* 系统集成 */
+        {"systemd",         optional_argument, 0, 'M'},
+        {"watchdog",        optional_argument, 0, 'W'},
+        
+        /* 其他 */
+        {"version",         no_argument,       0, 'v'},
         {"help",            no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
@@ -125,7 +146,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
     int c;
     int option_index = 0;
     
-    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:S:D:C:P:L:6dNYTMWZh", 
+    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6::S:D:C:P:d::L:Y::T::M::W::vh", 
                            long_options, &option_index)) != -1) {
         switch (c) {
             case 't':
@@ -162,27 +183,48 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 config->log_level = string_to_log_level(optarg);
                 break;
             case '6':
-                config->use_ipv6 = true;
+                if (optarg) {
+                    config->use_ipv6 = parse_bool_arg(optarg);
+                } else {
+                    config->use_ipv6 = true;
+                }
                 break;
             case 'd':
-                config->dry_run = true;
-                break;
-            case 'N':
-                config->dry_run = false;
+                if (optarg) {
+                    config->dry_run = parse_bool_arg(optarg);
+                } else {
+                    config->dry_run = true;
+                }
                 break;
             case 'Y':
-                config->use_syslog = true;
+                if (optarg) {
+                    config->use_syslog = parse_bool_arg(optarg);
+                } else {
+                    config->use_syslog = true;
+                }
                 break;
             case 'T':
-                config->enable_timestamp = false;
+                if (optarg) {
+                    config->enable_timestamp = parse_bool_arg(optarg);
+                } else {
+                    config->enable_timestamp = false;
+                }
                 break;
             case 'M':
-                config->enable_systemd = false;
+                if (optarg) {
+                    config->enable_systemd = parse_bool_arg(optarg);
+                } else {
+                    config->enable_systemd = false;
+                }
                 break;
             case 'W':
-                config->enable_watchdog = false;
+                if (optarg) {
+                    config->enable_watchdog = parse_bool_arg(optarg);
+                } else {
+                    config->enable_watchdog = false;
+                }
                 break;
-            case 'Z':  /* --version */
+            case 'v':  /* --version */
                 config_print_version();
                 exit(0);
             case 'h':
@@ -278,43 +320,70 @@ void config_print(const config_t* restrict config) {
     printf("  Shutdown Mode: %s\n", shutdown_mode_to_string(config->shutdown_mode));
     printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
     printf("  Log Level: %s\n", log_level_to_string(config->log_level));
+    printf("  Timestamp: %s\n", config->enable_timestamp ? "true" : "false");
     printf("  Syslog: %s\n", config->use_syslog ? "true" : "false");
     printf("  Systemd: %s\n", config->enable_systemd ? "true" : "false");
+    printf("  Watchdog: %s\n", config->enable_watchdog ? "true" : "false");
 }
 
 void config_print_usage(void) {
     printf("Usage: %s [options]\n\n", PROGRAM_NAME);
-    printf("Options:\n");
-    printf("  -t, --target <host>       Host/IP to ping (default: 1.1.1.1)\n");
-    printf("  -i, --interval <sec>      Interval between pings (default: 10)\n");
-    printf("  -n, --threshold <num>     Consecutive failures to trigger (default: 5)\n");
-    printf("  -w, --timeout <ms>        Ping timeout in ms (default: 2000)\n");
-    printf("  -s, --packet-size <bytes> ICMP payload size (default: 56)\n");
-    printf("  -r, --retries <num>       Retries per ping (default: 2)\n");
-    printf("  -S, --shutdown-mode <mode> immediate|delayed|log-only|custom (default: immediate)\n");
-    printf("  -D, --delay-minutes <num> Minutes to delay shutdown (default: 1)\n");
-    printf("  -C, --shutdown-cmd <cmd>  Override shutdown command\n");
-    printf("  -P, --custom-script <path> Path to custom shutdown script\n");
-    printf("  -d, --dry-run             Do not actually shutdown (default)\n");
-    printf("  -N, --no-dry-run          Actually run shutdown command\n");
-    printf("  -6, --ipv6                Use IPv6 ping\n");
-    printf("  -L, --log-level <level>   silent|error|warn|info|debug (default: info)\n");
-    printf("  -Y, --syslog              Enable syslog logging\n");
-    printf("  -T, --no-timestamp        Disable timestamp in logs\n");
-    printf("  -M, --no-systemd          Disable systemd integration\n");
-    printf("  -W, --no-watchdog         Disable systemd watchdog\n");
-    printf("  -Z, --version             Show version information\n");
-    printf("  -h, --help                Show this help message\n\n");
-    printf("Environment Variables:\n");
-    printf("  OPENUPS_TARGET            Override target host\n");
-    printf("  OPENUPS_INTERVAL          Override interval\n");
-    printf("  OPENUPS_THRESHOLD         Override threshold\n");
-    printf("  OPENUPS_TIMEOUT           Override timeout\n");
-    printf("  OPENUPS_DRY_RUN           Set dry-run mode (true/false)\n");
-    printf("  OPENUPS_SHUTDOWN_MODE     Override shutdown mode\n");
-    printf("  OPENUPS_LOG_LEVEL         Override log level\n");
-    printf("  OPENUPS_SYSLOG            Enable syslog (true/false)\n");
-    printf("  OPENUPS_SYSTEMD           Enable systemd integration (true/false)\n\n");
+    printf("Network Options:\n");
+    printf("  -t, --target <host>         Target host/IP to monitor (default: 1.1.1.1)\n");
+    printf("  -i, --interval <sec>        Ping interval in seconds (default: 10)\n");
+    printf("  -n, --threshold <num>       Consecutive failures threshold (default: 5)\n");
+    printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: 2000)\n");
+    printf("  -s, --packet-size <bytes>   ICMP packet payload size (default: 56)\n");
+    printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n");
+    printf("  -6, --ipv6[=yes|no]         Enable/disable IPv6 mode (default: no)\n\n");
+    
+    printf("Shutdown Options:\n");
+    printf("  -S, --shutdown-mode <mode>  Shutdown mode: immediate|delayed|log-only|custom\n");
+    printf("                              (default: immediate)\n");
+    printf("  -D, --delay <min>           Shutdown delay in minutes for delayed mode (default: 1)\n");
+    printf("  -C, --shutdown-cmd <cmd>    Custom shutdown command\n");
+    printf("  -P, --script <path>         Custom shutdown script path\n");
+    printf("  -d[ARG], --dry-run[=ARG]    Dry-run mode, no actual shutdown (default: yes)\n");
+    printf("                              ARG: yes|no|true|false|1|0|on|off\n");
+    printf("                              Note: Use -dno or --dry-run=no (no space)\n\n");
+    
+    printf("Logging Options:\n");
+    printf("  -L, --log-level <level>     Log level: silent|error|warn|info|debug\n");
+    printf("                              (default: info)\n");
+    printf("  -Y[ARG], --syslog[=ARG]     Enable/disable syslog output (default: no)\n");
+    printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: yes)\n");
+    printf("                              ARG format: yes|no|true|false|1|0|on|off\n\n");
+    
+    printf("System Integration:\n");
+    printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: yes)\n");
+    printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: yes)\n");
+    printf("                              ARG format: yes|no|true|false|1|0|on|off\n\n");
+    
+    printf("General Options:\n");
+    printf("  -v, --version               Show version information\n");
+    printf("  -h, --help                  Show this help message\n\n");
+    
+    printf("Environment Variables (lower priority than CLI args):\n");
+    printf("  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
+    printf("                OPENUPS_TIMEOUT, OPENUPS_PACKET_SIZE, OPENUPS_RETRIES,\n");
+    printf("                OPENUPS_IPV6\n");
+    printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
+    printf("                OPENUPS_SHUTDOWN_CMD, OPENUPS_CUSTOM_SCRIPT,\n");
+    printf("                OPENUPS_DRY_RUN\n");
+    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_SYSLOG, OPENUPS_TIMESTAMP\n");
+    printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n\n");
+    
+    printf("Examples:\n");
+    printf("  # Basic monitoring with dry-run\n");
+    printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", PROGRAM_NAME);
+    printf("  # Production mode (actual shutdown)\n");
+    printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=no\n\n", PROGRAM_NAME);
+    printf("  # IPv6 with custom script\n");
+    printf("  %s -6 -t 2606:4700:4700::1111 -S custom -P /root/shutdown.sh -dno\n\n", PROGRAM_NAME);
+    printf("  # Debug mode without timestamp (for systemd)\n");
+    printf("  %s -t 8.8.8.8 -L debug --timestamp=no\n\n", PROGRAM_NAME);
+    printf("  # Short options (values must connect directly, no space)\n");
+    printf("  %s -t 8.8.8.8 -i5 -n3 -dno -Tno -Ldebug\n\n", PROGRAM_NAME);
 }
 
 void config_print_version(void) {
