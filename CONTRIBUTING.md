@@ -57,9 +57,13 @@ snprintf(buf, sizeof(buf), "%s", str);
 
 ## 开发参考
 
-- **技术文档**: [TECHNICAL.md](TECHNICAL.md) - 架构设计和开发指南
-- **快速上手**: [QUICKSTART.md](QUICKSTART.md) - 编译和测试
-- **调试**: `gdb --args ./bin/openups...`
+| 资源 | 说明 |
+|------|------|
+| 🔧 [TECHNICAL.md](TECHNICAL.md) | 架构设计、模块详解、开发规范 |
+| 🚀 [QUICKSTART.md](QUICKSTART.md) | 编译、测试、部署流程 |
+| 📖 [README.md](README.md) | 项目概览和功能特性 |
+
+**调试技巧**: `gdb --args ./bin/openups --target 127.0.0.1 --log-level debug`
 
 ## 社区准则
 

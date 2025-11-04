@@ -178,13 +178,17 @@ kill -USR1 $(pidof openups)
 ./bin/openups --log-level debug --target 127.0.0.1
 ```
 
-## 📚 完整文档
+## 📚 文档导航
 
-- 📖 [README.md](README.md) - 项目介绍（本文件）
-- 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
-- 🔧 [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
-- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
-- 📋 [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
+根据您的需求选择合适的文档：
+
+| 文档 | 适用场景 |
+|------|----------|
+| 📖 [README.md](README.md) | **项目概览** - 首次了解项目特性和快速开始（当前页） |
+| 🚀 [QUICKSTART.md](QUICKSTART.md) | **快速上手** - 5 分钟内完成编译、测试和部署 |
+| 🔧 [TECHNICAL.md](TECHNICAL.md) | **深入开发** - 架构设计、模块详解、开发规范 |
+| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | **参与贡献** - 如何提交 PR 和 Issue |
+| 📋 [CHANGELOG.md](CHANGELOG.md) | **版本历史** - 查看所有版本的更新内容 |
 
 ## 📝 更新日志
 
@@ -235,15 +239,7 @@ kill -USR1 $(pidof openups)
 | LTO | ❌ | **✅** | 启用 🚀 |
 | 安全评分 | 6/10 | **10/10** | **+67%** 🔒 |
 
-## 📚 更多资源
-
-- 🔧 [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
-- 🚀 [QUICKSTART.md](QUICKSTART.md) - 快速上手指南
-- 📝 [CHANGELOG.md](CHANGELOG.md) - 版本变更记录
-- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
-- ⚖️ [LICENSE](LICENSE) - MIT 许可证
-
-## �📄 许可证
+## 📄 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 

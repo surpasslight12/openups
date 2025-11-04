@@ -257,10 +257,12 @@ OpenUPS 自动化测试
 
 ## 📚 相关文档
 
-- [README.md](README.md) - 项目介绍
-- [TECHNICAL.md](TECHNICAL.md) - 技术文档（架构 + 开发指南）
-- [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南
-- [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
+| 文档 | 说明 |
+|------|------|
+| 📖 [README.md](README.md) | 项目概览和特性介绍 |
+| 🔧 [TECHNICAL.md](TECHNICAL.md) | 架构设计和开发指南 |
+| 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | 如何参与贡献 |
+| 📋 [CHANGELOG.md](CHANGELOG.md) | 版本更新历史 |
 
 ---
 
