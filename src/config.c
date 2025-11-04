@@ -125,7 +125,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
     int c;
     int option_index = 0;
     
-    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6dh", 
+    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:S:D:C:P:L:6dNYTMWZh", 
                            long_options, &option_index)) != -1) {
         switch (c) {
             case 't':
@@ -291,19 +291,19 @@ void config_print_usage(void) {
     printf("  -w, --timeout <ms>        Ping timeout in ms (default: 2000)\n");
     printf("  -s, --packet-size <bytes> ICMP payload size (default: 56)\n");
     printf("  -r, --retries <num>       Retries per ping (default: 2)\n");
-    printf("      --shutdown-mode <mode> immediate|delayed|log-only|custom (default: immediate)\n");
-    printf("      --delay-minutes <num> Minutes to delay shutdown (default: 1)\n");
-    printf("      --shutdown-cmd <cmd>  Override shutdown command\n");
-    printf("      --custom-script <path> Path to custom shutdown script\n");
-    printf("      --dry-run             Do not actually shutdown (default)\n");
-    printf("      --no-dry-run          Actually run shutdown command\n");
+    printf("  -S, --shutdown-mode <mode> immediate|delayed|log-only|custom (default: immediate)\n");
+    printf("  -D, --delay-minutes <num> Minutes to delay shutdown (default: 1)\n");
+    printf("  -C, --shutdown-cmd <cmd>  Override shutdown command\n");
+    printf("  -P, --custom-script <path> Path to custom shutdown script\n");
+    printf("  -d, --dry-run             Do not actually shutdown (default)\n");
+    printf("  -N, --no-dry-run          Actually run shutdown command\n");
     printf("  -6, --ipv6                Use IPv6 ping\n");
-    printf("      --log-level <level>   silent|error|warn|info|debug (default: info)\n");
-    printf("      --syslog              Enable syslog logging\n");
-    printf("      --no-timestamp        Disable timestamp in logs\n");
-    printf("      --no-systemd          Disable systemd integration\n");
-    printf("      --no-watchdog         Disable systemd watchdog\n");
-    printf("      --version             Show version information\n");
+    printf("  -L, --log-level <level>   silent|error|warn|info|debug (default: info)\n");
+    printf("  -Y, --syslog              Enable syslog logging\n");
+    printf("  -T, --no-timestamp        Disable timestamp in logs\n");
+    printf("  -M, --no-systemd          Disable systemd integration\n");
+    printf("  -W, --no-watchdog         Disable systemd watchdog\n");
+    printf("  -Z, --version             Show version information\n");
     printf("  -h, --help                Show this help message\n\n");
     printf("Environment Variables:\n");
     printf("  OPENUPS_TARGET            Override target host\n");
