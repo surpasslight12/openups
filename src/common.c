@@ -3,16 +3,28 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#if __STDC_VERSION__ >= 202311L
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 #include <stdckdint.h>
 #else
 /* Fallback for GCC < 14: basic overflow detection for unsigned types */
-#define ckd_add(result, a, b) \
-    ((*result = (a) + (b)), \
-     ((b) > UINT64_MAX - (a)))
-#define ckd_mul(result, a, b) \
-    ((*result = (a) * (b)), \
-     ((a) != 0 && (*result) / (a) != (b)))
+static inline bool ckd_add_impl(uint64_t* result, uint64_t a, uint64_t b) {
+    if (b > UINT64_MAX - a) {
+        return true;  /* Overflow detected */
+    }
+    *result = a + b;
+    return false;
+}
+
+static inline bool ckd_mul_impl(uint64_t* result, uint64_t a, uint64_t b) {
+    if (a != 0 && b > UINT64_MAX / a) {
+        return true;  /* Overflow detected */
+    }
+    *result = a * b;
+    return false;
+}
+
+#define ckd_add(result, a, b) ckd_add_impl(result, a, b)
+#define ckd_mul(result, a, b) ckd_mul_impl(result, a, b)
 #endif
 #include <stdio.h>
 #include <stdlib.h>
