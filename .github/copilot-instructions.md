@@ -1,6 +1,8 @@
-# OpenUPS - Copilot Instructions
+# OpenUPS - AI Coding Instructions
 
 OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测网络可达性并在失败时执行关机策略。使用 C23 标准，零第三方依赖，深度集成 systemd。
+
+**本文档用于**: GitHub Copilot, Cursor AI, 以及其他 AI 编程助手
 
 ## 架构概览
 
@@ -311,7 +313,7 @@ MemoryMax=50M
 - `QUICKSTART.md` - 使用示例
 - `TECHNICAL.md` - 架构变更和技术细节
 - `CHANGELOG.md` - 版本记录
-- `.cursorrules` - AI 上下文（如有重大变更）
+- `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
 
 ## v1.1.0 关键变更（重要）
 
