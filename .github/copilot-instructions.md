@@ -309,7 +309,7 @@ MemoryMax=50M
 修改代码后必须同步更新：
 - `README.md` - 功能和配置表格
 - `QUICKSTART.md` - 使用示例
-- `docs/ARCHITECTURE.md` - 架构变更
+- `TECHNICAL.md` - 架构变更和技术细节
 - `CHANGELOG.md` - 版本记录
 - `.cursorrules` - AI 上下文（如有重大变更）
 

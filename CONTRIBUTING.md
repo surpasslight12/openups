@@ -57,8 +57,8 @@ snprintf(buf, sizeof(buf), "%s", str);
 
 ## 开发参考
 
-- **详细指南**: [DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- **架构设计**: [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **技术文档**: [TECHNICAL.md](TECHNICAL.md) - 架构设计和开发指南
+- **快速上手**: [QUICKSTART.md](QUICKSTART.md) - 编译和测试
 - **调试**: `gdb --args ./bin/openups...`
 
 ## 社区准则
