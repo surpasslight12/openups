@@ -244,28 +244,6 @@ journalctl -u openups -f
 ## 常见任务模式
 
 ## 性能和安全注意事项
-
-### 性能优化技术
-- **C23 标准**: 使用 `nullptr`, `static_assert`, `restrict` 关键字
-- **编译优化**: `-O3 -flto -march=native -mtune=native`（Makefile 默认）
-- **内存管理**: 关键路径使用栈上固定大小缓冲区（避免 malloc）
-- **循环优化**: 监控循环 99% 时间在 `sleep()`，CPU 占用 < 1%
-
-### 安全清单（必须保持 10/10）
-- [x] Full RELRO (`-Wl,-z,relro,-z,now`)
-- [x] PIE (`-fPIE -pie`)
-- [x] Stack Canary (`-fstack-protector-strong`)
-- [x] NX Stack (`-Wl,-z,noexecstack`)
-- [x] FORTIFY_SOURCE=3 (`-D_FORTIFY_SOURCE=3`)
-- [x] 所有字符串操作使用 `snprintf`（禁止 `strcpy/strcat/sprintf`）
-- [x] 路径验证（`is_safe_path()`）
-- [x] 命令注入防护（白名单 + 字符过滤）
-
-### 编译器要求
-- **最低要求**: GCC 14.0+ 或 Clang 15.0+（C23 支持）
-- **推荐**: GCC 14.2+
-- **检查**: `gcc --version` 和 `gcc -std=c2x -E -dM - < /dev/null | grep __STDC_VERSION__`
-
 ## 文档更新规则
 
 修改代码后必须同步更新：
