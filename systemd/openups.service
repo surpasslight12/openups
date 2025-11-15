@@ -4,43 +4,32 @@ Documentation=https://github.com/surpasslight12/openups
 After=network-online.target
 Wants=network-online.target
 
-[Service]
+# Service
 Type=notify
-# 延迟启动：在执行主程序前等待 300 秒（5分钟）
-# 可根据需要修改等待时间（单位：秒）
+# Optional delay before starting the main binary
 ExecStartPre=/bin/sleep 300
 ExecStart=/usr/local/bin/openups
-# 启动超时时间：必须大于 ExecStartPre 的等待时间 + 程序启动时间
-# 设置为 360 秒（6分钟），留出足够余量
 TimeoutStartSec=360
 Restart=on-failure
 RestartSec=10
 WatchdogSec=30
 
-# 日志配置
-# 标准输出/错误输出到 journald（可通过 journalctl -u openups 查看）
+# Logging
 StandardOutput=journal
 StandardError=journal
-# 日志标识符，方便过滤和查询
 SyslogIdentifier=openups
-# 日志级别：info 级别及以上才记录到 journal
 SyslogLevelPrefix=yes
 
-# 环境变量配置
+# Environment
+EnvironmentFile=-/etc/default/openups
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_DRY_RUN=yes"
 Environment="OPENUPS_LOG_LEVEL=info"
-# 禁用程序时间戳，使用 journald 的时间戳（推荐）
 Environment="OPENUPS_TIMESTAMP=no"
-# 注意：推荐使用 journald（默认），syslog 可选
-# Environment="OPENUPS_SYSLOG=yes"
 
-# 安全策略
-# 说明：
-#  - CAP_NET_RAW  用于发送 ICMP（ping）
-#  - CAP_SYS_BOOT 允许调用关机/重启相关接口（例如执行 /sbin/shutdown 或 systemctl poweroff）
+# Security
 CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
 AmbientCapabilities=CAP_NET_RAW CAP_SYS_BOOT
 NoNewPrivileges=true

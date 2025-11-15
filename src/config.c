@@ -126,6 +126,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
         {"delay",           required_argument, 0, 'D'},
         {"shutdown-cmd",    required_argument, 0, 'C'},
         {"script",          required_argument, 0, 'P'},
+        {"custom-script",   required_argument, 0, 'P'},
         {"dry-run",         optional_argument, 0, 'd'},
         
         /* 日志参数 */

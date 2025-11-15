@@ -387,47 +387,7 @@ if (systemd.enabled) {
 // - watchdog: 从 $WATCHDOG_USEC 读取超时时间
 ```
 
-## 开发工作流
-
-### 编译
-```bash
-# 完整编译（-O3 + LTO + native + 所有安全标志）
-make
-
-# 调试版本
-make clean
-make CC=gcc CFLAGS="-g -O0 -std=c2x -Wall -Wextra"
-
-# 安装到系统
-sudo make install  # → /usr/local/bin/openups + setcap cap_net_raw+ep
-```
-
-### 测试
-```bash
-# 基本测试（需要 root 或 CAP_NET_RAW）
-sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 3 --dry-run --log-level debug
-
-# 授予 capability 后
-sudo setcap cap_net_raw+ep ./bin/openups
-./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run
-
-# 自动化测试套件（10 个测试用例）
-./test.sh
-# 测试包括：编译检查、功能测试、输入验证、安全性测试、边界条件
-```
-
-### 调试
-```bash
-# GDB 调试
-gdb --args ./bin/openups --target 127.0.0.1 --log-level debug
-
-# 发送信号查看统计
-kill -USR1 $(pidof openups)  # 输出成功率、延迟、运行时长
-
-# journalctl 查看 systemd 日志
-journalctl -u openups -f
-```
-
+## 性能和安全注意事项
 ## 常见任务模式
 
 ### 添加新配置项
