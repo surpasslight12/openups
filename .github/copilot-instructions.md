@@ -279,50 +279,6 @@ journalctl -u openups -f
 - `--no-watchdog` → `--watchdog=no` 或 `-Wno`
 ```
 
-### ICMP Ping 实现（原生 raw socket）
-```c
-// 初始化（需要 CAP_NET_RAW）
-icmp_pinger_t pinger;
-if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
-    logger_error(&logger, error_msg);
-    return false;
-}
-
-// 执行 ping（微秒级延迟测量）
-ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1", 
-                                        2000, 56);  // timeout_ms, packet_size
-if (result.success) {
-    logger_debug(&logger, "Ping successful, latency: %.2fms", result.latency_ms);
-} else {
-    logger_warn(&logger, "Ping failed: %s", result.error_msg);
-}
-
-// 关键实现细节
-// - IPv4: 手动计算 ICMP 校验和（calculate_checksum）
-// - IPv6: 内核自动处理校验和
-// - 编译时断言：static_assert(sizeof(struct icmphdr) >= 8, ...)
-```
-
-### systemd 集成（深度整合）
-```c
-// 初始化（检测 NOTIFY_SOCKET）
-systemd_notifier_t systemd;
-systemd_notifier_init(&systemd);
-
-if (systemd.enabled) {
-    systemd_notifier_ready(&systemd);  // 通知启动完成
-    
-    // 主循环中
-    systemd_notifier_status(&systemd, "Monitoring target=1.1.1.1");
-    systemd_notifier_watchdog(&systemd);  // 每秒发送心跳
-}
-
-// 工作原理
-// - 通过 UNIX domain socket 发送通知到 $NOTIFY_SOCKET
-// - 支持抽象命名空间（@ 前缀）
-// - watchdog: 从 $WATCHDOG_USEC 读取超时时间
-```
-
 ## 性能和安全注意事项
 ## 常见任务模式
 

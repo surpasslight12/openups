@@ -45,9 +45,7 @@ openups/
 │   ├── systemd.c/h    # systemd 集成
 │   └── monitor.c/h    # 监控核心逻辑
 ├── systemd/
-│   ├── openups.service  # systemd 服务文件
-│   ├── install.sh       # 安装脚本
-│   └── uninstall.sh     # 卸载脚本
+│   └── openups.service  # systemd 服务文件
 ├── Makefile           # 构建系统
 ├── README.md          # 项目说明
 ├── QUICKSTART.md      # 快速上手指南

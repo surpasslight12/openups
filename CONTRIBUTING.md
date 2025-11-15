@@ -35,18 +35,6 @@ git commit -m "feat: description"
 git push origin feature/your-feature
 ```
 
-### 代码规范
-```c
-// 类型: 小写_下划线_t
-typedef struct { ... } config_t;
-
-// 函数: module_action
-void logger_init(...);
-
-// 使用 snprintf
-snprintf(buf, sizeof(buf), "%s", str);
-```
-
 ### Commit 格式
 `<type>: <description>` - type 可选: feat, fix, docs, style, refactor, test, chore
 

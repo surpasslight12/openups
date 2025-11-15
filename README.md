@@ -84,12 +84,18 @@ sudo setcap cap_net_raw+ep ./bin/openups
 ### 安装为系统服务
 
 ```bash
-# 1. 编译并安装二进制文件
+# 1. 编译
 make
-sudo make install
 
-# 2. 安装 systemd 服务（如果提供）
-# 参考 systemd/ 目录下的配置文件
+# 2. 安装二进制文件
+sudo cp bin/openups /usr/local/bin/
+sudo chmod 755 /usr/local/bin/openups
+sudo setcap cap_net_raw+ep /usr/local/bin/openups
+
+# 3. 安装 systemd 服务
+sudo cp systemd/openups.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable openups
 
 # 查看帮助
 openups --help
@@ -257,16 +263,6 @@ kill -USR1 $(pidof openups)
 | 测试通过率 | 10/10 (100%) |
 | 安全评分 | **10/10** 🏆 |
 | 总体评分 | ⭐⭐⭐⭐⭐ **5.0/5.0** |
-
-### 性能对比
-
-| 指标 | v1.0.0 (C11) | v1.2.0 (C23) | 改进 |
-|------|--------------|--------------|------|
-| 二进制大小 | 45 KB | **39 KB** | **-13%** 📉 |
-| 优化级别 | -O2 | **-O3** | 更高 ⚡ |
-| LTO | ❌ | **✅** | 启用 🚀 |
-| 安全评分 | 6/10 | **10/10** | **+67%** 🔒 |
-| CLI 参数 | 混乱 | **统一规范** | 易用性提升 ⭐ |
 
 ## 📄 许可证
 

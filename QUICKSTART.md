@@ -90,7 +90,18 @@ sudo ./bin/openups \
 
 ### 1. 安装为系统服务
 ```bash
-sudo ./systemd/install.sh
+# 编译
+make
+
+# 安装二进制文件
+sudo cp bin/openups /usr/local/bin/
+sudo chmod 755 /usr/local/bin/openups
+sudo setcap cap_net_raw+ep /usr/local/bin/openups
+
+# 安装 systemd 服务
+sudo cp systemd/openups.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable openups
 ```
 
 ### 2. 配置服务（编辑环境变量）
@@ -274,11 +285,8 @@ OpenUPS 自动化测试
 # 调试模式（详细日志）
 sudo ./bin/openups --target 8.8.8.8 --log-level debug
 
-# 安静模式（仅错误）
-```bash
 # 安静模式（仅警告和错误）
 sudo ./bin/openups --target 8.8.8.8 --log-level warn
-```
 ```
 
 ### 自定义 ping 参数

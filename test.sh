@@ -116,18 +116,6 @@ echo "========================================"
 echo "✓ 所有测试通过！"
 echo "========================================"
 echo
-echo "二进制文件信息:"
 ls -lh bin/openups
-echo
-echo "代码统计:"
-echo -n "  总行数: "
-find src -name "*.c" -o -name "*.h" | xargs wc -l | tail -1
-echo -n "  C 源文件: "
-find src -name "*.c" | wc -l
-echo -n "  头文件: "
-find src -name "*.h" | wc -l
-echo
-echo "使用示例:"
-echo "  sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3"
-echo "  sudo ./bin/openups --target 2001:4860:4860::8888 --ipv6"
+echo "更多使用示例请查看 QUICKSTART.md"
 echo
