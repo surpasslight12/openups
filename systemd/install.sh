@@ -39,6 +39,11 @@ setcap cap_net_raw+ep /usr/local/bin/openups || true
 echo "安装 systemd 服务文件..."
 cp systemd/openups.service /etc/systemd/system/openups.service
 
+# 创建日志目录并设置权限（与服务 ReadWritePaths 一致）
+mkdir -p /var/log/openups
+chown root:root /var/log/openups
+chmod 0755 /var/log/openups
+
 # 重新加载 systemd
 echo "重新加载 systemd..."
 systemctl daemon-reload

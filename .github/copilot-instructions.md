@@ -243,48 +243,6 @@ journalctl -u openups -f
 
 ## 常见任务模式
 
-### 添加新配置项
-1. 在 `config.h` 的 `config_t` 添加字段
-2. `config_init_default()` 设置默认值
-3. `config_load_from_env()` 添加环境变量 `OPENUPS_*`
-4. `config_load_from_cmdline()` 添加 `--xxx` 选项
-5. `config_validate()` 添加验证逻辑
-6. `config_print_usage()` 添加帮助文本
-7. 更新 README.md 配置表格
-
-### 添加新日志级别或函数
-1. `logger.h` 中 `log_level_t` 添加枚举值
-2. `logger.c` 中 `log_level_to_string()` 添加字符串映射
-3. `string_to_log_level()` 添加解析逻辑
-4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
-
-### 修改 ICMP 行为
-- 重点文件：`src/icmp.c`
-- 关键函数：`icmp_pinger_ping()`, `calculate_checksum()`
-- 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
-
-### systemd 服务配置
-```ini
-[Service]
-# 环境变量（推荐方式）
-Environment="OPENUPS_TARGET=192.168.1.1"
-Environment="OPENUPS_INTERVAL=60"
-Environment="OPENUPS_THRESHOLD=5"
-Environment="OPENUPS_LOG_LEVEL=info"
-Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳（推荐）
-Environment="OPENUPS_DRY_RUN=no"
-Environment="OPENUPS_WATCHDOG=yes"
-
-# 安全限制
-CapabilityBoundingSet=CAP_NET_RAW
-AmbientCapabilities=CAP_NET_RAW
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-MemoryMax=50M
-```
-
 ## 性能和安全注意事项
 
 ### 性能优化技术
