@@ -255,11 +255,15 @@ journalctl -u openups -f
 
 ## 关键版本变更
 
-### v1.1.1 - CLI 参数优化（2025-11-04）
+### v1.2.0 - CLI 参数系统全面重构（2025-11-04）
 - ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
+- ✅ 支持 4 种布尔格式：yes|no, true|false, 1|0, on|off
 - ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
 - ✅ 版本参数改为 `-v/--version`（原 `-Z`）
-- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`
+- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`（共 14 个环境变量）
+- ✅ 帮助文档重组：5 个类别 + 5 个示例
+- ✅ 80+ 测试用例全部通过
+- ❌ 移除向后兼容：不再支持 `OPENUPS_NO_TIMESTAMP`（改用 `OPENUPS_TIMESTAMP`）
 
 ### v1.1.0 - 日志系统简化（2025-10-26）
 - ❌ 移除 `-v/--verbose`, `-q/--quiet` 别名
@@ -355,51 +359,3 @@ MemoryMax=50M
 - `TECHNICAL.md` - 架构变更和技术细节
 - `CHANGELOG.md` - 版本记录
 - `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
-
-## 关键版本变更
-
-### v1.2.0 - CLI 参数系统全面重构（2025-11-04）
-- ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
-- ✅ 支持 4 种布尔格式：yes|no, true|false, 1|0, on|off
-- ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
-- ✅ 版本参数改为 `-v/--version`（原 `-Z`）
-- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`（共 14 个环境变量）
-- ✅ 帮助文档重组：5 个类别 + 5 个示例
-- ✅ 80+ 测试用例全部通过
-- ❌ 移除向后兼容：不再支持 `OPENUPS_NO_TIMESTAMP`（改用 `OPENUPS_TIMESTAMP`）
-
-### v1.1.0 - 日志系统简化（2025-10-26）
-- ❌ 移除 `-v/--verbose`, `-q/--quiet` 别名
-- ✅ 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
-- ✅ 新增 `LOG_LEVEL_SILENT` 静默模式
-- ✅ 移除 `config.verbose` 和 `logger.verbose` 字段
-
-### systemd journald 深度集成
-- ✅ `OPENUPS_TIMESTAMP` 环境变量控制日志时间戳
-- ✅ systemd 服务推荐禁用程序时间戳（避免双重时间戳）
-- ✅ 日志格式：`Oct 26 22:37:19 host openups[pid]: [LEVEL] message`
-
-**参数格式**:
-- 长选项：`--dry-run=no`, `--timestamp=no`, `--systemd=no`, `--watchdog=no`
-- 短选项：`-dno`, `-Tno`, `-Mno`, `-Wno` (值必须直接连接，无空格)
-
-## 快速参考
-
-```bash
-# 最小化测试命令（默认 dry-run 模式）
-sudo ./bin/openups -t 127.0.0.1 -i 1 -n 2 -L debug
-
-# 生产环境配置（systemd）
-Environment="OPENUPS_TARGET=192.168.1.1"
-Environment="OPENUPS_INTERVAL=60"
-Environment="OPENUPS_THRESHOLD=5"
-Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳
-Environment="OPENUPS_DRY_RUN=no"
-Environment="OPENUPS_WATCHDOG=yes"
-
-# 编译 + 测试流程
-make clean && make && ./test.sh
-
-# 安全检查
-checksec --file=./bin/openups  # 应显示 Full RELRO, PIE, Canary, NX
-```
