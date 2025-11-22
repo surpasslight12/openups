@@ -34,66 +34,40 @@
 
 ## [1.2.0] - 2025-11-04
 
-### 🎯 重大更新：CLI 参数系统全面重构
+### 🎯 重大更新：CLI 参数系统全面重构与简化
 
-本版本对 CLI 参数系统进行了全面重构和优化，提供了更直观、更灵活的配置方式，同时保持向后兼容性（环境变量）。
+本版本对 CLI 参数系统进行了全面重构，并最终简化为仅使用 `true/false` 布尔值，大大降低学习难度。
 
 ### Changed
-- **CLI 参数系统重构** ⚡
-  - 合并 `--dry-run`/`--no-dry-run` → `--dry-run[=yes|no]`
-  - 合并 `--no-timestamp` → `--timestamp[=yes|no]`
-  - 合并 `--no-systemd` → `--systemd[=yes|no]`
-  - 合并 `--no-watchdog` → `--watchdog[=yes|no]`
-  - 所有布尔参数支持 4 种格式：yes|no, true|false, 1|0, on|off（大小写不敏感）
-  - 短参数统一：`-v` (version), `-M` (systemd), `-W` (watchdog), `-T` (timestamp)
-  - 长参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
+- **CLI 参数系统简化** ⚡
+  - 所有布尔参数统一为仅支持 `true|false`（不区分大小写）
+  - 移除了 yes/no, 1/0, on/off 等多种冗余格式
+  - 简化布尔参数解析逻辑，代码更清晰
+  - 用户学习成本降低，使用体验更一致
+
+- **布尔参数列表** 📋
+  - `-6, --ipv6[=true|false]` - IPv6 模式
+  - `-d, --dry-run[=true|false]` - Dry-run 模式
+  - `-T, --timestamp[=true|false]` - 日志时间戳
+  - `-M, --systemd[=true|false]` - systemd 集成
+  - `-W, --watchdog[=true|false]` - systemd watchdog
 
 - **环境变量系统完善** 📝
-  - 新增 `OPENUPS_WATCHDOG` - 控制 systemd watchdog 功能
-  - 新增 `OPENUPS_TIMESTAMP` - 统一控制日志时间戳
-  - 所有 14 个 CLI 参数现在都有对应的环境变量
-  - 配置优先级明确：CLI 参数 > 环境变量 > 默认值
+  - 所有布尔环境变量现在仅接受 `true|false` 值
+  - 更新：`OPENUPS_DRY_RUN`, `OPENUPS_TIMESTAMP`, `OPENUPS_SYSTEMD`, `OPENUPS_WATCHDOG`, `OPENUPS_IPV6`
+  - 保持配置优先级：CLI 参数 > 环境变量 > 默认值
 
-- **帮助文档全面优化** 📚
-  - 按功能分为 5 个类别：网络参数、关机参数、日志参数、系统集成、通用参数
-  - 新增 5 个实用示例（涵盖常见场景）
-  - 环境变量分类展示，便于查找
-  - 参数说明更加清晰简洁
-
-- **布尔参数解析增强** 🔧
-  - 新增 `parse_bool_arg()` 统一解析函数
-  - 支持长选项格式：`--dry-run=no`, `--timestamp=yes`
-  - 支持短选项格式：`-dno`, `-Tyes` (值必须直接连接)
-  - 增强 `get_env_bool()` 支持所有布尔格式
-
-### Removed
-- **清理向后兼容代码** 🧹
-  - 移除 `OPENUPS_NO_TIMESTAMP` 环境变量支持（使用 `OPENUPS_TIMESTAMP` 替代）
-  - 代码简化 3 行，消除历史包袱
-  - 项目独立维护，无需向后兼容性负担
-
-### Fixed
-- 布尔参数解析完全统一，所有格式一致处理
-- 短选项可选参数语法完全符合 POSIX 规范
-- `get_env_bool()` 函数现在完全支持 yes/no, on/off 格式
-
-### Testing
-- ✅ 80+ 综合测试用例全部通过
-  - 51 个自动化参数测试
-  - 10 个真实场景测试
-  - 11 个边界条件测试
-  - 8 个错误处理测试
-- ✅ 所有参数组合验证完成
-- ✅ 环境变量优先级测试通过
-- ✅ 布尔格式兼容性验证
+- **文档全面更新** 📚
+  - README.md: 所有参数表格改为 `true|false` 格式
+  - QUICKSTART.md: 所有示例改为新参数格式
+  - systemd/openups.service: 更新环境变量为 true/false
+  - .github/copilot-instructions.md: 同步参数说明
 
 ### Documentation
-- 📝 更新所有文档至 v1.2.0
-- 📝 README.md: 重新组织配置表格，增加参数分类
-- 📝 QUICKSTART.md: 更新所有示例为新参数格式
-- 📝 TECHNICAL.md: 更新技术细节和架构说明
-- 📝 systemd/openups.service: 更新环境变量配置示例
-- 📝 .github/copilot-instructions.md: 同步所有变更
+- 📝 README.md: 更新参数表格和所有示例
+- 📝 QUICKSTART.md: 更新 5 个场景示例
+- 📝 systemd/openups.service: 更新环境变量配置
+- 📝 .github/copilot-instructions.md: 更新参数说明
 
 ### Performance
 - 📊 二进制大小维持：**39 KB**

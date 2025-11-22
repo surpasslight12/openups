@@ -124,7 +124,7 @@ logger_warn(&logger, "Reached %d consecutive failures, threshold is %d",
 logger_error(&logger, "Failed to create socket: %s", strerror(errno));
 
 // systemd journald 集成（避免双重时间戳）
-Environment="OPENUPS_TIMESTAMP=no"  // systemd 服务中设置
+Environment="OPENUPS_TIMESTAMP=false"  // systemd 服务中设置
 ```
 
 ### 配置系统（3 层优先级）
@@ -254,8 +254,9 @@ journalctl -u openups -f
 ## 关键版本变更
 
 ### v1.2.0 - CLI 参数系统全面重构（2025-11-04）
-- ✅ 布尔参数统一：`--dry-run[=yes|no]`, `--timestamp[=yes|no]`, `--systemd[=yes|no]`, `--watchdog[=yes|no]`
-- ✅ 支持 4 种布尔格式：yes|no, true|false, 1|0, on|off
+- ✅ 布尔参数统一：仅使用 `true|false` 格式（不区分大小写）
+- ✅ `--dry-run[=true|false]`, `--timestamp[=true|false]`, `--systemd[=true|false]`, `--watchdog[=true|false]`
+- ✅ 移除 yes/no, 1/0, on/off 等冗余格式，降低学习成本
 - ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
 - ✅ 版本参数改为 `-v/--version`（原 `-Z`）
 - ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`（共 14 个环境变量）
@@ -312,9 +313,9 @@ Environment="OPENUPS_TARGET=192.168.1.1"
 Environment="OPENUPS_INTERVAL=60"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_LOG_LEVEL=info"
-Environment="OPENUPS_TIMESTAMP=no"  # 避免双重时间戳（推荐）
-Environment="OPENUPS_DRY_RUN=no"
-Environment="OPENUPS_WATCHDOG=yes"
+Environment="OPENUPS_TIMESTAMP=false"  # 避免双重时间戳（推荐）
+Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_WATCHDOG=true"
 
 # 安全限制
 CapabilityBoundingSet=CAP_NET_RAW
