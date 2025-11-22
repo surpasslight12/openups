@@ -89,8 +89,33 @@ else
     exit 1
 fi
 
+# Syslog 参数解析
+echo "[10/12] 测试 syslog 参数..."
+if ./bin/openups --syslog=yes --help > /dev/null 2>&1; then
+    echo "✓ syslog=yes 参数解析正常"
+else
+    echo "❌ syslog=yes 参数解析失败"
+    exit 1
+fi
+
+if ./bin/openups --syslog=no --help > /dev/null 2>&1; then
+    echo "✓ syslog=no 参数解析正常"
+else
+    echo "❌ syslog=no 参数解析失败"
+    exit 1
+fi
+
+# 环境变量 syslog 支持
+echo "[11/12] 测试 syslog 环境变量..."
+if OPENUPS_SYSLOG=yes ./bin/openups --help > /dev/null 2>&1; then
+    echo "✓ OPENUPS_SYSLOG=yes 环境变量正常"
+else
+    echo "❌ OPENUPS_SYSLOG=yes 环境变量失败"
+    exit 1
+fi
+
 # 代码检查
-echo "[10/10] 代码质量检查..."
+echo "[12/12] 代码质量检查..."
 errors=0
 
 # 检查是否有未使用的变量（简单检查）

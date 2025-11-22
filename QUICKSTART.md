@@ -63,7 +63,22 @@ sudo ./bin/openups \
 sudo ./bin/openups \
   --target 192.168.1.1 \
   --shutdown-mode log-only \
-  --syslog
+  --syslog=yes
+```
+
+### 场景 4.5: Syslog 集中日志管理
+```bash
+# 启用 syslog，便于与日志系统集成
+sudo ./bin/openups \
+  --target 8.8.8.8 \
+  --syslog=yes \
+  --log-level info
+
+# 查看 systemd 日志
+journalctl -u openups -f
+
+# 或使用传统 syslog
+tail -f /var/log/syslog | grep openups
 ```
 
 ### 场景 5: 自定义脚本

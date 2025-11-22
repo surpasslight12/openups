@@ -172,6 +172,26 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 
 完整参数列表：`./bin/openups --help`
 
+### Syslog 集中日志管理
+
+启用 syslog 输出，便于与日志管理系统集成：
+
+```bash
+# 命令行启用
+./bin/openups --target 1.1.1.1 --syslog=yes
+
+# 或使用环境变量
+OPENUPS_SYSLOG=yes ./bin/openups --target 1.1.1.1
+
+# 查看 systemd journalctl 日志
+journalctl -u openups -f
+
+# 或查看传统 syslog
+tail -f /var/log/syslog | grep openups
+```
+
+支持的布尔值：`yes`, `no`, `true`, `false`, `1`, `0`, `on`, `off`
+
 ## 🔒 安全特性
 
 ### 方式 1：使用 capability（推荐）
