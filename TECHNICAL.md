@@ -1,7 +1,7 @@
 # OpenUPS 技术文档
 
-**版本**: v1.2.0  
-**C 标准**: C23 (C2x)  
+**版本**: v1.2.0
+**C 标准**: C23 (C2x)
 **更新**: 2025-11-04
 
 本文档整合了架构设计和开发指南，为开发者提供完整的技术参考。
@@ -199,7 +199,7 @@ typedef struct {
 } ping_result_t;
 
 bool icmp_pinger_init(icmp_pinger_t* pinger, bool use_ipv6, ...);
-ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target, 
+ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
                                int timeout_ms, int packet_size);
 ```
 
@@ -370,15 +370,15 @@ if (monitor == nullptr) {
 
 #### ✅ restrict（优化指针别名）
 ```c
-bool icmp_pinger_init(icmp_pinger_t* restrict pinger, 
+bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
                       char* restrict error_msg, size_t error_size);
 ```
 
 #### ✅ static_assert（编译时断言）
 ```c
-static_assert(sizeof(sig_atomic_t) >= sizeof(int), 
+static_assert(sizeof(sig_atomic_t) >= sizeof(int),
               "sig_atomic_t must be at least int size");
-static_assert(sizeof(struct icmphdr) >= 8, 
+static_assert(sizeof(struct icmphdr) >= 8,
               "icmphdr must be at least 8 bytes");
 ```
 
@@ -399,8 +399,8 @@ sprintf(buffer, ...);     // 不安全
 ```c
 // common.c
 bool is_safe_path(const char* path) {
-    return !(strstr(path, "..") || strstr(path, "//") || 
-             strchr(path, ';') || strchr(path, '|') || 
+    return !(strstr(path, "..") || strstr(path, "//") ||
+             strchr(path, ';') || strchr(path, '|') ||
              strchr(path, '&') || strchr(path, '`'));
 }
 ```
@@ -428,7 +428,7 @@ if (!function_name(args, error_msg, sizeof(error_msg))) {
 
 ```c
 // ✅ 使用自然语序
-logger_info(&logger, "Starting monitor for target %s, checking every %ds", 
+logger_info(&logger, "Starting monitor for target %s, checking every %ds",
             target, interval);
 
 // ❌ 避免 key=value 格式
@@ -670,6 +670,6 @@ checksec --file=./bin/openups
 
 ---
 
-**维护**: OpenUPS 项目团队  
-**更新**: 2025-11-04  
+**维护**: OpenUPS 项目团队
+**更新**: 2025-11-04
 **版本**: v1.2.0

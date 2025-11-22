@@ -72,8 +72,8 @@ snprintf(buffer, sizeof(buffer), "%s: %d", msg, value);
 
 // ✅ 路径验证（防止遍历和注入）
 static bool is_safe_path(const char* path) {
-    return !(strstr(path, "..") || strstr(path, "//") || 
-             strchr(path, ';') || strchr(path, '|') || 
+    return !(strstr(path, "..") || strstr(path, "//") ||
+             strchr(path, ';') || strchr(path, '|') ||
              strchr(path, '&') || strchr(path, '`'));
 }
 
@@ -93,7 +93,7 @@ bool function_name(args, char* error_msg, size_t error_size) {
 }
 
 // ✅ restrict 关键字（C23）：优化指针别名
-bool icmp_pinger_init(icmp_pinger_t* restrict pinger, 
+bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
                       char* restrict error_msg, size_t error_size);
 ```
 
@@ -116,7 +116,7 @@ logger_init(&logger, LOG_LEVEL_INFO, true);
 //                   ^level          ^timestamp
 
 // printf 风格（编译时检查）- 使用自然语序
-logger_info(&logger, "Starting monitor for target %s, checking every %ds", 
+logger_info(&logger, "Starting monitor for target %s, checking every %ds",
             config.target, config.interval_sec);
 logger_debug(&logger, "Ping successful, latency: %.2fms", latency);
 logger_warn(&logger, "Reached %d consecutive failures, threshold is %d",
@@ -164,7 +164,7 @@ if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
 }
 
 // 执行 ping（微秒级延迟测量）
-ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1", 
+ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1",
                                         2000, 56);  // timeout_ms, packet_size
 if (result.success) {
     logger_debug(&logger, "Ping successful, latency: %.2fms", result.latency_ms);
@@ -186,7 +186,7 @@ systemd_notifier_init(&systemd);
 
 if (systemd.enabled) {
     systemd_notifier_ready(&systemd);  // 通知启动完成
-    
+
     // 主循环中
     systemd_notifier_status(&systemd, "Monitoring target=1.1.1.1");
     systemd_notifier_watchdog(&systemd);  // 每秒发送心跳
@@ -275,14 +275,9 @@ journalctl -u openups -f
 - ✅ systemd 服务推荐禁用程序时间戳（避免双重时间戳）
 - ✅ 日志格式：`Oct 26 22:37:19 host openups[pid]: [LEVEL] message`
 
-**参数格式**:
-- `--no-dry-run` → `--dry-run=no` 或 `-dno`
-- `--no-timestamp` → `--timestamp=no` 或 `-Tno`
-- `--no-systemd` → `--systemd=no` 或 `-Mno`
-- `--no-watchdog` → `--watchdog=no` 或 `-Wno`
-```
+**参数格式轮换**:
+- v1.2.0 子：`--dry-run=false` 或 `-dfalse`, `--timestamp=false` 或 `-Tfalse`
 
-## 性能和安全注意事项
 ## 常见任务模式
 
 ### 添加新配置项

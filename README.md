@@ -142,31 +142,46 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 | `-w, --timeout <ms>` | `OPENUPS_TIMEOUT` | `2000` | 单次超时（毫秒） |
 | `-s, --packet-size <bytes>` | `OPENUPS_PACKET_SIZE` | `56` | ICMP payload 大小 |
 | `-r, --retries <num>` | `OPENUPS_RETRIES` | `2` | 每轮重试次数 |
-| `-6, --ipv6[=true|false]` | `OPENUPS_IPV6` | `false` | 启用 IPv6 模式 |
+| `-6, --ipv6[=true/false]` | `OPENUPS_IPV6` | `false` | 启用 IPv6 模式 |
 
 ### 关机参数
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
-| `-S, --shutdown-mode <mode>` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式：immediate\|delayed\|log-only\|custom |
+| `-S, --shutdown-mode <mode>` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式 |
 | `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
 | `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令 |
 | `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
-| `-d, --dry-run[=true|false]` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式（不实际关机） |
+| `-d, --dry-run[=true/false]` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式（不实际关机） |
 
 ### 日志参数
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
-| `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别：silent\|error\|warn\|info\|debug |
-| `-T, --timestamp[=true|false]` | `OPENUPS_TIMESTAMP` | `true` | 启用日志时间戳 |
+| `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别 |
+| `-T, --timestamp[=true/false]` | `OPENUPS_TIMESTAMP` | `true` | 启用日志时间戳 |
 
 ### 系统集成
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
-| `-M, --systemd[=true|false]` | `OPENUPS_SYSTEMD` | `true` | 启用 systemd 集成 |
-| `-W, --watchdog[=true|false]` | `OPENUPS_WATCHDOG` | `true` | 启用 systemd watchdog |
+| `-M, --systemd[=true/false]` | `OPENUPS_SYSTEMD` | `true` | 启用 systemd 集成 |
+| `-W, --watchdog[=true/false]` | `OPENUPS_WATCHDOG` | `true` | 启用 systemd watchdog |
+
+**参数值说明**：
+
+- **关机模式** (`--shutdown-mode`)：
+  - `immediate` - 立即关机
+  - `delayed` - 延迟关机（使用 `--delay` 指定延迟时间）
+  - `log-only` - 仅记录日志，不执行关机
+  - `custom` - 执行自定义脚本（使用 `--script` 指定脚本路径）
+
+- **日志级别** (`--log-level`)：
+  - `silent` - 完全静默
+  - `error` - 仅错误
+  - `warn` - 警告 + 错误
+  - `info` - 信息 + 警告 + 错误（默认）
+  - `debug` - 详细日志（包含每次 ping 的延迟）
 
 完整参数列表：`./bin/openups --help`
 
@@ -272,6 +287,6 @@ kill -USR1 $(pidof openups)
 
 ---
 
-**作者**: OpenUPS Project  
+**作者**: OpenUPS Project
 **维护**: surpasslight12
 

@@ -59,6 +59,6 @@ git push origin feature/your-feature
 
 ---
 
-**许可证**: 贡献代码将在 MIT 许可证下发布  
-**维护**: OpenUPS 项目团队  
+**许可证**: 贡献代码将在 MIT 许可证下发布
+**维护**: OpenUPS 项目团队
 **更新**: 2025-11-04
