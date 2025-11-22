@@ -34,7 +34,6 @@ typedef struct {
     /* 行为配置 */
     bool enable_timestamp;
     log_level_t log_level;
-    bool use_syslog;
     
     /* systemd 配置 */
     bool enable_systemd;

@@ -4,43 +4,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <syslog.h>
 #include <time.h>
 #include <stdarg.h>
 
 void logger_init(logger_t* restrict logger, log_level_t level,
-                 bool enable_timestamp, bool use_syslog) {
+                 bool enable_timestamp) {
     if (logger == nullptr) {
         return;
     }
     
     logger->level = level;
     logger->enable_timestamp = enable_timestamp;
-    logger->use_syslog = use_syslog;
-    
-    if (use_syslog) {
-        openlog(PROGRAM_NAME, LOG_PID | LOG_CONS, LOG_USER);
-    }
 }
 
 void logger_destroy(logger_t* restrict logger) {
     if (logger == nullptr) {
         return;
-    }
-    
-    if (logger->use_syslog) {
-        closelog();
-    }
-}
-
-static int level_to_syslog_priority(log_level_t level) {
-    switch (level) {
-        case LOG_LEVEL_SILENT: return LOG_INFO;
-        case LOG_LEVEL_ERROR:  return LOG_ERR;
-        case LOG_LEVEL_WARN:   return LOG_WARNING;
-        case LOG_LEVEL_INFO:   return LOG_INFO;
-        case LOG_LEVEL_DEBUG:  return LOG_DEBUG;
-        default:               return LOG_INFO;
     }
 }
 
@@ -68,16 +47,11 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
     
     const char* level_str = log_level_to_string(level);
     
-    /* 输出到控制台 */
+    /* 输出到控制台（stderr 被 systemd 自动捕获） */
     if (logger->enable_timestamp) {
         fprintf(stderr, "[%s] [%s] %s\n", timestamp, level_str, msg);
     } else {
         fprintf(stderr, "[%s] %s\n", level_str, msg);
-    }
-    
-    /* 输出到 syslog */
-    if (logger->use_syslog) {
-        syslog(level_to_syslog_priority(level), "%s", msg);
     }
 }
 

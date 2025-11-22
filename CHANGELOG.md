@@ -9,6 +9,27 @@
 
 ## [Unreleased]
 
+### Removed
+- **移除 syslog 相关代码** 🧹
+  - 完全移除 `use_syslog` 配置项和相关代码
+  - 移除 `--syslog` CLI 参数和 `-Y` 短选项
+  - 移除 `OPENUPS_SYSLOG` 环境变量
+  - 移除 systemd 服务中的 `SyslogIdentifier` 和 `SyslogLevelPrefix` 配置
+  - 原因：stderr 已通过 systemd 的 `StandardOutput=journal` 和 `StandardError=journal` 自动捕获到 journalctl，实现完全冗余
+
+### Changed
+- **日志系统简化**
+  - logger.c 不再包含 `<syslog.h>`
+  - 日志仅输出到 stderr，由 systemd 自动转向 journalctl
+  - 代码行数减少 ~30 行，维护负担降低
+
+### Documentation
+- 📝 移除所有 SYSLOG_*.md 和 SYSLOG_*.txt 文档文件
+- 📝 README.md: 移除 syslog 相关章节和配置说明
+- 📝 QUICKSTART.md: 移除"场景 4.5: Syslog 集中日志管理"
+- 📝 TECHNICAL.md: 更新 logger 模块说明，移除 syslog 特性描述
+- 📝 .github/copilot-instructions.md: 同步移除 syslog 相关指导
+
 ---
 
 ## [1.2.0] - 2025-11-04

@@ -48,7 +48,6 @@ void config_init_default(config_t* restrict config) {
     /* 行为配置 */
     config->enable_timestamp = true;
     config->log_level = LOG_LEVEL_INFO;
-    config->use_syslog = false;
     
     /* systemd 配置 */
     config->enable_systemd = true;
@@ -100,7 +99,6 @@ void config_load_from_env(config_t* restrict config) {
         config->log_level = string_to_log_level(value);
     }
     
-    config->use_syslog = get_env_bool("OPENUPS_SYSLOG", config->use_syslog);
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
     config->enable_watchdog = get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
     config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
@@ -131,7 +129,6 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
         
         /* 日志参数 */
         {"log-level",       required_argument, 0, 'L'},
-        {"syslog",          optional_argument, 0, 'Y'},
         {"timestamp",       optional_argument, 0, 'T'},
         
         /* 系统集成 */
@@ -147,7 +144,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
     int c;
     int option_index = 0;
     
-    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6::S:D:C:P:d::L:Y::T::M::W::vh", 
+    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6::S:D:C:P:d::L:T::M::W::vh", 
                            long_options, &option_index)) != -1) {
         switch (c) {
             case 't':
@@ -195,13 +192,6 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                     config->dry_run = parse_bool_arg(optarg);
                 } else {
                     config->dry_run = true;
-                }
-                break;
-            case 'Y':
-                if (optarg) {
-                    config->use_syslog = parse_bool_arg(optarg);
-                } else {
-                    config->use_syslog = true;
                 }
                 break;
             case 'T':
@@ -322,7 +312,6 @@ void config_print(const config_t* restrict config) {
     printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
     printf("  Log Level: %s\n", log_level_to_string(config->log_level));
     printf("  Timestamp: %s\n", config->enable_timestamp ? "true" : "false");
-    printf("  Syslog: %s\n", config->use_syslog ? "true" : "false");
     printf("  Systemd: %s\n", config->enable_systemd ? "true" : "false");
     printf("  Watchdog: %s\n", config->enable_watchdog ? "true" : "false");
 }
@@ -351,7 +340,6 @@ void config_print_usage(void) {
     printf("Logging Options:\n");
     printf("  -L, --log-level <level>     Log level: silent|error|warn|info|debug\n");
     printf("                              (default: info)\n");
-    printf("  -Y[ARG], --syslog[=ARG]     Enable/disable syslog output (default: no)\n");
     printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: yes)\n");
     printf("                              ARG format: yes|no|true|false|1|0|on|off\n\n");
     

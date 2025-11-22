@@ -17,8 +17,6 @@ WatchdogSec=30
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=openups
-SyslogLevelPrefix=yes
 
 # Environment
 EnvironmentFile=-/etc/default/openups

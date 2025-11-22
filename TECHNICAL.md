@@ -39,7 +39,7 @@ openups/
 ├── src/
 │   ├── main.c         # 程序入口
 │   ├── common.c/h     # 通用工具函数
-│   ├── logger.c/h     # 日志系统（支持 syslog）
+│   ├── logger.c/h     # 日志系统
 │   ├── config.c/h     # 配置管理
 │   ├── icmp.c/h       # ICMP ping 实现
 │   ├── systemd.c/h    # systemd 集成
@@ -134,7 +134,6 @@ main.c (依赖 monitor.h, config.h, logger.h)
 typedef struct {
     log_level_t level;
     bool enable_timestamp;
-    bool use_syslog;
 } logger_t;
 
 void logger_init(logger_t* logger, ...);
@@ -143,7 +142,7 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 ```
 
 **特性**：
-- 同时输出到控制台和 syslog
+- 输出到 stderr（通过 systemd 自动捕获到 journalctl）
 - printf 风格的可变参数格式化
 - 自然语序输出（不使用 key=value 格式）
 - 可配置日志级别（SILENT/ERROR/WARN/INFO/DEBUG）

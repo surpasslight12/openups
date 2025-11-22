@@ -16,12 +16,11 @@ typedef enum {
 typedef struct {
     log_level_t level;
     bool enable_timestamp;
-    bool use_syslog;
 } logger_t;
 
 /* 初始化日志器 */
 void logger_init(logger_t* restrict logger, log_level_t level,
-                 bool enable_timestamp, bool use_syslog);
+                 bool enable_timestamp);
 
 /* 销毁日志器 */
 void logger_destroy(logger_t* restrict logger);

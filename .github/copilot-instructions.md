@@ -110,10 +110,10 @@ typedef enum {
     LOG_LEVEL_DEBUG = 3     // 详细日志 + 每次 ping 延迟
 } log_level_t;
 
-// 初始化（3 个参数）
+// 初始化（2 个参数）
 logger_t logger;
-logger_init(&logger, LOG_LEVEL_INFO, true, false);
-//                   ^level          ^timestamp ^syslog
+logger_init(&logger, LOG_LEVEL_INFO, true);
+//                   ^level          ^timestamp
 
 // printf 风格（编译时检查）- 使用自然语序
 logger_info(&logger, "Starting monitor for target %s, checking every %ds", 
@@ -135,8 +135,6 @@ typedef struct {
     int fail_threshold;
     log_level_t log_level;      // v1.1.0: 统一日志级别
     bool enable_timestamp;      // 时间戳开关（systemd 场景下禁用）
-    - **时间戳开关
-    bool use_syslog;
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only/custom
     bool dry_run;               // 默认 true（防止误操作）
     bool use_ipv6;

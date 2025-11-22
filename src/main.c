@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     /* 初始化日志器 */
     logger_t logger;
     logger_init(&logger, config.log_level,
-                config.enable_timestamp, config.use_syslog);
+                config.enable_timestamp);
     
     /* 打印配置（debug 模式） */
     if (config.log_level == LOG_LEVEL_DEBUG) {

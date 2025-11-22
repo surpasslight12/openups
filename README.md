@@ -23,7 +23,6 @@
 
 ### 系统集成
 - **systemd 深度集成**：支持 `sd_notify`、watchdog、状态通知
-- **Syslog 日志**：可选的 syslog 输出，便于集中日志管理
 - **安全加固**：10/10 安全评级，Full RELRO + PIE + Stack Canary + FORTIFY_SOURCE=3
 
 ### 可靠性
@@ -160,7 +159,6 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
 | `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别：silent\|error\|warn\|info\|debug |
-| `-Y, --syslog[=yes\|no]` | `OPENUPS_SYSLOG` | `no` | 启用 syslog 输出 |
 | `-T, --timestamp[=yes\|no]` | `OPENUPS_TIMESTAMP` | `yes` | 启用日志时间戳 |
 
 ### 系统集成
@@ -171,26 +169,6 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 | `-W, --watchdog[=yes\|no]` | `OPENUPS_WATCHDOG` | `yes` | 启用 systemd watchdog |
 
 完整参数列表：`./bin/openups --help`
-
-### Syslog 集中日志管理
-
-启用 syslog 输出，便于与日志管理系统集成：
-
-```bash
-# 命令行启用
-./bin/openups --target 1.1.1.1 --syslog=yes
-
-# 或使用环境变量
-OPENUPS_SYSLOG=yes ./bin/openups --target 1.1.1.1
-
-# 查看 systemd journalctl 日志
-journalctl -u openups -f
-
-# 或查看传统 syslog
-tail -f /var/log/syslog | grep openups
-```
-
-支持的布尔值：`yes`, `no`, `true`, `false`, `1`, `0`, `on`, `off`
 
 ## 🔒 安全特性
 
