@@ -113,7 +113,7 @@ openups --help
 
 ```bash
 # 生产模式（真实关机）
-sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
+sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=false
 ```
 
 ### IPv6 监控
@@ -125,7 +125,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 ### 自定义关机脚本
 
 ```bash
-./bin/openups --shutdown-mode custom --script /usr/local/bin/my-shutdown.sh --dry-run=no
+./bin/openups --shutdown-mode custom --script /usr/local/bin/my-shutdown.sh --dry-run=false
 ```
 
 ## ⚙️ 配置参数
@@ -142,7 +142,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 | `-w, --timeout <ms>` | `OPENUPS_TIMEOUT` | `2000` | 单次超时（毫秒） |
 | `-s, --packet-size <bytes>` | `OPENUPS_PACKET_SIZE` | `56` | ICMP payload 大小 |
 | `-r, --retries <num>` | `OPENUPS_RETRIES` | `2` | 每轮重试次数 |
-| `-6, --ipv6[=yes\|no]` | `OPENUPS_IPV6` | `no` | 启用 IPv6 模式 |
+| `-6, --ipv6[=true|false]` | `OPENUPS_IPV6` | `false` | 启用 IPv6 模式 |
 
 ### 关机参数
 
@@ -152,21 +152,21 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=no
 | `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
 | `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令 |
 | `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
-| `-d, --dry-run[=yes\|no]` | `OPENUPS_DRY_RUN` | `yes` | Dry-run 模式（不实际关机） |
+| `-d, --dry-run[=true|false]` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式（不实际关机） |
 
 ### 日志参数
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
 | `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别：silent\|error\|warn\|info\|debug |
-| `-T, --timestamp[=yes\|no]` | `OPENUPS_TIMESTAMP` | `yes` | 启用日志时间戳 |
+| `-T, --timestamp[=true|false]` | `OPENUPS_TIMESTAMP` | `true` | 启用日志时间戳 |
 
 ### 系统集成
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 |---------|---------|--------|------|
-| `-M, --systemd[=yes\|no]` | `OPENUPS_SYSTEMD` | `yes` | 启用 systemd 集成 |
-| `-W, --watchdog[=yes\|no]` | `OPENUPS_WATCHDOG` | `yes` | 启用 systemd watchdog |
+| `-M, --systemd[=true|false]` | `OPENUPS_SYSTEMD` | `true` | 启用 systemd 集成 |
+| `-W, --watchdog[=true|false]` | `OPENUPS_WATCHDOG` | `true` | 启用 systemd watchdog |
 
 完整参数列表：`./bin/openups --help`
 

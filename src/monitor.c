@@ -196,7 +196,8 @@ static bool perform_ping(monitor_t* restrict monitor, ping_result_t* restrict re
         
         /* 重试前短暂延迟 */
         if (attempt < monitor->config->max_retries) {
-            usleep(100000);  /* 100ms */
+            usleep(100000);
+            /* 100ms */
         }
     }
     
@@ -380,7 +381,8 @@ int monitor_run(monitor_t* restrict monitor) {
                 /* LOG_ONLY 模式：仅记录日志并继续监控 */
                 if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
                     trigger_shutdown(monitor);
-                    monitor->consecutive_fails = 0;  /* 重置计数继续监控 */
+                    /* 重置计数继续监控 */
+                    monitor->consecutive_fails = 0;
                 } else {
                     /* 其他模式：触发关机并退出监控循环 */
                     trigger_shutdown(monitor);

@@ -8,20 +8,19 @@
 #include <string.h>
 #include <strings.h>
 
-/* 解析布尔参数（支持 true/false, yes/no, 1/0） */
+/* 解析布尔参数（仅支持 true/false） */
 static bool parse_bool_arg(const char* arg) {
     if (arg == nullptr) {
         return true;
     }
-    if (strcasecmp(arg, "true") == 0 || strcasecmp(arg, "yes") == 0 || 
-        strcasecmp(arg, "1") == 0 || strcasecmp(arg, "on") == 0) {
+    if (strcasecmp(arg, "true") == 0) {
         return true;
     }
-    if (strcasecmp(arg, "false") == 0 || strcasecmp(arg, "no") == 0 || 
-        strcasecmp(arg, "0") == 0 || strcasecmp(arg, "off") == 0) {
+    if (strcasecmp(arg, "false") == 0) {
         return false;
     }
-    return true;  /* 默认为 true */
+    /* 默认为 true */
+    return true;
 }
 
 void config_init_default(config_t* restrict config) {
@@ -215,7 +214,8 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                     config->enable_watchdog = false;
                 }
                 break;
-            case 'v':  /* --version */
+            /* --version */
+            case 'v':
                 config_print_version();
                 exit(0);
             case 'h':
@@ -325,7 +325,7 @@ void config_print_usage(void) {
     printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: 2000)\n");
     printf("  -s, --packet-size <bytes>   ICMP packet payload size (default: 56)\n");
     printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n");
-    printf("  -6, --ipv6[=yes|no]         Enable/disable IPv6 mode (default: no)\n\n");
+    printf("  -6, --ipv6[=true|false]     Enable/disable IPv6 mode (default: false)\n\n");
     
     printf("Shutdown Options:\n");
     printf("  -S, --shutdown-mode <mode>  Shutdown mode: immediate|delayed|log-only|custom\n");
@@ -333,20 +333,20 @@ void config_print_usage(void) {
     printf("  -D, --delay <min>           Shutdown delay in minutes for delayed mode (default: 1)\n");
     printf("  -C, --shutdown-cmd <cmd>    Custom shutdown command\n");
     printf("  -P, --script <path>         Custom shutdown script path\n");
-    printf("  -d[ARG], --dry-run[=ARG]    Dry-run mode, no actual shutdown (default: yes)\n");
-    printf("                              ARG: yes|no|true|false|1|0|on|off\n");
-    printf("                              Note: Use -dno or --dry-run=no (no space)\n\n");
+    printf("  -d[ARG], --dry-run[=ARG]    Dry-run mode, no actual shutdown (default: true)\n");
+    printf("                              ARG: true|false\n");
+    printf("                              Note: Use -dfalse or --dry-run=false (no space)\n\n");
     
     printf("Logging Options:\n");
     printf("  -L, --log-level <level>     Log level: silent|error|warn|info|debug\n");
     printf("                              (default: info)\n");
-    printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: yes)\n");
-    printf("                              ARG format: yes|no|true|false|1|0|on|off\n\n");
+    printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: true)\n");
+    printf("                              ARG format: true|false\n\n");
     
     printf("System Integration:\n");
-    printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: yes)\n");
-    printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: yes)\n");
-    printf("                              ARG format: yes|no|true|false|1|0|on|off\n\n");
+    printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: true)\n");
+    printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: true)\n");
+    printf("                              ARG format: true|false\n\n");
     
     printf("General Options:\n");
     printf("  -v, --version               Show version information\n");
@@ -366,13 +366,13 @@ void config_print_usage(void) {
     printf("  # Basic monitoring with dry-run\n");
     printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", PROGRAM_NAME);
     printf("  # Production mode (actual shutdown)\n");
-    printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=no\n\n", PROGRAM_NAME);
+    printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=false\n\n", PROGRAM_NAME);
     printf("  # IPv6 with custom script\n");
-    printf("  %s -6 -t 2606:4700:4700::1111 -S custom -P /root/shutdown.sh -dno\n\n", PROGRAM_NAME);
+    printf("  %s -6 -t 2606:4700:4700::1111 -S custom -P /root/shutdown.sh --dry-run=false\n\n", PROGRAM_NAME);
     printf("  # Debug mode without timestamp (for systemd)\n");
-    printf("  %s -t 8.8.8.8 -L debug --timestamp=no\n\n", PROGRAM_NAME);
+    printf("  %s -t 8.8.8.8 -L debug --timestamp=false\n\n", PROGRAM_NAME);
     printf("  # Short options (values must connect directly, no space)\n");
-    printf("  %s -t 8.8.8.8 -i5 -n3 -dno -Tno -Ldebug\n\n", PROGRAM_NAME);
+    printf("  %s -t 8.8.8.8 -i5 -n3 -dfalse -Tfalse -Ldebug\n\n", PROGRAM_NAME);
 }
 
 void config_print_version(void) {

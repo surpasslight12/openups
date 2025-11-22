@@ -124,7 +124,8 @@ const char* log_level_to_string(log_level_t level) {
 
 log_level_t string_to_log_level(const char* restrict str) {
     if (str == nullptr) {
-        return LOG_LEVEL_INFO;  /* 默认 */
+        /* 默认 */
+        return LOG_LEVEL_INFO;
     }
     
     if (strcasecmp(str, "silent") == 0 || strcasecmp(str, "none") == 0) 
@@ -133,5 +134,6 @@ log_level_t string_to_log_level(const char* restrict str) {
     if (strcasecmp(str, "warn") == 0)  return LOG_LEVEL_WARN;
     if (strcasecmp(str, "info") == 0)  return LOG_LEVEL_INFO;
     if (strcasecmp(str, "debug") == 0) return LOG_LEVEL_DEBUG;
-    return LOG_LEVEL_INFO;  /* 默认 */
+    /* 默认 */
+    return LOG_LEVEL_INFO;
 }

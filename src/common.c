@@ -9,7 +9,8 @@
 /* Fallback for GCC < 14: basic overflow detection for unsigned types */
 static inline bool ckd_add_impl(uint64_t* result, uint64_t a, uint64_t b) {
     if (b > UINT64_MAX - a) {
-        return true;  /* Overflow detected */
+        /* Overflow detected */
+        return true;
     }
     *result = a + b;
     return false;
@@ -17,7 +18,8 @@ static inline bool ckd_add_impl(uint64_t* result, uint64_t a, uint64_t b) {
 
 static inline bool ckd_mul_impl(uint64_t* result, uint64_t a, uint64_t b) {
     if (a != 0 && b > UINT64_MAX / a) {
-        return true;  /* Overflow detected */
+        /* Overflow detected */
+        return true;
     }
     *result = a * b;
     return false;
@@ -98,13 +100,11 @@ bool get_env_bool(const char* restrict name, bool default_value) {
         return default_value;
     }
     
-    /* 支持多种格式：true/false, yes/no, 1/0, on/off */
-    if (strcasecmp(value, "true") == 0 || strcasecmp(value, "yes") == 0 || 
-        strcmp(value, "1") == 0 || strcasecmp(value, "on") == 0) {
+    /* 仅支持 true/false */
+    if (strcasecmp(value, "true") == 0) {
         return true;
     }
-    if (strcasecmp(value, "false") == 0 || strcasecmp(value, "no") == 0 || 
-        strcmp(value, "0") == 0 || strcasecmp(value, "off") == 0) {
+    if (strcasecmp(value, "false") == 0) {
         return false;
     }
     
