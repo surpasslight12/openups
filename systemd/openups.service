@@ -4,7 +4,7 @@ Documentation=https://github.com/surpasslight12/openups
 After=network-online.target
 Wants=network-online.target
 
-# Service
+[Service]
 Type=notify
 # Optional delay before starting the main binary
 ExecStartPre=/bin/sleep 300
