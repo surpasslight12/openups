@@ -359,7 +359,7 @@ void config_print_usage(void) {
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_SHUTDOWN_CMD, OPENUPS_CUSTOM_SCRIPT,\n");
     printf("                OPENUPS_DRY_RUN\n");
-    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_SYSLOG, OPENUPS_TIMESTAMP\n");
+    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP\n");
     printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n\n");
     
     printf("Examples:\n");

@@ -9,6 +9,12 @@
 
 ## [Unreleased]
 
+### Added
+- **关机命令优化** ⚡
+  - 当启用 systemd 集成时，自动优先使用 `systemctl poweroff` 替代 `/sbin/shutdown`
+  - 提供更优雅和一致的关机方式
+  - 在传统 Linux 环境中继续使用 `/sbin/shutdown` 命令
+
 ### Removed
 - **移除 syslog 相关代码** 🧹
   - 完全移除 `use_syslog` 配置项和相关代码
@@ -29,6 +35,7 @@
 - 📝 QUICKSTART.md: 移除"场景 4.5: Syslog 集中日志管理"
 - 📝 TECHNICAL.md: 更新 logger 模块说明，移除 syslog 特性描述
 - 📝 .github/copilot-instructions.md: 同步移除 syslog 相关指导
+- 📝 test.sh: 更新测试套件，移除 syslog 测试，添加新参数测试
 
 ---
 

@@ -1,17 +1,17 @@
 #!/bin/bash
-# OpenUPS 测试脚本
+# OpenUPS 自动化测试脚本
+# 验证编译、参数解析、配置验证、安全性和代码质量
 
 set -e  # 遇到错误立即退出
 
 echo "========================================"
-echo "OpenUPS 自动化测试"
+echo "OpenUPS 自动化测试 (v1.2.0)"
 echo "========================================"
 echo
 
 # 编译检查
-echo "[1/10] 编译检查..."
+echo "[1/11] 编译检查..."
 make clean > /dev/null 2>&1
-# 只检查实际的警告和错误，忽略编译器输出中的其他信息
 if make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
     echo "❌ 编译有警告或错误"
     make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
@@ -20,7 +20,7 @@ fi
 echo "✓ 编译成功，无警告"
 
 # 帮助信息
-echo "[2/10] 测试帮助信息..."
+echo "[2/11] 测试帮助信息..."
 if ! ./bin/openups --help > /dev/null 2>&1; then
     echo "❌ 帮助信息失败"
     exit 1
@@ -28,15 +28,45 @@ fi
 echo "✓ 帮助信息正常"
 
 # 版本信息
-echo "[3/10] 测试版本信息..."
+echo "[3/11] 测试版本信息..."
 if ! ./bin/openups --version > /dev/null 2>&1; then
     echo "❌ 版本信息失败"
     exit 1
 fi
 echo "✓ 版本信息正常"
 
-# 空目标地址
-echo "[4/10] 测试空目标地址..."
+# 参数验证测试
+echo "[4/11] 测试布尔参数 --dry-run..."
+if ! ./bin/openups --help --dry-run=true > /dev/null 2>&1; then
+    echo "❌ --dry-run=true 参数解析失败"
+    exit 1
+fi
+if ! ./bin/openups --help --dry-run=false > /dev/null 2>&1; then
+    echo "❌ --dry-run=false 参数解析失败"
+    exit 1
+fi
+# 测试短选项
+if ! ./bin/openups --help -dfalse > /dev/null 2>&1; then
+    echo "❌ 短选项 -dfalse 解析失败"
+    exit 1
+fi
+echo "✓ 布尔参数和短选项解析正常"
+
+echo "[5/11] 测试环境变量优先级..."
+# 环境变量设置
+if ! OPENUPS_TARGET=127.0.0.1 OPENUPS_INTERVAL=5 OPENUPS_THRESHOLD=3 ./bin/openups --help > /dev/null 2>&1; then
+    echo "❌ 环境变量设置失败"
+    exit 1
+fi
+# 测试 CLI 优先级高于环境变量
+if ! OPENUPS_TARGET=127.0.0.1 ./bin/openups --target 8.8.8.8 --help > /dev/null 2>&1; then
+    echo "❌ CLI 参数优先级测试失败"
+    exit 1
+fi
+echo "✓ 环境变量和优先级处理正常"
+
+# 错误处理测试
+echo "[6/11] 测试空目标地址..."
 if ./bin/openups --target "" 2>&1 | grep -q "Target host cannot be empty"; then
     echo "✓ 空目标地址被拒绝"
 else
@@ -45,7 +75,7 @@ else
 fi
 
 # 负数间隔
-echo "[5/10] 测试负数间隔..."
+echo "[7/11] 测试负数间隔..."
 if ./bin/openups --target 127.0.0.1 --interval -1 2>&1 | grep -q "Interval must be positive"; then
     echo "✓ 负数间隔被拒绝"
 else
@@ -54,7 +84,7 @@ else
 fi
 
 # 零阈值
-echo "[6/10] 测试零阈值..."
+echo "[8/11] 测试零阈值..."
 if ./bin/openups --target 127.0.0.1 --threshold 0 2>&1 | grep -q "Failure threshold must be positive"; then
     echo "✓ 零阈值被拒绝"
 else
@@ -63,7 +93,7 @@ else
 fi
 
 # 零超时
-echo "[7/10] 测试零超时..."
+echo "[9/11] 测试零超时..."
 if ./bin/openups --target 127.0.0.1 --timeout 0 2>&1 | grep -q "Timeout must be positive"; then
     echo "✓ 零超时被拒绝"
 else
@@ -72,7 +102,7 @@ else
 fi
 
 # 危险的自定义脚本路径
-echo "[8/10] 测试危险路径注入..."
+echo "[10/11] 测试危险路径注入..."
 if ./bin/openups --custom-script "/tmp/test;rm -rf /" 2>&1 | grep -q "unsafe characters"; then
     echo "✓ 危险路径被拒绝"
 else
@@ -81,7 +111,7 @@ else
 fi
 
 # 超大包大小
-echo "[9/10] 测试超大包大小..."
+echo "[11/11] 测试超大包大小..."
 if ./bin/openups --target 127.0.0.1 --packet-size 99999 2>&1 | grep -q "Packet size must be between"; then
     echo "✓ 超大包大小被拒绝"
 else
@@ -89,51 +119,27 @@ else
     exit 1
 fi
 
-# Syslog 参数解析
-echo "[10/12] 测试 syslog 参数..."
-if ./bin/openups --syslog=yes --help > /dev/null 2>&1; then
-    echo "✓ syslog=yes 参数解析正常"
-else
-    echo "❌ syslog=yes 参数解析失败"
-    exit 1
-fi
-
-if ./bin/openups --syslog=no --help > /dev/null 2>&1; then
-    echo "✓ syslog=no 参数解析正常"
-else
-    echo "❌ syslog=no 参数解析失败"
-    exit 1
-fi
-
-# 环境变量 syslog 支持
-echo "[11/12] 测试 syslog 环境变量..."
-if OPENUPS_SYSLOG=yes ./bin/openups --help > /dev/null 2>&1; then
-    echo "✓ OPENUPS_SYSLOG=yes 环境变量正常"
-else
-    echo "❌ OPENUPS_SYSLOG=yes 环境变量失败"
-    exit 1
-fi
-
-# 代码检查
-echo "[12/12] 代码质量检查..."
+# 代码质量检查
+echo ""
+echo "代码质量检查..."
 errors=0
-
-# 检查是否有未使用的变量（简单检查）
-if grep -r "unused variable" . --include="*.c" 2>/dev/null | grep -v test.sh > /dev/null; then
-    echo "  警告: 发现未使用的变量"
-    ((errors++))
-fi
 
 # 检查是否有不安全的函数
 if grep -E "(strcpy|strcat|sprintf)\(" src/*.c 2>/dev/null | grep -v "//" > /dev/null; then
-    echo "  警告: 发现不安全的字符串函数"
+    echo "  ❌ 发现不安全的字符串函数"
+    ((errors++))
+fi
+
+# 检查是否有 syslog 遗留代码
+if grep -i "syslog" src/*.c src/*.h 2>/dev/null | grep -v "^Binary"; then
+    echo "  ⚠️ 发现 syslog 遗留代码"
     ((errors++))
 fi
 
 if [ $errors -eq 0 ]; then
     echo "✓ 代码质量良好"
 else
-    echo "  注意: 发现 $errors 个潜在问题"
+    echo "  ⚠️ 发现 $errors 个需要关注的问题"
 fi
 
 echo

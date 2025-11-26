@@ -239,13 +239,23 @@ static void trigger_shutdown(monitor_t* monitor) {
     
     char shutdown_cmd[512] = {0};
     
+    /* 检查是否在 systemd 环境中 */
+    bool use_systemctl = monitor->config->enable_systemd && 
+                         monitor->systemd != nullptr && 
+                         systemd_notifier_is_enabled(monitor->systemd);
+    
     switch (monitor->config->shutdown_mode) {
         case SHUTDOWN_MODE_IMMEDIATE:
             if (strlen(monitor->config->shutdown_cmd) > 0) {
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
                         monitor->config->shutdown_cmd);
             } else {
-                snprintf(shutdown_cmd, sizeof(shutdown_cmd), "/sbin/shutdown -h now");
+                /* 优先使用 systemctl（更优雅的关机方式） */
+                if (use_systemctl) {
+                    snprintf(shutdown_cmd, sizeof(shutdown_cmd), "systemctl poweroff");
+                } else {
+                    snprintf(shutdown_cmd, sizeof(shutdown_cmd), "/sbin/shutdown -h now");
+                }
             }
             logger_warn(monitor->logger, "Triggering immediate shutdown");
             break;
@@ -255,6 +265,7 @@ static void trigger_shutdown(monitor_t* monitor) {
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd), "%s", 
                         monitor->config->shutdown_cmd);
             } else {
+                /* systemctl 不支持延迟参数，使用 shutdown 命令 */
                 snprintf(shutdown_cmd, sizeof(shutdown_cmd),
                         "/sbin/shutdown -h +%d", monitor->config->delay_minutes);
             }
@@ -263,7 +274,7 @@ static void trigger_shutdown(monitor_t* monitor) {
             break;
             
         case SHUTDOWN_MODE_LOG_ONLY:
-            logger_error(monitor->logger, "LOG-ONLY mode: Would shutdown but only logging");
+            logger_error(monitor->logger, "LOG-ONLY mode: Network connectivity lost, would trigger shutdown");
             return;
             
         case SHUTDOWN_MODE_CUSTOM:
