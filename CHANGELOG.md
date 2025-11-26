@@ -10,6 +10,16 @@
 ## [Unreleased]
 
 ### Added
+- **代码注释全面增强** 📝
+  - 为 monitor.c 添加详细的监控循环、重试机制、信号处理、watchdog 心跳注释
+  - 为 icmp.c 添加 ICMP 校验和算法、IPv4/IPv6 协议实现的深入注释
+  - 为 config.c 添加参数优先级、验证逻辑、安全性检查的详细说明
+  - 为 systemd.c 添加 UNIX domain socket、通知机制、watchdog 超时的注释
+  - 为 main.c 添加程序初始化流程、配置加载顺序的注释
+  - 总计 176 个注释块，覆盖所有关键函数和复杂算法
+  - 提升代码可读性，便于新开发者快速上手
+  - 代码行数从 1,947 增加到 2,027（+80 行，主要是新增注释）
+
 - **关机命令优化** ⚡
   - 当启用 systemd 集成时，自动优先使用 `systemctl poweroff` 替代 `/sbin/shutdown`
   - 提供更优雅和一致的关机方式

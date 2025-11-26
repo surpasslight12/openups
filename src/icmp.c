@@ -23,26 +23,35 @@
 static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
 static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes");
 
-/* ICMP 校验和计算 */
+/* ICMP 校验和计算 (RFC 792)
+ * 算法:
+ *   1. 会变分为多个 16 位字，依次累加
+ *   2. 如果长度是奇数，最后一个字节作为 16 位字的低位
+ *   3. 将前面的进位加回
+ *   4. 被故中 校验和声明中路路寽穷是 0)
+ * IPv4: 需手动计算，因为 ICMP 是内核上层的协议
+ * IPv6: 由内核自动计算 (IPV6_CHECKSUM socket 选项)
+ */
 static uint16_t calculate_checksum(const void* data, size_t len) {
     const uint16_t* buf = (const uint16_t*)data;
     uint32_t sum = 0;
     
-    /* 累加所有 16 位字 */
+    /* 步骤1: 累加所有 16 位字 */
     for (size_t i = 0; i < len / 2; i++) {
         sum += buf[i];
     }
     
-    /* 如果长度是奇数，添加最后一个字节 */
+    /* 步骤2: 处理奇数位院 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
     
-    /* 将进位加回低 16 位 */
+    /* 步骤3: 处理进位 (IP 格式校验和需要一估算法) */
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
     
+    /* 步骤4: 返回需求（变反位） */
     return ~sum;
 }
 
@@ -80,7 +89,10 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
     }
 }
 
-/* 解析目标地址 */
+/* 解析目标地址 (IPv4 或 IPv6)
+ * 实现: 使用 getaddrinfo() 成常解析 DNS 名称或直接 IP 地址
+ * 参数: target - 主机名或 IP 地址, use_ipv6 - true 为 IPv6, false 为 IPv4
+ */
 static bool resolve_target(const char* restrict target, bool use_ipv6, 
                           struct sockaddr_storage* restrict addr, socklen_t* restrict addr_len,
                           char* restrict error_msg, size_t error_size) {
@@ -108,7 +120,10 @@ static bool resolve_target(const char* restrict target, bool use_ipv6,
     return true;
 }
 
-/* IPv4 Ping 实现 */
+/* IPv4 Ping 实现 (RFC 792)
+ * 流程: 构造 ICMP Echo Request → 发送 → 等待 Echo Reply → 计算延迟
+ * 特殊注意: 需要手动计算校验和, 需要 CAP_NET_RAW 权限
+ */
 static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_in* restrict dest_addr,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
@@ -118,7 +133,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
         return result;
     }
     
-    /* 构建 ICMP Echo Request */
+    /* 构建 ICMP Echo Request 数据包 */
     size_t packet_len = sizeof(struct icmphdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
     if (packet == nullptr) {
@@ -137,7 +152,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
         packet[sizeof(struct icmphdr) + i] = i & 0xFF;
     }
     
-    /* 计算校验和 */
+    /* 计算校验和 (标准流程: 先清零, 再计算) */
     icmp_hdr->checksum = 0;
     icmp_hdr->checksum = calculate_checksum(packet, packet_len);
     
@@ -160,7 +175,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
         return result;
     }
     
-    /* 接收 ICMP Echo Reply */
+    /* 接收 ICMP Echo Reply (包含 IP 头和 ICMP 头) */
     uint8_t recv_buf[4096];
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
@@ -182,12 +197,12 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
         return result;
     }
     
-    /* 解析 IP 头和 ICMP 头 */
+    /* 解析 IP 头和 ICMP 头 (IP 头长度可变) */
     struct ip* ip_hdr = (struct ip*)recv_buf;
-    size_t ip_hdr_len = ip_hdr->ip_hl * 4;
+    size_t ip_hdr_len = ip_hdr->ip_hl * 4;  /* IHL 字段是 32 位单位 */
     struct icmphdr* recv_icmp = (struct icmphdr*)(recv_buf + ip_hdr_len);
     
-    /* 验证 ICMP Echo Reply */
+    /* 验证 ICMP Echo Reply (类型和 ID 必须匹配) */
     if (recv_icmp->type == ICMP_ECHOREPLY &&
         recv_icmp->un.echo.id == (getpid() & 0xFFFF)) {
         
@@ -206,7 +221,12 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
     return result;
 }
 
-/* IPv6 Ping 实现 */
+/* IPv6 Ping 实现 (RFC 4443)
+ * 与 IPv4 类似, 汤下分或:
+ *   1. 校验和由内核自动计算 (IPV6_CHECKSUM socket 选项)
+ *   2. 使用 ICMPv6 案叫和类型
+ * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
+ */
 static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_in6* restrict dest_addr,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
@@ -216,7 +236,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
         return result;
     }
     
-    /* 构建 ICMPv6 Echo Request */
+    /* 构造 ICMPv6 Echo Request 数据包 (模于 IPv4) */
     size_t packet_len = sizeof(struct icmp6_hdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
     if (packet == nullptr) {
@@ -225,17 +245,17 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
     }
     
     struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)packet;
-    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST;
-    icmp6_hdr->icmp6_code = 0;
-    icmp6_hdr->icmp6_id = getpid() & 0xFFFF;
-    icmp6_hdr->icmp6_seq = 1;
+    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST;  /* 类型: Echo Request = 128 */
+    icmp6_hdr->icmp6_code = 0;                   /* 代码: 0 */
+    icmp6_hdr->icmp6_id = getpid() & 0xFFFF;    /* 标識符 */
+    icmp6_hdr->icmp6_seq = 1;                    /* 序列号 */
     
     /* 填充数据 */
     for (int i = 0; i < packet_size; i++) {
         packet[sizeof(struct icmp6_hdr) + i] = i & 0xFF;
     }
     
-    /* IPv6 内核自动计算校验和 */
+    /* IPv6 内核自动计算校验和 (不需手动设置) */
     
     /* 设置超时 */
     struct timeval tv;

@@ -45,7 +45,10 @@ void monitor_setup_signals(monitor_t* restrict monitor) {
     signal(SIGUSR1, signal_handler);
 }
 
-/* 初始化指标 */
+/* 初始化指标
+ * 用于统计 ping 操作的成功率、延迟和运行时间
+ * 初始化所有计数器为 0，最小/最大延迟为 -1（表示尚未有数据）
+ */
 static void metrics_init(metrics_t* metrics) {
     metrics->total_pings = 0;
     metrics->successful_pings = 0;
@@ -56,7 +59,10 @@ static void metrics_init(metrics_t* metrics) {
     metrics->start_time = get_timestamp_ms() / 1000;
 }
 
-/* 记录成功 */
+/* 记录成功的 ping 操作
+ * 参数: latency - 本次 ping 的延迟（毫秒）
+ * 功能: (1) 增加成功计数, (2) 累加总延迟, (3) 更新最小/最大延迟
+ */
 static void metrics_record_success(metrics_t* metrics, double latency) {
     metrics->total_pings++;
     metrics->successful_pings++;
@@ -77,7 +83,9 @@ static void metrics_record_failure(metrics_t* metrics) {
     metrics->failed_pings++;
 }
 
-/* 计算成功率 */
+/* 计算成功率 (百分比)
+ * 返回值: 0-100 的百分比，无 ping 操作则返回 0.0
+ */
 static double metrics_success_rate(const metrics_t* metrics) {
     if (metrics->total_pings == 0) {
         return 0.0;
@@ -178,7 +186,12 @@ void monitor_print_statistics(monitor_t* restrict monitor) {
                 metrics_uptime_seconds(&monitor->metrics));
 }
 
-/* 执行 ping（带重试） */
+/* 执行 ping（带重试机制）
+ * 实现细节:
+ *   - 尝试 (max_retries + 1) 次
+ *   - 失败后等待 100ms 再重试
+ *   - 一旦成功立即返回
+ */
 static bool perform_ping(monitor_t* restrict monitor, ping_result_t* restrict result) {
     if (monitor == nullptr || result == nullptr) {
         return false;
@@ -194,31 +207,36 @@ static bool perform_ping(monitor_t* restrict monitor, ping_result_t* restrict re
             return true;
         }
         
-        /* 重试前短暂延迟 */
+        /* 重试前延迟 100ms，给网络恢复时间 */
         if (attempt < monitor->config->max_retries) {
             usleep(100000);
-            /* 100ms */
         }
     }
     
     return false;
 }
 
-/* 处理 ping 成功 */
+/* 处理 ping 成功
+ * 功能: (1) 重置失败计数, (2) 记录成功指标, (3) 输出日志
+ * 设计: 成功后立即重置失败计数，确保故障恢复时及时发现
+ */
 static void handle_ping_success(monitor_t* monitor, const ping_result_t* result) {
-    monitor->consecutive_fails = 0;
+    monitor->consecutive_fails = 0;  /* 网络已恢复 */
     metrics_record_success(&monitor->metrics, result->latency_ms);
     
-    /* DEBUG 级别才输出每次成功的 ping 详细信息 */
+    /* 仅 DEBUG 级别输出每次 ping 的详细信息 */
     if (monitor->logger->level >= LOG_LEVEL_DEBUG) {
         logger_debug(monitor->logger, "Ping successful to %s, latency: %.2fms",
                     monitor->config->target, result->latency_ms);
     }
 }
 
-/* 处理 ping 失败 */
+/* 处理 ping 失败
+ * 功能: (1) 增加失败计数, (2) 记录失败统计, (3) 输出警告日志
+ * 注意: 连续失败计数达到阈值后会触发关机决策
+ */
 static void handle_ping_failure(monitor_t* monitor, const ping_result_t* result) {
-    monitor->consecutive_fails++;
+    monitor->consecutive_fails++;  /* 累加连续失败次数 */
     metrics_record_failure(&monitor->metrics);
     
     logger_warn(monitor->logger, "Ping failed to %s: %s (consecutive failures: %d)",
@@ -303,14 +321,17 @@ static void trigger_shutdown(monitor_t* monitor) {
     }
 }
 
-/* 可中断的休眠（发送 watchdog 心跳） */
+/* 可中断的休眠（支持信号中断和 watchdog 心跳）
+ * 实现: 逐秒休眠，每秒检查 stop_flag 和发送心跳
+ * 优点: 快速响应停止信号，同时保持 watchdog 活跃
+ */
 static void sleep_with_stop(monitor_t* monitor, int seconds) {
     for (int i = 0; i < seconds; i++) {
         if (monitor->stop_flag) {
-            break;
+            break;  /* 快速响应停止信号 */
         }
         
-        /* 发送 watchdog 心跳 */
+        /* 每秒发送 systemd watchdog 心跳 */
         if (monitor->systemd != nullptr && 
             systemd_notifier_is_enabled(monitor->systemd) &&
             monitor->config->enable_watchdog) {

@@ -8,7 +8,11 @@
 #include <string.h>
 #include <strings.h>
 
-/* 解析布尔参数（仅支持 true/false） */
+/* 解析布尔值参数 (仅支持 true/false, 可逄需性)
+ * 参数: arg - 字串值 (true/false, 不区分大小写)
+ * 设计: 简化用户接口, 毁含旧有的 yes/no, 1/0, on/off 等格式
+ * 返回: true / false (江节深候时默认 true)
+ */
 static bool parse_bool_arg(const char* arg) {
     if (arg == nullptr) {
         return true;
@@ -29,28 +33,28 @@ void config_init_default(config_t* restrict config) {
     }
     
     /* 网络配置 */
-    snprintf(config->target, sizeof(config->target), "1.1.1.1");
-    config->interval_sec = 10;
-    config->fail_threshold = 5;
-    config->timeout_ms = 2000;
-    config->packet_size = 56;
-    config->max_retries = 2;
-    config->use_ipv6 = false;
+    snprintf(config->target, sizeof(config->target), "1.1.1.1");  /* 默认臮明路 DNS */
+    config->interval_sec = 10;      /* 调查间隔: 10 秒 */
+    config->fail_threshold = 5;     /* 触发关机的一次永久失败 */
+    config->timeout_ms = 2000;      /* 每次 ping 超时: 2 秒 */
+    config->packet_size = 56;       /* IPv4/IPv6 标准 ping 负载体大小 */
+    config->max_retries = 2;        /* 失败后的重试次数 */
+    config->use_ipv6 = false;       /* 默认 IPv4 */
     
     /* 关机配置 */
-    config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;
-    config->delay_minutes = 1;
-    config->dry_run = true;
-    config->shutdown_cmd[0] = '\0';
-    config->custom_script[0] = '\0';
+    config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;  /* 默认: 需常上电 */
+    config->delay_minutes = 1;      /* 延迟关机: 1 分钟 */
+    config->dry_run = true;         /* 干诨会：不实际执行关机 */
+    config->shutdown_cmd[0] = '\0';     /* 權新关机令 (空为默认) */
+    config->custom_script[0] = '\0';    /* 自定义脚本路径 */
     
     /* 行为配置 */
-    config->enable_timestamp = true;
-    config->log_level = LOG_LEVEL_INFO;
+    config->enable_timestamp = true;    /* 是否在日志中输出时间戳 (systemd 場景下目識惡麿) */
+    config->log_level = LOG_LEVEL_INFO; /* 日志级别: INFO 等级 */
     
-    /* systemd 配置 */
-    config->enable_systemd = true;
-    config->enable_watchdog = true;
+    /* systemd 配置 (仅当 systemd 管理程序时是重要) */
+    config->enable_systemd = true;      /* 是否常の systemd 集成 */
+    config->enable_watchdog = true;     /* 是否发送 watchdog 心跳 */
 }
 
 void config_load_from_env(config_t* restrict config) {
@@ -236,6 +240,7 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
         return false;
     }
     
+    /* 验证 目标主機名 (必须不能为BEFORE) */
     if (config->target[0] == '\0') {
         snprintf(error_msg, error_size, "Target host cannot be empty");
         return false;
@@ -273,12 +278,14 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
     }
     
     /* 验证自定义脚本路径安全性 */
+    /* 验证自定义脚本路径安全性 (防止路径遍历、注入攻击等) */
     if (strlen(config->custom_script) > 0 && !is_safe_path(config->custom_script)) {
         snprintf(error_msg, error_size, "Custom script path contains unsafe characters");
         return false;
     }
     
     /* 验证自定义关机命令安全性 */
+    /* 验证自定义关机令安全性 (仅允许已知的安全名令) */
     if (strlen(config->shutdown_cmd) > 0) {
         /* 允许基本的 shutdown 命令格式 */
         if (strncmp(config->shutdown_cmd, "shutdown", 8) != 0 &&
