@@ -1,10 +1,26 @@
 CC ?= gcc
-# C23 标准 + 安全和性能优化标志
+
+# 编译标志说明：
+#   优化标志: -O3 -march=native -mtune=native -flto
+#   C 标准: -std=c2x (C23)
+#   代码检查: -Wall -Wextra -Wpedantic -Werror=implicit-function-declaration
+#   格式化安全: -Werror=format-security -Wformat=2
+#   栈溢出防护: -Wstrict-overflow=5
+#   安全加固: -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=3
+#   POSIX 特性: -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
+#
 CFLAGS ?= -O3 -std=c2x -Wall -Wextra -Wpedantic -Werror=implicit-function-declaration \
           -Werror=format-security -Wformat=2 -Wstrict-overflow=5 \
           -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=3 \
           -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
           -march=native -mtune=native -flto
+
+# 链接标志说明：
+#   RELRO: -Wl,-z,relro,-z,now (Full RELRO - 只读重定位表)
+#   NX: -Wl,-z,noexecstack (禁用可执行栈)
+#   PIE: -pie (位置无关可执行文件)
+#   LTO: -flto (链接时优化)
+#
 LDFLAGS ?= -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto
 
 BIN_DIR := bin

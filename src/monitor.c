@@ -34,6 +34,7 @@ static void signal_handler(int signum) {
     }
 }
 
+/* 设置信号处理函数 (SIGINT, SIGTERM, SIGUSR1) */
 void monitor_setup_signals(monitor_t* restrict monitor) {
     if (monitor == nullptr) {
         return;
@@ -107,6 +108,7 @@ static uint64_t metrics_uptime_seconds(const metrics_t* metrics) {
     return now - metrics->start_time;
 }
 
+/* 初始化监控器（创建 ICMP pinger 和 systemd 集成） */
 bool monitor_init(monitor_t* restrict monitor, config_t* restrict config, 
                   logger_t* restrict logger, char* restrict error_msg, size_t error_size) {
     if (monitor == nullptr || config == nullptr || logger == nullptr || 
@@ -152,6 +154,7 @@ bool monitor_init(monitor_t* restrict monitor, config_t* restrict config,
     return true;
 }
 
+/* 销毁监控器并释放资源 */
 void monitor_destroy(monitor_t* restrict monitor) {
     if (monitor == nullptr) {
         return;
@@ -168,6 +171,7 @@ void monitor_destroy(monitor_t* restrict monitor) {
     g_monitor = nullptr;
 }
 
+/* 打印統計信息（总 ping 数、成功率、埯迟像） */
 void monitor_print_statistics(monitor_t* restrict monitor) {
     if (monitor == nullptr || monitor->logger == nullptr) {
         return;
@@ -342,6 +346,7 @@ static void sleep_with_stop(monitor_t* monitor, int seconds) {
     }
 }
 
+/* 运行监控循环 (不断 ping 目标主机直到接收停止信号) */
 int monitor_run(monitor_t* restrict monitor) {
     if (monitor == nullptr || monitor->config == nullptr || monitor->logger == nullptr) {
         return -1;
@@ -449,6 +454,7 @@ int monitor_run(monitor_t* restrict monitor) {
     return 0;
 }
 
+/* 向监控器算一个孕止信号 */
 void monitor_stop(monitor_t* restrict monitor) {
     if (monitor != nullptr) {
         monitor->stop_flag = 1;

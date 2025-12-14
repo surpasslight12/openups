@@ -83,6 +83,7 @@ char* get_timestamp_str(char* restrict buffer, size_t size) {
     return buffer;
 }
 
+/* 从环境变量读取值，失败时返回默认值 */
 const char* get_env_or_default(const char* restrict name, const char* restrict default_value) {
     if (name == nullptr) {
         return default_value;
@@ -91,6 +92,7 @@ const char* get_env_or_default(const char* restrict name, const char* restrict d
     return value != nullptr ? value : default_value;
 }
 
+/* 从环境变量读取布尔值 (true/false, 不区分大小写) */
 bool get_env_bool(const char* restrict name, bool default_value) {
     if (name == nullptr) {
         return default_value;
@@ -111,6 +113,7 @@ bool get_env_bool(const char* restrict name, bool default_value) {
     return default_value;
 }
 
+/* 从环境变量读取整数值，不正常值时返回默认值 */
 int get_env_int(const char* restrict name, int default_value) {
     if (name == nullptr) {
         return default_value;
@@ -132,6 +135,7 @@ int get_env_int(const char* restrict name, int default_value) {
     return (int)result;
 }
 
+/* 删除字符串两端的空白字符 */
 char* trim_whitespace(char* restrict str) {
     if (str == nullptr) {
         return nullptr;
@@ -153,6 +157,7 @@ char* trim_whitespace(char* restrict str) {
     return str;
 }
 
+/* 比较两个字符串是否相等 */
 bool str_equals(const char* restrict a, const char* restrict b) {
     if (a == b) {
         return true;
@@ -163,6 +168,7 @@ bool str_equals(const char* restrict a, const char* restrict b) {
     return strcmp(a, b) == 0;
 }
 
+/* 检验路径是否安全 (防止路径遍历和都令注入) */
 bool is_safe_path(const char* restrict path) {
     if (path == nullptr || *path == '\0') {
         return false;

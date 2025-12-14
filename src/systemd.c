@@ -113,14 +113,17 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier) {
     notifier->enabled = false;
 }
 
+/* 检查 systemd 通知器是否已启用 */
 bool systemd_notifier_is_enabled(const systemd_notifier_t* restrict notifier) {
     return notifier != nullptr && notifier->enabled;
 }
 
+/* 通知 systemd 程序已就绪 (启动完成) */
 bool systemd_notifier_ready(systemd_notifier_t* restrict notifier) {
     return send_notify(notifier, "READY=1");
 }
 
+/* 打更新程序状态信息到 systemd */
 bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status) {
     if (notifier == nullptr || !notifier->enabled || status == nullptr) {
         return false;
@@ -135,18 +138,20 @@ bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* 
     return send_notify(notifier, message);
 }
 
+/* 通知 systemd 程序即将停止运行 */
 bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier) {
     return send_notify(notifier, "STOPPING=1");
 }
 
 bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier) {
     /* 发送 watchdog 心跳 (WATCHDOG=1)
-     * 程序需要不超过 WATCHDOG_USEC/2 秒便送一次心跳
-     * 如果 0 次仍旧送 watchdog 心跳，systemd 会生习泻拧程区段
+     * 程序需要每隔 WATCHDOG_USEC/2 祉钗时間发送一次心跳
+     * 如果超过没有发送 watchdog 心跳，systemd 会强制重启应用程序
      */
     return send_notify(notifier, "WATCHDOG=1");
 }
 
+/* 获取 systemd watchdog 超时时间 (微秒) */
 uint64_t systemd_notifier_get_watchdog_usec(const systemd_notifier_t* restrict notifier) {
     return (notifier != nullptr) ? notifier->watchdog_usec : 0;
 }

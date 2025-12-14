@@ -111,6 +111,7 @@ void logger_error(logger_t* restrict logger, const char* restrict fmt, ...) {
     log_message(logger, LOG_LEVEL_ERROR, buffer);
 }
 
+/* 将 log_level_t 枚举转换为人类可读的字符串 */
 const char* log_level_to_string(log_level_t level) {
     switch (level) {
         case LOG_LEVEL_SILENT: return "SILENT";

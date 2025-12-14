@@ -15,13 +15,13 @@
  *   2. 优先级：ENV 变量 > CLI 参数
  *   3. 验证配置的有效性
  *   4. 初始化日志器
- *   5. 初始化监控器 (socket, systemd 接合)
+ *   5. 初始化监控器 (socket, systemd 集成)
  *   6. 运行主监控循环
- *   7. 清理资源並退出
+ *   7. 清理资源并退出
  */
 int main(int argc, char** argv) {
-    /* 配置优先级 (CLI > ENV > Default)
-     * 出场：允许运维人员炄正地理配置
+    /* 配置优先级 (CLI > ENV > 默认)
+     * 流程：允许运维人员实時修复配置
      */
     config_t config;
     config_init_default(&config);
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     /* 从命令行加载配置 */
     if (!config_load_from_cmdline(&config, argc, argv)) {
         fprintf(stderr, "Failed to parse command line arguments\n");
-        config_print_usage();  /* 打印使用方式（此位置退出码 1） */
+        config_print_usage();  /* 打印使用方法（并验字退出） */
         return 1;
     }
     
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         config_print(&config);
     }
     
-    /* 初始化监控器 (创建 raw socket, 预先 systemd 接合) */
+    /* 初始化监控器 (创建 raw socket, 通过 systemd 集成) */
     monitor_t monitor;
     if (!monitor_init(&monitor, &config, &logger, error_msg, sizeof(error_msg))) {
         fprintf(stderr, "Failed to initialize monitor: %s\n", error_msg);

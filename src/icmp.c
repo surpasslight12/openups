@@ -36,25 +36,26 @@ static uint16_t calculate_checksum(const void* data, size_t len) {
     const uint16_t* buf = (const uint16_t*)data;
     uint32_t sum = 0;
     
-    /* 步骤1: 累加所有 16 位字 */
+    /* 步骤 1: 累加所有 16 位字 */
     for (size_t i = 0; i < len / 2; i++) {
         sum += buf[i];
     }
     
-    /* 步骤2: 处理奇数位院 */
+    /* 步骤 2: 处理奇数位院 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
     
-    /* 步骤3: 处理进位 (IP 格式校验和需要一估算法) */
+    /* 步骤 3: 处理进位 (IP 格式校验和需要一个捕获算法) */
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
     
-    /* 步骤4: 返回需求（变反位） */
+    /* 步骤 4: 返回反码 */
     return ~sum;
 }
 
+/* 初始化 ICMP pinger（需要 CAP_NET_RAW 权限） */
 bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, 
                       char* restrict error_msg, size_t error_size) {
     if (pinger == nullptr || error_msg == nullptr || error_size == 0) {
@@ -70,7 +71,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     pinger->sockfd = socket(family, SOCK_RAW, protocol);
     if (pinger->sockfd < 0) {
         snprintf(error_msg, error_size, 
-                "Failed to create socket: %s (需要 root 权限或 CAP_NET_RAW)", 
+                "Failed to create socket: %s (require root or CAP_NET_RAW)", 
                 strerror(errno));
         return false;
     }
@@ -78,6 +79,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     return true;
 }
 
+/* 销毁 ICMP pinger 并需锋 raw socket */
 void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
     if (pinger == nullptr) {
         return;
@@ -90,7 +92,7 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
 }
 
 /* 解析目标地址 (IPv4 或 IPv6)
- * 实现: 使用 getaddrinfo() 成常解析 DNS 名称或直接 IP 地址
+ * 实现: 使用 getaddrinfo() 解析 DNS 名称或直接 IP 地址
  * 参数: target - 主机名或 IP 地址, use_ipv6 - true 为 IPv6, false 为 IPv4
  */
 static bool resolve_target(const char* restrict target, bool use_ipv6, 
@@ -227,6 +229,10 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
  *   2. 使用 ICMPv6 案叫和类型
  * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
  */
+/* IPv6 Ping 实现 (RFC 4443)
+ * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
+ * 特殊注意: IPv6 校验和由内核自动计算，不需手动计算
+ */
 static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_in6* restrict dest_addr,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
@@ -320,6 +326,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
     return result;
 }
 
+/* 执行 ping 操作 (自动根据地址类型选择 IPv4/IPv6） */
 ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger, const char* restrict target,
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
