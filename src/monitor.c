@@ -171,7 +171,7 @@ void monitor_destroy(monitor_t* restrict monitor) {
     g_monitor = nullptr;
 }
 
-/* 打印統計信息（总 ping 数、成功率、埯迟像） */
+/* 打印统计信息（总 ping 数、成功率、延迟值） */
 void monitor_print_statistics(monitor_t* restrict monitor) {
     if (monitor == nullptr || monitor->logger == nullptr) {
         return;
@@ -454,7 +454,7 @@ int monitor_run(monitor_t* restrict monitor) {
     return 0;
 }
 
-/* 向监控器算一个孕止信号 */
+/* 向监控器发送一个停止信号 */
 void monitor_stop(monitor_t* restrict monitor) {
     if (monitor != nullptr) {
         monitor->stop_flag = 1;

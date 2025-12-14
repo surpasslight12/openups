@@ -168,7 +168,7 @@ bool str_equals(const char* restrict a, const char* restrict b) {
     return strcmp(a, b) == 0;
 }
 
-/* 检验路径是否安全 (防止路径遍历和都令注入) */
+/* 检验路径是否安全 (防止路径遍历和命令注入) */
 bool is_safe_path(const char* restrict path) {
     if (path == nullptr || *path == '\0') {
         return false;

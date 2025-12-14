@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     /* 从命令行加载配置 */
     if (!config_load_from_cmdline(&config, argc, argv)) {
         fprintf(stderr, "Failed to parse command line arguments\n");
-        config_print_usage();  /* 打印使用方法（并验字退出） */
+        config_print_usage();  /* 打印使用方法（并验证退出） */
         return 1;
     }
     

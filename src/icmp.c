@@ -41,12 +41,12 @@ static uint16_t calculate_checksum(const void* data, size_t len) {
         sum += buf[i];
     }
     
-    /* 步骤 2: 处理奇数位院 */
+    /* 步骤 2: 处理奇数位 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
     
-    /* 步骤 3: 处理进位 (IP 格式校验和需要一个捕获算法) */
+    /* 步骤 3: 处理进位 (IP 格式校验和需要一个循环算法) */
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
@@ -79,7 +79,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     return true;
 }
 
-/* 销毁 ICMP pinger 并需锋 raw socket */
+/* 销毁 ICMP pinger 并关闭 raw socket */
 void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
     if (pinger == nullptr) {
         return;

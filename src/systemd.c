@@ -123,7 +123,7 @@ bool systemd_notifier_ready(systemd_notifier_t* restrict notifier) {
     return send_notify(notifier, "READY=1");
 }
 
-/* 打更新程序状态信息到 systemd */
+/* 更新程序状态信息到 systemd */
 bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status) {
     if (notifier == nullptr || !notifier->enabled || status == nullptr) {
         return false;
