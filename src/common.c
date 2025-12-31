@@ -62,22 +62,22 @@ char* get_timestamp_str(char* restrict buffer, size_t size) {
     }
     
     time_t now = time(nullptr);
-    struct tm* tm_info = localtime(&now);
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-
-    if (tm_info == nullptr) {
+    struct tm tm_info;
+    if (localtime_r(&now, &tm_info) == nullptr) {
         buffer[0] = '\0';
         return buffer;
     }
     
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    
     snprintf(buffer, size, "%04d-%02d-%02d %02d:%02d:%02d.%03ld",
-             tm_info->tm_year + 1900,
-             tm_info->tm_mon + 1,
-             tm_info->tm_mday,
-             tm_info->tm_hour,
-             tm_info->tm_min,
-             tm_info->tm_sec,
+             tm_info.tm_year + 1900,
+             tm_info.tm_mon + 1,
+             tm_info.tm_mday,
+             tm_info.tm_hour,
+             tm_info.tm_min,
+             tm_info.tm_sec,
              tv.tv_usec / 1000);
     
     return buffer;

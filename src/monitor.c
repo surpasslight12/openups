@@ -179,7 +179,7 @@ void monitor_print_statistics(monitor_t* restrict monitor) {
     
     logger_info(monitor->logger, 
                 "Statistics: %lu total pings, %lu successful, %lu failed (%.2f%% success rate), "
-                "latency min %.2fms / max %.2fms / avg %.2fms, uptime %lus",
+                "latency min %.2fms / max %.2fms / avg %.2fms, uptime %llu seconds",
                 monitor->metrics.total_pings,
                 monitor->metrics.successful_pings,
                 monitor->metrics.failed_pings,
@@ -187,7 +187,7 @@ void monitor_print_statistics(monitor_t* restrict monitor) {
                 monitor->metrics.min_latency,
                 monitor->metrics.max_latency,
                 metrics_avg_latency(&monitor->metrics),
-                metrics_uptime_seconds(&monitor->metrics));
+                (unsigned long long)metrics_uptime_seconds(&monitor->metrics));
 }
 
 /* 执行 ping（带重试机制）

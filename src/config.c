@@ -154,25 +154,25 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 snprintf(config->target, sizeof(config->target), "%s", optarg);
                 break;
             case 'i':
-                config->interval_sec = atoi(optarg);
+                config->interval_sec = (int)strtol(optarg, nullptr, 10);
                 break;
             case 'n':
-                config->fail_threshold = atoi(optarg);
+                config->fail_threshold = (int)strtol(optarg, nullptr, 10);
                 break;
             case 'w':
-                config->timeout_ms = atoi(optarg);
+                config->timeout_ms = (int)strtol(optarg, nullptr, 10);
                 break;
             case 's':
-                config->packet_size = atoi(optarg);
+                config->packet_size = (int)strtol(optarg, nullptr, 10);
                 break;
             case 'r':
-                config->max_retries = atoi(optarg);
+                config->max_retries = (int)strtol(optarg, nullptr, 10);
                 break;
             case 'S':
                 config->shutdown_mode = string_to_shutdown_mode(optarg);
                 break;
             case 'D':
-                config->delay_minutes = atoi(optarg);
+                config->delay_minutes = (int)strtol(optarg, nullptr, 10);
                 break;
             case 'C':
                 snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", optarg);
@@ -300,12 +300,13 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
     return true;
 }
 
-/* 打印当前配置（用于序列化和调试） */
+/* 打印当前配置（用于序列化和调试，仅在 DEBUG 模式下由 main() 调用） */
 void config_print(const config_t* restrict config) {
     if (config == nullptr) {
         return;
     }
     
+    /* 打印到标准输出（仅在 DEBUG 模式下调用） */
     printf("Configuration:\n");
     printf("  Target: %s\n", config->target);
     printf("  Interval: %d seconds\n", config->interval_sec);

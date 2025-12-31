@@ -103,7 +103,7 @@ static bool resolve_target(const char* restrict target, bool use_ipv6,
         return false;
     }
     
-    struct addrinfo hints, *result;
+    struct addrinfo hints, *result = nullptr;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = use_ipv6 ? AF_INET6 : AF_INET;
     hints.ai_socktype = SOCK_RAW;
@@ -158,11 +158,16 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
     icmp_hdr->checksum = 0;
     icmp_hdr->checksum = calculate_checksum(packet, packet_len);
     
-    /* 设置超时 */
+    /* 设置接收超时 */
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(pinger->sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    if (setsockopt(pinger->sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        snprintf(result.error_msg, sizeof(result.error_msg), 
+                "Failed to set socket timeout: %s", strerror(errno));
+        free(packet);
+        return result;
+    }
     
     /* 发送 ICMP Echo Request */
     struct timeval send_time;
@@ -200,8 +205,24 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
     }
     
     /* 解析 IP 头和 ICMP 头 (IP 头长度可变) */
+    /* 验证收到的数据包至少包含 IP 头 */
+    if (received < (int)sizeof(struct ip)) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Received packet too small for IP header");
+        free(packet);
+        return result;
+    }
+    
     struct ip* ip_hdr = (struct ip*)recv_buf;
-    size_t ip_hdr_len = ip_hdr->ip_hl * 4;  /* IHL 字段是 32 位单位 */
+    size_t ip_hdr_len = ip_hdr->ip_hl * 4;  /* IHL 字段是 32 位单位，最大值 15*4=60 字节 */
+    
+    /* 验证 IP 头长度和 ICMP 头长度都在接收缓冲区范围内 */
+    if (ip_hdr_len > (size_t)received || 
+        ip_hdr_len + sizeof(struct icmphdr) > (size_t)received) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Received packet too small for ICMP header");
+        free(packet);
+        return result;
+    }
+    
     struct icmphdr* recv_icmp = (struct icmphdr*)(recv_buf + ip_hdr_len);
     
     /* 验证 ICMP Echo Reply (类型和 ID 必须匹配) */
@@ -259,11 +280,16 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
     
     /* IPv6 内核自动计算校验和 (不需手动设置) */
     
-    /* 设置超时 */
+    /* 设置接收超时 */
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(pinger->sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    if (setsockopt(pinger->sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+        snprintf(result.error_msg, sizeof(result.error_msg), 
+                "Failed to set socket timeout: %s", strerror(errno));
+        free(packet);
+        return result;
+    }
     
     /* 发送 ICMPv6 Echo Request */
     struct timeval send_time;
