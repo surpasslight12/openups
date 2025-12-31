@@ -5,14 +5,26 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Service type: notify (program communicates readiness via sd_notify protocol)
 Type=notify
-# Optional delay before starting the main binary
+
+# Optional delay before starting (e.g., waiting for network stack initialization)
 ExecStartPre=/bin/sleep 300
 ExecStart=/usr/local/bin/openups
-TimeoutStartSec=360
-Restart=on-failure
-RestartSec=10
-WatchdogSec=30
+
+# Timeout configurations
+TimeoutStartSec=360         # Maximum time to wait for service startup
+TimeoutStopSec=10           # Maximum time for graceful shutdown
+StartLimitInterval=300      # Restart rate limiting (restart every N seconds)
+StartLimitBurst=3           # Maximum restart attempts within interval
+
+# Restart policy
+Restart=on-failure          # Only restart if process exits with error
+RestartSec=10               # Wait 10 seconds before restart attempt
+
+# Systemd watchdog heartbeat (5 second timeout)
+# Program must call sd_notify with WATCHDOG=1 every 2.5 seconds
+WatchdogSec=5
 
 # Logging
 StandardOutput=journal

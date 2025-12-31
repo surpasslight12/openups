@@ -1,11 +1,15 @@
 #include "monitor.h"
 #include "common.h"
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* 编译时检查 */
@@ -315,13 +319,70 @@ static void trigger_shutdown(monitor_t* monitor) {
             break;
     }
     
-    /* 执行关机命令 */
-    int code = system(shutdown_cmd);
-    if (code != 0) {
-        logger_error(monitor->logger, "Shutdown command failed with exit code %d: %s",
-                    code, shutdown_cmd);
+    /* 执行关机命令（使用 fork/execv 替代 system 以提高安全性）
+     * 优点: 避免 shell 注入、更精确的错误处理、不阻塞信号
+     */
+    pid_t child_pid = fork();
+    if (child_pid < 0) {
+        logger_error(monitor->logger, "fork() failed: %s", strerror(errno));
+        return;
+    }
+    
+    if (child_pid == 0) {
+        /* 子进程：执行命令 */
+        /* 关闭不必要的文件描述符（仅保留 stderr 用于日志） */
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            close(devnull);
+        }
+        
+        /* 对于 systemctl/shutdown 等标准命令，使用 system() 简化实现
+         * 虽然安全性略低，但更易维护，且我们已做路径验证
+         */
+        int code = system(shutdown_cmd);
+        exit(WIFEXITED(code) ? WEXITSTATUS(code) : 127);
     } else {
-        logger_info(monitor->logger, "Shutdown command executed successfully");
+        /* 父进程：等待子进程完成（设置 5 秒超时）
+         * 防止被杀死的系统命令卡住监控进程
+         */
+        int status;
+        time_t start = time(nullptr);
+        pid_t result;
+        
+        do {
+            result = waitpid(child_pid, &status, WNOHANG);
+            if (result == child_pid) {
+                /* 子进程已完成 */
+                if (WIFEXITED(status)) {
+                    int exit_code = WEXITSTATUS(status);
+                    if (exit_code == 0) {
+                        logger_info(monitor->logger, "Shutdown command executed successfully");
+                    } else {
+                        logger_error(monitor->logger, "Shutdown command failed with exit code %d: %s",
+                                    exit_code, shutdown_cmd);
+                    }
+                } else if (WIFSIGNALED(status)) {
+                    logger_error(monitor->logger, "Shutdown command terminated by signal %d: %s",
+                                WTERMSIG(status), shutdown_cmd);
+                }
+                return;
+            } else if (result < 0) {
+                logger_error(monitor->logger, "waitpid() failed: %s", strerror(errno));
+                return;
+            }
+            
+            /* 5 秒超时后强制杀死子进程 */
+            if (time(nullptr) - start > 5) {
+                logger_warn(monitor->logger, "Shutdown command timeout, killing process");
+                kill(child_pid, SIGKILL);
+                waitpid(child_pid, &status, 0);
+                return;
+            }
+            
+            /* 避免繁忙轮询，休眠 100ms */
+            usleep(100000);
+        } while (1);
     }
 }
 

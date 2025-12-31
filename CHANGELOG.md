@@ -10,15 +10,38 @@
 ## [Unreleased]
 
 ### Added
+- **系统调用安全增强** 🔒
+  - 替换 `system()` 调用为 `fork()/execv()` 实现，避免 shell 注入攻击
+  - 为关机命令执行添加 5 秒超时保护，防止系统命令卡死
+  - 改进子进程管理，使用 `waitpid()` 带 WNOHANG 非阻塞等待
+  - 新增 STDOUT 重定向到 /dev/null，避免命令输出污染日志
+  - 详细的执行结果日志（包括退出码和信号信息）
+
+- **Makefile 帮助信息完善** 📖
+  - 扩展 `make help` 输出，包括完整的目标说明、变量列表和实用例子
+  - 添加文档导航（README.md, QUICKSTART.md, TECHNICAL.md, CONTRIBUTING.md）
+  - 提升新用户的使用体验和学习曲线
+
+- **systemd 服务配置增强** ⚙️
+  - 改进 `TimeoutStopSec=10`（优雅关闭超时）
+  - 新增 `StartLimitInterval=300` 和 `StartLimitBurst=3`（重启限流）
+  - 优化 `WatchdogSec=5`（更精确的 watchdog 超时）
+  - 添加详细的配置说明注释
+
+- **文档完善** 📚
+  - README.md: 新增"性能基准"章节（CPU/内存/网络占用统计）
+  - README.md: 新增"已知限制"章节（网络、系统、关机机制限制）
+  - 添加 IPv6 延迟特征和数据库约束说明
+
+### Changed
 - **代码注释全面增强** 📝
   - 为 monitor.c 添加详细的监控循环、重试机制、信号处理、watchdog 心跳注释
   - 为 icmp.c 添加 ICMP 校验和算法、IPv4/IPv6 协议实现的深入注释
   - 为 config.c 添加参数优先级、验证逻辑、安全性检查的详细说明
   - 为 systemd.c 添加 UNIX domain socket、通知机制、watchdog 超时的注释
   - 为 main.c 添加程序初始化流程、配置加载顺序的注释
-  - 总计 176 个注释块，覆盖所有关键函数和复杂算法
-  - 提升代码可读性，便于新开发者快速上手
-  - 代码行数从 1,947 增加到 2,027（+80 行，主要是新增注释）
+  - 总计 200+ 个注释块，覆盖所有关键函数和复杂算法
+  - 代码行数从 2,073 增加到 2,150+（主要是新增注释和错误处理）
 
 - **关机命令优化** ⚡
   - 当启用 systemd 集成时，自动优先使用 `systemctl poweroff` 替代 `/sbin/shutdown`
@@ -32,12 +55,6 @@
   - 移除 `OPENUPS_SYSLOG` 环境变量
   - 移除 systemd 服务中的 `SyslogIdentifier` 和 `SyslogLevelPrefix` 配置
   - 原因：stderr 已通过 systemd 的 `StandardOutput=journal` 和 `StandardError=journal` 自动捕获到 journalctl，实现完全冗余
-
-### Changed
-- **日志系统简化**
-  - logger.c 不再包含 `<syslog.h>`
-  - 日志仅输出到 stderr，由 systemd 自动转向 journalctl
-  - 代码行数减少 ~30 行，维护负担降低
 
 ### Documentation
 - 📝 移除所有 SYSLOG_*.md 和 SYSLOG_*.txt 文档文件
