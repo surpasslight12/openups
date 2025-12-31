@@ -145,8 +145,8 @@ bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier) {
 
 bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier) {
     /* 发送 watchdog 心跳 (WATCHDOG=1)
-     * 程序需要每隔 WATCHDOG_USEC/2 祉钗时間发送一次心跳
-     * 如果超过没有发送 watchdog 心跳，systemd 会强制重启应用程序
+     * 程序需要每隔 WATCHDOG_USEC/2 时间发送一次心跳
+     * 如果超时未发送 watchdog 心跳，systemd 会强制重启应用程序
      */
     return send_notify(notifier, "WATCHDOG=1");
 }

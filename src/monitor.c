@@ -429,10 +429,6 @@ int monitor_run(monitor_t* restrict monitor) {
             }
         }
         
-        if (monitor->stop_flag) {
-            break;
-        }
-        
         /* 休眠（带 watchdog 心跳） */
         sleep_with_stop(monitor, monitor->config->interval_sec);
     }

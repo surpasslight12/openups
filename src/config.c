@@ -201,7 +201,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 if (optarg) {
                     config->enable_timestamp = parse_bool_arg(optarg);
                 } else {
-                    config->enable_timestamp = false;
+                    config->enable_timestamp = true;  /* 默认启用时间戳 */
                 }
                 break;
             case 'M':

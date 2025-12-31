@@ -25,10 +25,10 @@ static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes
 
 /* ICMP 校验和计算 (RFC 792)
  * 算法:
- *   1. 会变分为多个 16 位字，依次累加
- *   2. 如果长度是奇数，最后一个字节作为 16 位字的低位
- *   3. 将前面的进位加回
- *   4. 被故中 校验和声明中路路寽穷是 0)
+ *   1. 数据分为多个 16 位字，依次累加
+ *   2. 如果长度是奇数，最后一个字节作为 16 位字的高位（补零作为低位）
+ *   3. 将进位加回到和中
+ *   4. 对结果取反码，零为全 1
  * IPv4: 需手动计算，因为 ICMP 是内核上层的协议
  * IPv6: 由内核自动计算 (IPV6_CHECKSUM socket 选项)
  */
@@ -224,14 +224,10 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
 }
 
 /* IPv6 Ping 实现 (RFC 4443)
- * 与 IPv4 类似, 汤下分或:
+ * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
+ * 特殊注意:
  *   1. 校验和由内核自动计算 (IPV6_CHECKSUM socket 选项)
- *   2. 使用 ICMPv6 案叫和类型
- * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
- */
-/* IPv6 Ping 实现 (RFC 4443)
- * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
- * 特殊注意: IPv6 校验和由内核自动计算，不需手动计算
+ *   2. 使用 ICMPv6 报头和类型
  */
 static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_in6* restrict dest_addr,
                                int timeout_ms, int packet_size) {
