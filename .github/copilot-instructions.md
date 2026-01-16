@@ -22,7 +22,7 @@ src/
 
 **关键特性**:
 - 零第三方依赖（仅 C 标准库和 Linux 系统调用）
-- 单一二进制 (39 KB)，内存占用 < 5 MB
+- 单一二进制 (43 KB)，内存占用 < 5 MB
 - 需要 `CAP_NET_RAW` 权限（ICMP raw socket）
 - 配置优先级：CLI 参数 > 环境变量 > 默认值
 
@@ -325,7 +325,7 @@ MemoryMax=50M
 ## 性能和安全注意事项
 
 ### 性能优化技术
-- **C23 标准**: 使用 `nullptr`, `static_assert`, `restrict` 关键字
+- **C23 标准**: 使用 `static_assert`, `restrict` 等关键字（文档中避免使用 C++ 专用关键字如 `nullptr`）
 - **编译优化**: `-O3 -flto -march=native -mtune=native`（Makefile 默认）
 - **内存管理**: 关键路径使用栈上固定大小缓冲区（避免 malloc）
 - **循环优化**: 监控循环 99% 时间在 `sleep()`，CPU 占用 < 1%

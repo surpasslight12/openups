@@ -18,7 +18,7 @@
 ### 性能优势
 - **C23 标准**：使用最新的 C 语言标准和编译器优化
 - **极致性能**：-O3 + LTO + CPU 原生优化
-- **超小体积**：仅 39 KB 二进制文件
+- **超小体积**：仅 43 KB 二进制文件
 - **低资源占用**：< 5 MB 内存，< 1% CPU
 
 ### 系统集成
@@ -28,7 +28,7 @@
 ### 可靠性
 - **信号处理**：优雅处理 SIGINT/SIGTERM/SIGUSR1
 - **指标统计**：实时监控成功率、延迟、运行时长
-- **Dry-run 模式**：默认启用，防止误操作
+- **dry-run 模式**：默认启用，防止误操作
 
 ## 🏗️ 架构
 
@@ -152,7 +152,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 | `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
 | `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令 |
 | `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
-| `-d, --dry-run[=true/false]` | `OPENUPS_DRY_RUN` | `true` | Dry-run 模式（不实际关机） |
+| `-d, --dry-run[=true/false]` | `OPENUPS_DRY_RUN` | `true` | dry-run 模式（不实际关机） |
 
 ### 日志参数
 
@@ -264,7 +264,7 @@ kill -USR1 $(pidof openups)
 - ✅ 边界条件测试
 - ✅ 代码质量检查
 
-## � 性能基准
+## 📊 性能基准
 
 ### 资源占用
 | 场景 | CPU | 内存 | 网络 |
@@ -327,9 +327,9 @@ kill -USR1 $(pidof openups)
    - 脚本路径不支持空格和特殊字符
    - 脚本执行有 5 秒超时限制
 
-3. **Dry-run 模式**
-   - Dry-run 不会执行实际关机（默认启用，需要 `--dry-run=false` 才执行）
-   - 建议生产部署前在 Dry-run 模式验证配置
+3. **dry-run 模式**
+   - dry-run 不会执行实际关机（默认启用，需要 `--dry-run=false` 才执行）
+   - 建议生产部署前在 dry-run 模式验证配置
 
 ---
 

@@ -15,7 +15,7 @@ make
 
 ### 3. 测试运行（需要 root 权限）
 ```bash
-# Dry-run 模式（默认，不会真正关机）
+# dry-run 模式（默认，不会真正关机）
 sudo ./bin/openups --target 8.8.8.8 --interval 5 --threshold 3
 
 # 实际运行模式（小心使用！）
@@ -304,7 +304,7 @@ sudo ./bin/openups \
 export OPENUPS_TARGET=8.8.8.8
 export OPENUPS_INTERVAL=10
 export OPENUPS_THRESHOLD=5
-export OPENUPS_DRY_RUN=no
+export OPENUPS_DRY_RUN=false
 
 sudo -E ./bin/openups
 ```

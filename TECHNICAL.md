@@ -19,34 +19,36 @@
 
 ---
 
-## 架构设计
+### C23 特性使用
 
-### 概览
+#### ✅ 指针与返回值检查（C 风格说明）
+示例采用 C 语言惯用写法：使用 `NULL` 作为空指针检查，并建议在可用的编译器上使用 `__attribute__((warn_unused_result))` 或等效机制提示检查返回值。
 
-OpenUPS 采用**模块化架构**设计：
+```c
+static monitor_t* g_monitor = NULL;
 
-- **模块化设计**：7 个独立模块，职责单一
-- **零第三方依赖**：仅使用 C23 标准库和 Linux 系统调用
-- **原生 ICMP**：raw socket 实现，无需系统 ping 命令
-- **systemd 深度集成**：sd_notify、watchdog、状态通知
-- **高性能优化**：-O3 + LTO + CPU native 优化
-- **安全加固**：10/10 安全评分，Full RELRO + PIE + Stack Canary
+if (monitor == NULL) {
+    return false;
+}
 
-### 目录结构
+/* 若需强制检查返回值（GCC/Clang）可使用： */
+bool config_validate(const config_t* config, char* error_msg, size_t error_size)
+    __attribute__((warn_unused_result));
 
+int monitor_run(monitor_t* monitor) __attribute__((warn_unused_result));
 ```
-openups/
-├── src/
-│   ├── main.c         # 程序入口
-│   ├── common.c/h     # 通用工具函数
-│   ├── logger.c/h     # 日志系统
-│   ├── config.c/h     # 配置管理
-│   ├── icmp.c/h       # ICMP ping 实现
-│   ├── systemd.c/h    # systemd 集成
-│   └── monitor.c/h    # 监控核心逻辑
-├── systemd/
-│   └── openups.service  # systemd 服务文件
-├── Makefile           # 构建系统
+
+#### ✅ restrict（优化指针别名）
+```c
+bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
+                      char* restrict error_msg, size_t error_size);
+```
+
+#### ✅ static_assert（编译时断言）
+```c
+static_assert(sizeof(sig_atomic_t) >= sizeof(int),
+              "sig_atomic_t must be at least int size");
+```
 ├── README.md          # 项目说明
 ├── QUICKSTART.md      # 快速上手指南
 ├── TECHNICAL.md       # 本文件
@@ -353,19 +355,21 @@ const char* str;
 
 ### C23 特性使用
 
-#### ✅ nullptr（替代 NULL）
-```c
-static monitor_t* g_monitor = nullptr;
+#### ✅ 空指针与返回值检查（C 风格示例）
+示例采用 C 语言惯用写法：使用 `NULL` 作为空指针检查，并建议在可用的编译器上使用 `__attribute__((warn_unused_result))` 或等效机制提示检查返回值。
 
-if (monitor == nullptr) {
+```c
+static monitor_t* g_monitor = NULL;
+
+if (monitor == NULL) {
     return false;
 }
-```
 
-#### ✅ [[nodiscard]]（强制检查返回值）
-```c
-[[nodiscard]] bool config_validate(const config_t* config, ...);
-[[nodiscard]] int monitor_run(monitor_t* monitor);
+/* 若需强制检查返回值（GCC/Clang）可使用： */
+bool config_validate(const config_t* config, char* error_msg, size_t error_size)
+    __attribute__((warn_unused_result));
+
+int monitor_run(monitor_t* monitor) __attribute__((warn_unused_result));
 ```
 
 #### ✅ restrict（优化指针别名）
@@ -459,7 +463,7 @@ LDFLAGS = -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto
 
 - **CPU 占用**: < 1%（主循环 99% 时间在 sleep）
 - **内存占用**: < 5 MB
-- **二进制大小**: 39 KB
+- **二进制大小**: 43 KB
 - **启动时间**: < 10ms
 
 ### 内存使用
@@ -472,7 +476,7 @@ LDFLAGS = -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto
 
 ```c
 // 早期返回避免不必要计算
-if (logger == nullptr || logger->level < LOG_LEVEL_DEBUG) {
+if (logger == NULL || logger->level < LOG_LEVEL_DEBUG) {
     return;  // 跳过格式化
 }
 
@@ -544,7 +548,7 @@ if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
 ```
 
 ### Q3: 为什么编译需要 GCC 14+？
-**A**: C23 特性支持（nullptr, [[nodiscard]], static_assert）
+**A**: C23 特性支持（static_assert, restrict 等）
 ```bash
 # 检查编译器版本
 gcc --version
@@ -570,7 +574,7 @@ getcap ./bin/openups
 ```c
 // 从环境变量读取超时时间
 const char* watchdog_str = getenv("WATCHDOG_USEC");
-notifier->watchdog_usec = strtoull(watchdog_str, nullptr, 10);
+notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
 
 // 每秒发送心跳（在 sleep_with_stop 循环中）
 systemd_notifier_watchdog(monitor->systemd);
