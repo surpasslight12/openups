@@ -152,5 +152,5 @@ echo "✓ 所有测试通过！"
 echo "========================================"
 echo
 ls -lh bin/openups
-echo "更多使用示例请查看 QUICKSTART.md"
+echo "更多使用示例请查看 README.md"
 echo

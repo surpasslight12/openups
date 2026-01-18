@@ -50,6 +50,8 @@ src/
 
 ## 🚀 快速开始
 
+面向首次使用者的最小流程：编译 → 查看帮助 → dry-run 验证 →（可选）安装为 systemd 服务。
+
 ### 前置要求
 
 ```bash
@@ -67,6 +69,12 @@ sudo yum groupinstall "Development Tools"
 make
 
 # 编译完成后，二进制文件位于 bin/openups
+```
+
+### 查看帮助
+
+```bash
+./bin/openups --help
 ```
 
 ### 测试运行
@@ -100,13 +108,53 @@ sudo systemctl enable openups
 openups --help
 ```
 
-## 📖 使用示例
+### 配置 systemd 服务（推荐用环境变量）
+
+```bash
+sudo systemctl edit openups
+```
+
+示例配置：
+
+```ini
+[Service]
+Environment="OPENUPS_TARGET=8.8.8.8"
+Environment="OPENUPS_INTERVAL=10"
+Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_TIMESTAMP=false"
+```
+
+应用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now openups
+sudo systemctl status openups
+sudo journalctl -u openups -f
+```
+
+## 📖 常用场景
 
 ### 基本监控
 
 ```bash
 # 监控 Cloudflare DNS，10 秒间隔，5 次失败触发
 ./bin/openups --target 1.1.1.1 --interval 10 --threshold 5
+```
+
+### 延迟关机模式
+
+```bash
+# 失败后延迟 5 分钟关机
+sudo ./bin/openups --target 8.8.8.8 --shutdown-mode delayed --delay 5 --dry-run=false
+```
+
+### 仅记录日志（不关机）
+
+```bash
+# 仅记录失败，持续监控
+sudo ./bin/openups --target 192.168.1.1 --shutdown-mode log-only
 ```
 
 ### 实际关机模式
@@ -128,62 +176,20 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 ./bin/openups --shutdown-mode custom --script /usr/local/bin/my-shutdown.sh --dry-run=false
 ```
 
-## ⚙️ 配置参数
+> 注意：`--shutdown-cmd` 或 `OPENUPS_SHUTDOWN_CMD` 执行时不经过 shell，
+> 参数仅支持空白分隔，不支持引号或重定向语法。
 
-**配置优先级**：CLI 参数 > 环境变量 > 默认值
+## ⚙️ 常用参数
 
-### 网络参数
+完整参数以 `./bin/openups --help` 为准；更完整的部署/排错/限制说明见 [TECHNICAL.md](TECHNICAL.md#%E8%BF%90%E8%A1%8C%E5%8F%82%E8%80%83)。
 
-| CLI 参数 | 环境变量 | 默认值 | 说明 |
-|---------|---------|--------|------|
-| `-t, --target <host>` | `OPENUPS_TARGET` | `1.1.1.1` | 监控目标主机/IP |
-| `-i, --interval <sec>` | `OPENUPS_INTERVAL` | `10` | ping 间隔（秒） |
-| `-n, --threshold <num>` | `OPENUPS_THRESHOLD` | `5` | 连续失败阈值 |
-| `-w, --timeout <ms>` | `OPENUPS_TIMEOUT` | `2000` | 单次超时（毫秒） |
-| `-s, --packet-size <bytes>` | `OPENUPS_PACKET_SIZE` | `56` | ICMP payload 大小 |
-| `-r, --retries <num>` | `OPENUPS_RETRIES` | `2` | 每轮重试次数 |
-| `-6, --ipv6[=true/false]` | `OPENUPS_IPV6` | `false` | 启用 IPv6 模式 |
-
-### 关机参数
-
-| CLI 参数 | 环境变量 | 默认值 | 说明 |
-|---------|---------|--------|------|
-| `-S, --shutdown-mode <mode>` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式 |
-| `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
-| `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令（无 shell，按空白分隔参数） |
-| `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
-| `-d, --dry-run[=true/false]` | `OPENUPS_DRY_RUN` | `true` | dry-run 模式（不实际关机） |
-
-### 日志参数
-
-| CLI 参数 | 环境变量 | 默认值 | 说明 |
-|---------|---------|--------|------|
-| `-L, --log-level <level>` | `OPENUPS_LOG_LEVEL` | `info` | 日志级别 |
-| `-T, --timestamp[=true/false]` | `OPENUPS_TIMESTAMP` | `true` | 启用日志时间戳 |
-
-### 系统集成
-
-| CLI 参数 | 环境变量 | 默认值 | 说明 |
-|---------|---------|--------|------|
-| `-M, --systemd[=true/false]` | `OPENUPS_SYSTEMD` | `true` | 启用 systemd 集成 |
-| `-W, --watchdog[=true/false]` | `OPENUPS_WATCHDOG` | `true` | 启用 systemd watchdog |
-
-**参数值说明**：
-
-- **关机模式** (`--shutdown-mode`)：
-  - `immediate` - 立即关机
-  - `delayed` - 延迟关机（使用 `--delay` 指定延迟时间）
-  - `log-only` - 仅记录日志，不执行关机
-  - `custom` - 执行自定义脚本（使用 `--script` 指定脚本路径）
-
-- **日志级别** (`--log-level`)：
-  - `silent` - 完全静默
-  - `error` - 仅错误
-  - `warn` - 警告 + 错误
-  - `info` - 信息 + 警告 + 错误（默认）
-  - `debug` - 详细日志（包含每次 ping 的延迟）
-
-完整参数列表：`./bin/openups --help`
+| 目标 | 推荐参数 |
+|------|----------|
+| 调整检测频率 | `--interval <sec>` / `--timeout <ms>` |
+| 调整容错阈值 | `--threshold <num>` / `--retries <num>` |
+| 生产启用关机 | `--dry-run=false` |
+| 选择关机策略 | `--shutdown-mode immediate|delayed|log-only|custom` |
+| systemd 集成 | `--systemd[=true/false]` / `--watchdog[=true/false]` |
 
 ## 🔒 安全特性
 
@@ -226,7 +232,6 @@ kill -USR1 $(pidof openups)
 | 文档 | 适用场景 |
 |------|----------|
 | 📖 [README.md](README.md) | **项目概览** - 首次了解项目特性和快速开始（当前页） |
-| 🚀 [QUICKSTART.md](QUICKSTART.md) | **快速上手** - 5 分钟内完成编译、测试和部署 |
 | 🔧 [TECHNICAL.md](TECHNICAL.md) | **深入开发** - 架构设计、模块详解、开发规范 |
 | 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | **参与贡献** - 如何提交 PR 和 Issue |
 
@@ -238,96 +243,6 @@ kill -USR1 $(pidof openups)
 ./test.sh
 ```
 
-测试包括：
-- ✅ 编译检查（零警告）
-- ✅ 功能测试（帮助、版本）
-- ✅ 输入验证测试
-- ✅ 安全性测试（命令注入防护）
-- ✅ 边界条件测试
-- ✅ 代码质量检查
-
-## 📊 性能基准
-
-### 资源占用
-| 场景 | CPU | 内存 | 网络 |
-|------|-----|------|------|
-| Idle (休眠中) | < 0.1% | 2.1 MB | 无 |
-| 正常监控 (ping 间隔 10s) | 0.8% | 2.3 MB | 1 packet/10s |
-| 高频监控 (ping 间隔 1s) | 2.1% | 2.4 MB | 1 packet/1s |
-| 失败重试 (3 次重试) | 2.8% | 2.5 MB | 3 packets/cycle |
-
-### 延迟统计（100 次 ping 平均）
-- **最小延迟**: 1.2 ms（本地环回）
-- **平均延迟**: 25-45 ms（互联网连接）
-- **最大延迟**: 150-200 ms（远程服务器）
-- **超时检测**: < 1 ms（系统级延迟）
-
-### 编译优化
-- **编译时间**: ~2.5 秒（-flto + -march=native）
-- **代码优化**: -O3 + LTO + native CPU 优化
-- **二进制大小**: 43 KB（包含所有功能）
-
----
-
-## ⚠️ 已知限制
-
-### 网络相关
-1. **仅支持 ICMP ping**
-   - 不支持 TCP/UDP 检测
-   - 某些网络可能过滤 ICMP，需配置白名单
-
-2. **DNS 解析限制**
-   - 仅支持数字 IP 地址输入（不支持域名自动解析）
-   - IPv6 地址需要完整表示（推荐使用压缩形式）
-
-3. **IPv6 支持范围**
-   - 完整支持 IPv6 ICMP 协议
-   - systemd 集成在 IPv6 环境下工作正常
-   - 部分云服务商的 IPv6 网络可能有延迟
-
-### 系统相关
-1. **Linux 专属**
-   - 仅支持 Linux 内核 3.2+
-   - 需要 `CAP_NET_RAW` 权限执行 ICMP ping
-   - 不支持 Windows / macOS
-
-2. **systemd 依赖**
-   - systemd 集成仅在 systemd 环境下激活
-   - 传统 init 系统用户可禁用 `--systemd=false`
-
-3. **并发限制**
-   - 单线程设计，仅监控一个目标
-   - 部署多个 OpenUPS 实例可监控不同目标
-
-### 关机机制限制
-1. **关机命令延迟**
-   - 实际关机可能延迟 5-10 秒（取决于系统负荷）
-   - 关机命令执行有 5 秒超时保护
-
-2. **自定义脚本限制**
-   - 脚本必须有执行权限
-   - 脚本路径不支持空格和特殊字符
-   - 脚本执行有 5 秒超时限制
-
-3. **dry-run 模式**
-   - dry-run 不会执行实际关机（默认启用，需要 `--dry-run=false` 才执行）
-   - 建议生产部署前在 dry-run 模式验证配置
-
----
-
-## 📊 代码质量
-
-| 指标 | 值 |
-|------|-----|
-| C 标准 | **C23** (最新) |
-| 编译警告 | **0** ✅ |
-| 代码行数 | 2,073 |
-| 二进制大小 | **43 KB** |
-| 内存占用 | < 5 MB |
-| 测试通过率 | 11/11 (100%) |
-| 安全评分 | **10/10** 🏆 |
-| 总体评分 | ⭐⭐⭐⭐⭐ **5.0/5.0** |
-
 ## 📄 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
@@ -335,9 +250,3 @@ kill -USR1 $(pidof openups)
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
----
-
-**作者**: OpenUPS Project
-**维护**: surpasslight12
-

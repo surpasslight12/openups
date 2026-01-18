@@ -113,6 +113,5 @@ help:
 	@echo ""
 	@echo "Documentation:"
 	@echo "  README.md         - Project overview and features"
-	@echo "  QUICKSTART.md     - Quick start guide with examples"
 	@echo "  TECHNICAL.md      - Architecture and development guide"
 	@echo "  CONTRIBUTING.md   - Contribution guidelines"

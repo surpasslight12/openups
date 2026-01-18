@@ -48,7 +48,6 @@ git push origin feature/your-feature
 | 资源 | 说明 |
 |------|------|
 | 🔧 [TECHNICAL.md](TECHNICAL.md) | 架构设计、模块详解、开发规范 |
-| 🚀 [QUICKSTART.md](QUICKSTART.md) | 编译、测试、部署流程 |
 | 📖 [README.md](README.md) | 项目概览和功能特性 |
 
 **调试技巧**: `gdb --args ./bin/openups --target 127.0.0.1 --log-level debug`

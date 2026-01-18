@@ -13,6 +13,7 @@
 - [开发规范](#开发规范)
 - [性能优化](#性能优化)
 - [安全设计](#安全设计)
+- [运行参考](#运行参考)
 - [常见问题](#常见问题)
 
 ---
@@ -48,7 +49,6 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
               "sig_atomic_t must be at least int size");
 ```
 ├── README.md          # 项目说明
-├── QUICKSTART.md      # 快速上手指南
 ├── TECHNICAL.md       # 本文件
 ├── CONTRIBUTING.md    # 贡献指南
 └── LICENSE            # MIT 许可证
@@ -526,6 +526,110 @@ void func(int* restrict a, int* restrict b) {
 - [x] 信号处理异步安全
 
 ---
+
+## 运行参考
+
+本节面向部署与运维：常用命令、systemd 配置、排错思路与已知限制。
+
+### 常用命令
+
+```bash
+# 基本监控
+./bin/openups --target 1.1.1.1 --interval 10 --threshold 5
+
+# 生产启用实际关机（谨慎）
+sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=false
+
+# 延迟关机
+sudo ./bin/openups --target 8.8.8.8 --shutdown-mode delayed --delay 5 --dry-run=false
+
+# 仅记录日志
+sudo ./bin/openups --target 192.168.1.1 --shutdown-mode log-only
+
+# IPv6
+sudo ./bin/openups --target 2001:4860:4860::8888 --ipv6 --interval 5 --threshold 3
+```
+
+### systemd 部署（推荐）
+
+```bash
+make
+sudo cp bin/openups /usr/local/bin/
+sudo chmod 755 /usr/local/bin/openups
+sudo setcap cap_net_raw+ep /usr/local/bin/openups
+
+sudo cp systemd/openups.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now openups
+sudo systemctl status openups
+```
+
+配置（推荐用环境变量覆盖）：
+
+```bash
+sudo systemctl edit openups
+```
+
+```ini
+[Service]
+Environment="OPENUPS_TARGET=8.8.8.8"
+Environment="OPENUPS_INTERVAL=10"
+Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_DRY_RUN=false"
+Environment="OPENUPS_TIMESTAMP=false"
+```
+
+查看日志：
+
+```bash
+sudo journalctl -u openups -f
+```
+
+### 故障排查
+
+1) `Operation not permitted`
+
+原因：需要 root 权限或 `CAP_NET_RAW`。
+
+```bash
+sudo ./bin/openups --target 1.1.1.1
+
+sudo setcap cap_net_raw+ep ./bin/openups
+./bin/openups --target 1.1.1.1
+```
+
+2) systemd 启动失败
+
+```bash
+sudo journalctl -xe -u openups
+sudo systemctl cat openups
+```
+
+3) 目标不可达 / DNS 问题
+
+建议优先使用 IP；或先确认 DNS：
+
+```bash
+nslookup 目标主机
+```
+
+### 性能基准（示例）
+
+| 场景 | CPU | 内存 | 网络 |
+|------|-----|------|------|
+| Idle (休眠中) | < 0.1% | 2.1 MB | 无 |
+| 正常监控 (ping 间隔 10s) | 0.8% | 2.3 MB | 1 packet/10s |
+| 高频监控 (ping 间隔 1s) | 2.1% | 2.4 MB | 1 packet/1s |
+| 失败重试 (3 次重试) | 2.8% | 2.5 MB | 3 packets/cycle |
+
+### 已知限制
+
+- 仅支持 ICMP（不支持 TCP/UDP 探测）；某些网络可能过滤 ICMP。
+- 目标地址：当前建议使用数字 IP；域名解析行为以实现与系统解析配置为准。
+- Linux 专属；ICMP raw socket 需要 root 或 `CAP_NET_RAW`。
+- 单进程单目标；多目标需要启动多个实例。
+
+
 
 ## 常见问题
 
