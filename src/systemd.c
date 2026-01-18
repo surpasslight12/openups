@@ -150,8 +150,3 @@ bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier) {
      */
     return send_notify(notifier, "WATCHDOG=1");
 }
-
-/* 获取 systemd watchdog 超时时间 (微秒) */
-uint64_t systemd_notifier_get_watchdog_usec(const systemd_notifier_t* restrict notifier) {
-    return (notifier != NULL) ? notifier->watchdog_usec : 0;
-}

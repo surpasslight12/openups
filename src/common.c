@@ -83,15 +83,6 @@ char* get_timestamp_str(char* restrict buffer, size_t size) {
     return buffer;
 }
 
-/* 从环境变量读取值，失败时返回默认值 */
-const char* get_env_or_default(const char* restrict name, const char* restrict default_value) {
-    if (name == NULL) {
-        return default_value;
-    }
-    const char* value = getenv(name);
-    return value != NULL ? value : default_value;
-}
-
 /* 从环境变量读取布尔值 (true/false, 不区分大小写) */
 bool get_env_bool(const char* restrict name, bool default_value) {
     if (name == NULL) {
@@ -133,39 +124,6 @@ int get_env_int(const char* restrict name, int default_value) {
     }
     
     return (int)result;
-}
-
-/* 删除字符串两端的空白字符 */
-char* trim_whitespace(char* restrict str) {
-    if (str == NULL) {
-        return NULL;
-    }
-    
-    /* 跳过前导空白 */
-    while (isspace((unsigned char)*str)) str++;
-    
-    if (*str == '\0') {
-        return str;
-    }
-    
-    /* 移除尾部空白 */
-    char* end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-    
-    *(end + 1) = '\0';
-    
-    return str;
-}
-
-/* 比较两个字符串是否相等 */
-bool str_equals(const char* restrict a, const char* restrict b) {
-    if (a == b) {
-        return true;
-    }
-    if (a == NULL || b == NULL) {
-        return false;
-    }
-    return strcmp(a, b) == 0;
 }
 
 /* 检验路径是否安全 (防止路径遍历和命令注入) */

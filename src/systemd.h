@@ -34,7 +34,4 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier);
 /* 发送 watchdog 心跳 */
 [[nodiscard]] bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier);
 
-/* 获取 watchdog 间隔（微秒） */
-[[nodiscard]] uint64_t systemd_notifier_get_watchdog_usec(const systemd_notifier_t* restrict notifier);
-
 #endif /* OPENUPS_SYSTEMD_H */

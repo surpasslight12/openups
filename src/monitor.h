@@ -46,9 +46,6 @@ void monitor_destroy(monitor_t* restrict monitor);
 /* 运行监控循环 */
 [[nodiscard]] int monitor_run(monitor_t* restrict monitor);
 
-/* 停止监控 */
-void monitor_stop(monitor_t* restrict monitor);
-
 /* 打印统计信息 */
 void monitor_print_statistics(monitor_t* restrict monitor);
 

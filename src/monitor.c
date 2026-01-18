@@ -1,6 +1,5 @@
 #include "monitor.h"
 #include "common.h"
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -9,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/reboot.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -287,6 +287,27 @@ static bool build_command_argv(const char* command, char* buffer, size_t buffer_
     return true;
 }
 
+static void sleep_with_stop(monitor_t* monitor, int seconds);
+
+static bool try_kernel_poweroff(monitor_t* monitor) {
+    if (monitor == NULL || monitor->logger == NULL) {
+        return false;
+    }
+
+#ifdef __linux__
+    logger_warn(monitor->logger, "Attempting kernel poweroff (requires CAP_SYS_BOOT)");
+    sync();
+    if (reboot(RB_POWER_OFF) != 0) {
+        logger_error(monitor->logger, "Kernel poweroff failed: %s", strerror(errno));
+        return false;
+    }
+    return true;
+#else
+    logger_error(monitor->logger, "Kernel poweroff is only supported on Linux");
+    return false;
+#endif
+}
+
 /* 触发关机 */
 static void trigger_shutdown(monitor_t* monitor) {
     logger_warn(monitor->logger, "Shutdown threshold reached, mode is %s%s",
@@ -322,6 +343,22 @@ static void trigger_shutdown(monitor_t* monitor) {
         argv[1] = NULL;
         logger_warn(monitor->logger, "Executing custom script: %s", monitor->config->custom_script);
     } else {
+        if (strlen(monitor->config->shutdown_cmd) == 0) {
+            if (monitor->config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
+                if (try_kernel_poweroff(monitor)) {
+                    return;
+                }
+            }
+            if (monitor->config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
+                logger_warn(monitor->logger, "Delaying shutdown for %d minutes (kernel poweroff)",
+                            monitor->config->delay_minutes);
+                sleep_with_stop(monitor, monitor->config->delay_minutes * 60);
+                if (try_kernel_poweroff(monitor)) {
+                    return;
+                }
+            }
+        }
+
         if (strlen(monitor->config->shutdown_cmd) > 0) {
             snprintf(command_buf, sizeof(command_buf), "%s", monitor->config->shutdown_cmd);
         } else if (monitor->config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
@@ -514,11 +551,4 @@ int monitor_run(monitor_t* restrict monitor) {
     logger_info(monitor->logger, "OpenUPS monitor stopped");
 
     return 0;
-}
-
-/* 向监控器发送一个停止信号 */
-void monitor_stop(monitor_t* restrict monitor) {
-    if (monitor != NULL) {
-        monitor->stop_flag = 1;
-    }
 }
