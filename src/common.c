@@ -40,7 +40,7 @@ static_assert(sizeof(time_t) >= 4, "time_t must be at least 4 bytes");
 
 uint64_t get_timestamp_ms(void) {
     struct timeval tv;
-    gettimeofday(&tv, nullptr);
+    gettimeofday(&tv, NULL);
 
     uint64_t seconds_ms = 0;
     if (ckd_mul(&seconds_ms, (uint64_t)tv.tv_sec, UINT64_C(1000))) {
@@ -57,19 +57,19 @@ uint64_t get_timestamp_ms(void) {
 }
 
 char* get_timestamp_str(char* restrict buffer, size_t size) {
-    if (buffer == nullptr || size == 0) {
-        return nullptr;
+    if (buffer == NULL || size == 0) {
+        return NULL;
     }
     
-    time_t now = time(nullptr);
+    time_t now = time(NULL);
     struct tm tm_info;
-    if (localtime_r(&now, &tm_info) == nullptr) {
+    if (localtime_r(&now, &tm_info) == NULL) {
         buffer[0] = '\0';
         return buffer;
     }
     
     struct timeval tv;
-    gettimeofday(&tv, nullptr);
+    gettimeofday(&tv, NULL);
     
     snprintf(buffer, size, "%04d-%02d-%02d %02d:%02d:%02d.%03ld",
              tm_info.tm_year + 1900,
@@ -85,20 +85,20 @@ char* get_timestamp_str(char* restrict buffer, size_t size) {
 
 /* 从环境变量读取值，失败时返回默认值 */
 const char* get_env_or_default(const char* restrict name, const char* restrict default_value) {
-    if (name == nullptr) {
+    if (name == NULL) {
         return default_value;
     }
     const char* value = getenv(name);
-    return value != nullptr ? value : default_value;
+    return value != NULL ? value : default_value;
 }
 
 /* 从环境变量读取布尔值 (true/false, 不区分大小写) */
 bool get_env_bool(const char* restrict name, bool default_value) {
-    if (name == nullptr) {
+    if (name == NULL) {
         return default_value;
     }
     const char* value = getenv(name);
-    if (value == nullptr) {
+    if (value == NULL) {
         return default_value;
     }
     
@@ -115,15 +115,15 @@ bool get_env_bool(const char* restrict name, bool default_value) {
 
 /* 从环境变量读取整数值，不正常值时返回默认值 */
 int get_env_int(const char* restrict name, int default_value) {
-    if (name == nullptr) {
+    if (name == NULL) {
         return default_value;
     }
     const char* value = getenv(name);
-    if (value == nullptr) {
+    if (value == NULL) {
         return default_value;
     }
     
-    char* endptr = nullptr;
+    char* endptr = NULL;
     errno = 0;
     long result = strtol(value, &endptr, 10);
     
@@ -137,8 +137,8 @@ int get_env_int(const char* restrict name, int default_value) {
 
 /* 删除字符串两端的空白字符 */
 char* trim_whitespace(char* restrict str) {
-    if (str == nullptr) {
-        return nullptr;
+    if (str == NULL) {
+        return NULL;
     }
     
     /* 跳过前导空白 */
@@ -162,7 +162,7 @@ bool str_equals(const char* restrict a, const char* restrict b) {
     if (a == b) {
         return true;
     }
-    if (a == nullptr || b == nullptr) {
+    if (a == NULL || b == NULL) {
         return false;
     }
     return strcmp(a, b) == 0;
@@ -170,20 +170,20 @@ bool str_equals(const char* restrict a, const char* restrict b) {
 
 /* 检验路径是否安全 (防止路径遍历和命令注入) */
 bool is_safe_path(const char* restrict path) {
-    if (path == nullptr || *path == '\0') {
+    if (path == NULL || *path == '\0') {
         return false;
     }
     
     /* 检查危险字符 */
     static const char dangerous[] = ";|&$`<>\"'(){}[]!\\*?";
     for (const char* p = path; *p != '\0'; ++p) {
-        if (strchr(dangerous, *p) != nullptr) {
+        if (strchr(dangerous, *p) != NULL) {
             return false;
         }
     }
     
     /* 检查路径遍历 */
-    if (strstr(path, "..") != nullptr) {
+    if (strstr(path, "..") != NULL) {
         return false;
     }
     

@@ -9,7 +9,7 @@
 
 void logger_init(logger_t* restrict logger, log_level_t level,
                  bool enable_timestamp) {
-    if (logger == nullptr) {
+    if (logger == NULL) {
         return;
     }
     
@@ -18,13 +18,13 @@ void logger_init(logger_t* restrict logger, log_level_t level,
 }
 
 void logger_destroy(logger_t* restrict logger) {
-    if (logger == nullptr) {
+    if (logger == NULL) {
         return;
     }
 }
 
 static void log_message(logger_t* restrict logger, log_level_t level, const char* restrict msg) {
-    if (logger == nullptr || msg == nullptr) {
+    if (logger == NULL || msg == NULL) {
         return;
     }
     
@@ -40,7 +40,7 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
     
     char timestamp[64];
     if (logger->enable_timestamp) {
-        if (get_timestamp_str(timestamp, sizeof(timestamp)) == nullptr) {
+        if (get_timestamp_str(timestamp, sizeof(timestamp)) == NULL) {
             timestamp[0] = '\0';
         }
     }
@@ -56,7 +56,7 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
 }
 
 void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...) {
-    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_DEBUG) {
+    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG) {
         return;
     }
     
@@ -70,7 +70,7 @@ void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...) {
 }
 
 void logger_info(logger_t* restrict logger, const char* restrict fmt, ...) {
-    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_INFO) {
+    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_INFO) {
         return;
     }
     
@@ -84,7 +84,7 @@ void logger_info(logger_t* restrict logger, const char* restrict fmt, ...) {
 }
 
 void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...) {
-    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_WARN) {
+    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_WARN) {
         return;
     }
     
@@ -98,7 +98,7 @@ void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...) {
 }
 
 void logger_error(logger_t* restrict logger, const char* restrict fmt, ...) {
-    if (logger == nullptr || fmt == nullptr || logger->level < LOG_LEVEL_ERROR) {
+    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_ERROR) {
         return;
     }
     
@@ -124,7 +124,7 @@ const char* log_level_to_string(log_level_t level) {
 }
 
 log_level_t string_to_log_level(const char* restrict str) {
-    if (str == nullptr) {
+    if (str == NULL) {
         /* 默认 */
         return LOG_LEVEL_INFO;
     }

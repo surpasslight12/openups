@@ -150,7 +150,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 |---------|---------|--------|------|
 | `-S, --shutdown-mode <mode>` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | 关机模式 |
 | `-D, --delay <min>` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式延迟分钟数 |
-| `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令 |
+| `-C, --shutdown-cmd <cmd>` | `OPENUPS_SHUTDOWN_CMD` | - | 自定义关机命令（无 shell，按空白分隔参数） |
 | `-P, --script <path>` | `OPENUPS_CUSTOM_SCRIPT` | - | 自定义脚本路径 |
 | `-d, --dry-run[=true/false]` | `OPENUPS_DRY_RUN` | `true` | dry-run 模式（不实际关机） |
 
@@ -229,24 +229,6 @@ kill -USR1 $(pidof openups)
 | 🚀 [QUICKSTART.md](QUICKSTART.md) | **快速上手** - 5 分钟内完成编译、测试和部署 |
 | 🔧 [TECHNICAL.md](TECHNICAL.md) | **深入开发** - 架构设计、模块详解、开发规范 |
 | 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | **参与贡献** - 如何提交 PR 和 Issue |
-| 📋 [CHANGELOG.md](CHANGELOG.md) | **版本历史** - 查看所有版本的更新内容 |
-
-## 📝 更新日志
-
-**当前版本**：v1.2.0
-
-### v1.2.0 主要变更（2025-11-04）
-- 🎯 CLI 参数系统全面重构
-- 📝 环境变量系统完善（新增 OPENUPS_WATCHDOG, OPENUPS_TIMESTAMP）
-- 📚 帮助文档按类别重组
-- ✅ 80+ 测试用例全部通过
-
-### 主要特性
-- 🎯 完整的 C 语言实现
-- 🌐 原生 ICMP 实现（IPv4/IPv6）
-- ⚙️ 深度 systemd 集成（notify、watchdog）
-- 🔒 安全加固（CAP_NET_RAW）
-- 📝 自然语序日志系统（printf 风格）
 
 ## 🧪 测试
 

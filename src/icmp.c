@@ -58,7 +58,7 @@ static uint16_t calculate_checksum(const void* data, size_t len) {
 /* 初始化 ICMP pinger（需要 CAP_NET_RAW 权限） */
 bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, 
                       char* restrict error_msg, size_t error_size) {
-    if (pinger == nullptr || error_msg == nullptr || error_size == 0) {
+    if (pinger == NULL || error_msg == NULL || error_size == 0) {
         return false;
     }
     
@@ -81,7 +81,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
 
 /* 销毁 ICMP pinger 并关闭 raw socket */
 void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
-    if (pinger == nullptr) {
+    if (pinger == NULL) {
         return;
     }
     
@@ -98,17 +98,17 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger) {
 static bool resolve_target(const char* restrict target, bool use_ipv6, 
                           struct sockaddr_storage* restrict addr, socklen_t* restrict addr_len,
                           char* restrict error_msg, size_t error_size) {
-    if (target == nullptr || addr == nullptr || addr_len == nullptr || 
-        error_msg == nullptr || error_size == 0) {
+    if (target == NULL || addr == NULL || addr_len == NULL || 
+        error_msg == NULL || error_size == 0) {
         return false;
     }
     
-    struct addrinfo hints, *result = nullptr;
+    struct addrinfo hints, *result = NULL;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = use_ipv6 ? AF_INET6 : AF_INET;
     hints.ai_socktype = SOCK_RAW;
     
-    int ret = getaddrinfo(target, nullptr, &hints, &result);
+    int ret = getaddrinfo(target, NULL, &hints, &result);
     if (ret != 0) {
         snprintf(error_msg, error_size, "Failed to resolve target: %s", 
                 gai_strerror(ret));
@@ -130,7 +130,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
     
-    if (pinger == nullptr || dest_addr == nullptr) {
+    if (pinger == NULL || dest_addr == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
         return result;
     }
@@ -138,7 +138,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
     /* 构建 ICMP Echo Request 数据包 */
     size_t packet_len = sizeof(struct icmphdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
-    if (packet == nullptr) {
+    if (packet == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Memory allocation failed");
         return result;
     }
@@ -171,7 +171,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
     
     /* 发送 ICMP Echo Request */
     struct timeval send_time;
-    gettimeofday(&send_time, nullptr);
+    gettimeofday(&send_time, NULL);
     
     ssize_t sent = sendto(pinger->sockfd, packet, packet_len, 0,
                           (struct sockaddr*)dest_addr, sizeof(*dest_addr));
@@ -191,7 +191,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger, struct sockaddr_i
                                (struct sockaddr*)&recv_addr, &recv_addr_len);
     
     struct timeval recv_time;
-    gettimeofday(&recv_time, nullptr);
+    gettimeofday(&recv_time, NULL);
     
     if (received < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -254,7 +254,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
     
-    if (pinger == nullptr || dest_addr == nullptr) {
+    if (pinger == NULL || dest_addr == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
         return result;
     }
@@ -262,7 +262,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
     /* 构造 ICMPv6 Echo Request 数据包 (模于 IPv4) */
     size_t packet_len = sizeof(struct icmp6_hdr) + packet_size;
     uint8_t* packet = (uint8_t*)calloc(1, packet_len);
-    if (packet == nullptr) {
+    if (packet == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Memory allocation failed");
         return result;
     }
@@ -293,7 +293,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
     
     /* 发送 ICMPv6 Echo Request */
     struct timeval send_time;
-    gettimeofday(&send_time, nullptr);
+    gettimeofday(&send_time, NULL);
     
     ssize_t sent = sendto(pinger->sockfd, packet, packet_len, 0,
                           (struct sockaddr*)dest_addr, sizeof(*dest_addr));
@@ -313,7 +313,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger, struct sockaddr_i
                                (struct sockaddr*)&recv_addr, &recv_addr_len);
     
     struct timeval recv_time;
-    gettimeofday(&recv_time, nullptr);
+    gettimeofday(&recv_time, NULL);
     
     if (received < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -353,7 +353,7 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger, const char* restr
                                int timeout_ms, int packet_size) {
     ping_result_t result = {false, 0.0, ""};
     
-    if (pinger == nullptr || target == nullptr) {
+    if (pinger == NULL || target == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
         return result;
     }

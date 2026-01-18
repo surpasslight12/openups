@@ -81,6 +81,9 @@ sudo ./bin/openups \
   --script /tmp/my-script.sh \
   --shutdown-mode custom \
   --dry-run=false
+
+> 注意：`--shutdown-cmd` 或 `OPENUPS_SHUTDOWN_CMD` 执行时不经过 shell，
+> 参数仅支持空白分隔，不支持引号或重定向语法。
 ```
 
 ---
@@ -273,7 +276,6 @@ OpenUPS 自动化测试
 | 📖 [README.md](README.md) | 项目概览和特性介绍 |
 | 🔧 [TECHNICAL.md](TECHNICAL.md) | 架构设计和开发指南 |
 | 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) | 如何参与贡献 |
-| 📋 [CHANGELOG.md](CHANGELOG.md) | 版本更新历史 |
 
 ---
 

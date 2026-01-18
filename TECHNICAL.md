@@ -1,8 +1,6 @@
 # OpenUPS 技术文档
 
-**版本**: v1.2.0
 **C 标准**: C23 (C2x)
-**更新**: 2025-11-04
 
 本文档整合了架构设计和开发指南，为开发者提供完整的技术参考。
 
@@ -105,6 +103,9 @@ main.c (依赖 monitor.h, config.h, logger.h)
    - CUSTOM: 执行自定义脚本
 4. 记录日志（warn 级别）
 5. 执行系统命令（如非 dry-run）
+
+补充说明：关机命令通过 `fork()` + `execv/execvp` 执行，不经过 shell。
+因此 `OPENUPS_SHUTDOWN_CMD` 仅支持以空白分隔的参数，不支持引号或重定向语法。
 ```
 
 ---
@@ -153,8 +154,8 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 **日志格式**：`[TIMESTAMP] [LEVEL] natural language message`
 
 **示例**：
-- `[2025-10-27 22:08:23.466] [INFO] Starting OpenUPS monitor: target=127.0.0.1 interval=1s threshold=3 ipv6=false`
-- `[2025-10-27 22:08:23.566] [DEBUG] Ping successful to 127.0.0.1, latency: 0.01ms`
+- `[YYYY-MM-DD HH:MM:SS.mmm] [INFO] Starting OpenUPS monitor: target=127.0.0.1 interval=1s threshold=3 ipv6=false`
+- `[YYYY-MM-DD HH:MM:SS.mmm] [DEBUG] Ping successful to 127.0.0.1, latency: 0.01ms`
 
 **依赖**：common
 
@@ -675,5 +676,3 @@ checksec --file=./bin/openups
 ---
 
 **维护**: OpenUPS 项目团队
-**更新**: 2025-11-04
-**版本**: v1.2.0

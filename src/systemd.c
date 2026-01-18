@@ -12,8 +12,8 @@
  * 消息格式: "STATUS=...", "READY=1", "STOPPING=1", "WATCHDOG=1" 等
  */
 static bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message) {
-    if (notifier == nullptr || message == nullptr || 
-        !notifier->enabled || notifier->notify_socket == nullptr) {
+    if (notifier == NULL || message == NULL || 
+        !notifier->enabled || notifier->notify_socket == NULL) {
         return false;
     }
     
@@ -50,12 +50,12 @@ static bool send_notify(systemd_notifier_t* restrict notifier, const char* restr
 }
 
 void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
-    if (notifier == nullptr) {
+    if (notifier == NULL) {
         return;
     }
     
     notifier->enabled = false;
-    notifier->notify_socket = nullptr;
+    notifier->notify_socket = NULL;
     notifier->sockfd = -1;
     notifier->watchdog_usec = 0;
     
@@ -64,7 +64,7 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
      * 如果不存在，表示程序不是由 systemd 启动的
      */
     const char* socket_path = getenv("NOTIFY_SOCKET");
-    if (socket_path == nullptr) {
+    if (socket_path == NULL) {
         return;
     }
     
@@ -77,7 +77,7 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
     }
     
     notifier->notify_socket = strdup(socket_path);
-    if (notifier->notify_socket == nullptr) {
+    if (notifier->notify_socket == NULL) {
         close(notifier->sockfd);
         notifier->sockfd = -1;
         return;
@@ -90,13 +90,13 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
      * 如果 0 次未发送心跳，systemd 会强制重启服务
      */
     const char* watchdog_str = getenv("WATCHDOG_USEC");
-    if (watchdog_str != nullptr) {
-        notifier->watchdog_usec = strtoull(watchdog_str, nullptr, 10);
+    if (watchdog_str != NULL) {
+        notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
     }
 }
 
 void systemd_notifier_destroy(systemd_notifier_t* restrict notifier) {
-    if (notifier == nullptr) {
+    if (notifier == NULL) {
         return;
     }
     
@@ -105,9 +105,9 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier) {
         notifier->sockfd = -1;
     }
     
-    if (notifier->notify_socket != nullptr) {
+    if (notifier->notify_socket != NULL) {
         free(notifier->notify_socket);
-        notifier->notify_socket = nullptr;
+        notifier->notify_socket = NULL;
     }
     
     notifier->enabled = false;
@@ -115,7 +115,7 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier) {
 
 /* 检查 systemd 通知器是否已启用 */
 bool systemd_notifier_is_enabled(const systemd_notifier_t* restrict notifier) {
-    return notifier != nullptr && notifier->enabled;
+    return notifier != NULL && notifier->enabled;
 }
 
 /* 通知 systemd 程序已就绪 (启动完成) */
@@ -125,7 +125,7 @@ bool systemd_notifier_ready(systemd_notifier_t* restrict notifier) {
 
 /* 更新程序状态信息到 systemd */
 bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status) {
-    if (notifier == nullptr || !notifier->enabled || status == nullptr) {
+    if (notifier == NULL || !notifier->enabled || status == NULL) {
         return false;
     }
     
@@ -153,5 +153,5 @@ bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier) {
 
 /* 获取 systemd watchdog 超时时间 (微秒) */
 uint64_t systemd_notifier_get_watchdog_usec(const systemd_notifier_t* restrict notifier) {
-    return (notifier != nullptr) ? notifier->watchdog_usec : 0;
+    return (notifier != NULL) ? notifier->watchdog_usec : 0;
 }

@@ -5,7 +5,7 @@
 set -e  # 遇到错误立即退出
 
 echo "========================================"
-echo "OpenUPS 自动化测试 (v1.2.0)"
+echo "OpenUPS 自动化测试"
 echo "========================================"
 echo
 
@@ -76,7 +76,8 @@ fi
 
 # 负数间隔
 echo "[7/11] 测试负数间隔..."
-if ./bin/openups --target 127.0.0.1 --interval -1 2>&1 | grep -q "Interval must be positive"; then
+if ./bin/openups --target 127.0.0.1 --interval -1 2>&1 | \
+   grep -Eq "Interval must be positive|Invalid value for --interval"; then
     echo "✓ 负数间隔被拒绝"
 else
     echo "❌ 负数间隔检查失败"
@@ -85,7 +86,8 @@ fi
 
 # 零阈值
 echo "[8/11] 测试零阈值..."
-if ./bin/openups --target 127.0.0.1 --threshold 0 2>&1 | grep -q "Failure threshold must be positive"; then
+if ./bin/openups --target 127.0.0.1 --threshold 0 2>&1 | \
+   grep -Eq "Failure threshold must be positive|Invalid value for --threshold"; then
     echo "✓ 零阈值被拒绝"
 else
     echo "❌ 零阈值检查失败"
@@ -94,7 +96,8 @@ fi
 
 # 零超时
 echo "[9/11] 测试零超时..."
-if ./bin/openups --target 127.0.0.1 --timeout 0 2>&1 | grep -q "Timeout must be positive"; then
+if ./bin/openups --target 127.0.0.1 --timeout 0 2>&1 | \
+   grep -Eq "Timeout must be positive|Invalid value for --timeout"; then
     echo "✓ 零超时被拒绝"
 else
     echo "❌ 零超时检查失败"
@@ -112,7 +115,8 @@ fi
 
 # 超大包大小
 echo "[11/11] 测试超大包大小..."
-if ./bin/openups --target 127.0.0.1 --packet-size 99999 2>&1 | grep -q "Packet size must be between"; then
+if ./bin/openups --target 127.0.0.1 --packet-size 99999 2>&1 | \
+   grep -Eq "Packet size must be between|Invalid value for --packet-size"; then
     echo "✓ 超大包大小被拒绝"
 else
     echo "❌ 包大小检查失败"

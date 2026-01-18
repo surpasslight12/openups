@@ -101,7 +101,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
 
 ### 日志系统（自然语序，非 key=value）
 ```c
-// 5 级日志（v1.1.0 统一设计）
+// 5 级日志（统一设计）
 typedef enum {
     LOG_LEVEL_SILENT = -1,  // 完全静默（适合 systemd）
     LOG_LEVEL_ERROR = 0,    // 仅错误
@@ -133,7 +133,7 @@ typedef struct {
     char target[256];
     int interval_sec;
     int fail_threshold;
-    log_level_t log_level;      // v1.1.0: 统一日志级别
+    log_level_t log_level;      // 统一日志级别
     bool enable_timestamp;      // 时间戳开关（systemd 场景下禁用）
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only/custom
     bool dry_run;               // 默认 true（防止误操作）
@@ -153,6 +153,10 @@ if (!config_validate(&config, error_msg, sizeof(error_msg))) {
     return 2;
 }
 ```
+
+**关机命令执行约束**：
+- 关机命令通过 `fork()` + `execv/execvp` 执行，不经过 shell。
+- `OPENUPS_SHUTDOWN_CMD` 仅支持空白分隔参数，不支持引号或重定向语法。
 
 ### ICMP Ping 实现（原生 raw socket）
 ```c
@@ -207,7 +211,7 @@ make
 
 # 调试版本
 make clean
-make CC=gcc CFLAGS="-g -O0 -std=c2x -Wall -Wextra"
+make CC=gcc CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
 
 # 安装到系统
 sudo make install  # → /usr/local/bin/openups + setcap cap_net_raw+ep
@@ -222,7 +226,7 @@ sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 3 --dry-run --log
 sudo setcap cap_net_raw+ep ./bin/openups
 ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run
 
-# 自动化测试套件（10 个测试用例）
+# 自动化测试套件（11 个测试用例）
 ./test.sh
 # 测试包括：编译检查、功能测试、输入验证、安全性测试、边界条件
 ```
@@ -242,42 +246,6 @@ journalctl -u openups -f
 ## 常见任务模式
 
 ## 性能和安全注意事项
-## 文档更新规则
-
-修改代码后必须同步更新：
-- `README.md` - 功能和配置表格
-- `QUICKSTART.md` - 使用示例
-- `TECHNICAL.md` - 架构变更和技术细节
-- `CHANGELOG.md` - 版本记录
-- `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
-
-## 关键版本变更
-
-### v1.2.0 - CLI 参数系统全面重构（2025-11-04）
-- ✅ 布尔参数统一：仅使用 `true|false` 格式（不区分大小写）
-- ✅ `--dry-run[=true|false]`, `--timestamp[=true|false]`, `--systemd[=true|false]`, `--watchdog[=true|false]`
-- ✅ 移除 yes/no, 1/0, on/off 等冗余格式，降低学习成本
-- ✅ 参数别名简化：`--delay` (delay-minutes), `--script` (custom-script)
-- ✅ 版本参数改为 `-v/--version`（原 `-Z`）
-- ✅ 环境变量扩充：新增 `OPENUPS_WATCHDOG`, `OPENUPS_TIMESTAMP`（共 14 个环境变量）
-- ✅ 帮助文档重组：5 个类别 + 5 个示例
-- ✅ 80+ 测试用例全部通过
-- ❌ 移除向后兼容：不再支持 `OPENUPS_NO_TIMESTAMP`（改用 `OPENUPS_TIMESTAMP`）
-
-### v1.1.0 - 日志系统简化（2025-10-26）
-- ❌ 移除 `-v/--verbose`, `-q/--quiet` 别名
-- ✅ 统一使用 `--log-level` 参数（silent|error|warn|info|debug）
-- ✅ 新增 `LOG_LEVEL_SILENT` 静默模式
-- ✅ 移除 `config.verbose` 和 `logger.verbose` 字段
-
-### systemd journald 深度集成
-- ✅ `OPENUPS_TIMESTAMP` 环境变量控制日志时间戳
-- ✅ systemd 服务推荐禁用程序时间戳（避免双重时间戳）
-- ✅ 日志格式：`Oct 26 22:37:19 host openups[pid]: [LEVEL] message`
-
-**参数格式轮换**:
-- v1.2.0 子：`--dry-run=false` 或 `-dfalse`, `--timestamp=false` 或 `-Tfalse`
-
 ## 常见任务模式
 
 ### 添加新配置项
@@ -343,7 +311,7 @@ MemoryMax=50M
 ### 编译器要求
 - **最低要求**: GCC 14.0+ 或 Clang 15.0+（C23 支持）
 - **推荐**: GCC 14.2+
-- **检查**: `gcc --version` 和 `gcc -std=c2x -E -dM - < /dev/null | grep __STDC_VERSION__`
+- **检查**: `gcc --version` 和 `gcc -std=c23 -E -dM - < /dev/null | grep __STDC_VERSION__`
 
 ## 文档更新规则
 
@@ -351,5 +319,4 @@ MemoryMax=50M
 - `README.md` - 功能和配置表格
 - `QUICKSTART.md` - 使用示例
 - `TECHNICAL.md` - 架构变更和技术细节
-- `CHANGELOG.md` - 版本记录
 - `.github/copilot-instructions.md` - AI 上下文（如有重大变更）

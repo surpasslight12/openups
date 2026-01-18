@@ -10,25 +10,53 @@
 
 /* 解析布尔值参数 (仅支持 true/false, 可选参数)
  * 参数: arg - 字符串值 (true/false, 不区分大小写)
- * 设计: 简化用户接口，废除旧有的 yes/no、1/0、on/off 等格式
- * 返回: true / false (当参数为空时默认返回 true)
+ * 返回: true 表示解析成功，false 表示非法值
+ * 约定: 当参数为空时默认返回 true
  */
-static bool parse_bool_arg(const char* arg) {
-    if (arg == nullptr) {
+static bool parse_bool_arg(const char* arg, bool* out_value) {
+    if (out_value == NULL) {
+        return false;
+    }
+    if (arg == NULL) {
+        *out_value = true;
         return true;
     }
     if (strcasecmp(arg, "true") == 0) {
+        *out_value = true;
         return true;
     }
     if (strcasecmp(arg, "false") == 0) {
+        *out_value = false;
+        return true;
+    }
+    return false;
+}
+
+/* 解析整数参数并进行范围验证 */
+static bool parse_int_arg(const char* arg, int* out_value, int min_value, int max_value,
+                          const char* restrict name) {
+    if (arg == NULL || out_value == NULL || name == NULL) {
         return false;
     }
-    /* 默认为 true */
+
+    errno = 0;
+    char* endptr = NULL;
+    long value = strtol(arg, &endptr, 10);
+    if (errno != 0 || endptr == arg || *endptr != '\0') {
+        fprintf(stderr, "Invalid value for %s: %s (expect integer)\n", name, arg);
+        return false;
+    }
+    if (value < min_value || value > max_value) {
+        fprintf(stderr, "Invalid value for %s: %s (range %d..%d)\n",
+                name, arg, min_value, max_value);
+        return false;
+    }
+    *out_value = (int)value;
     return true;
 }
 
 void config_init_default(config_t* restrict config) {
-    if (config == nullptr) {
+    if (config == NULL) {
         return;
     }
     
@@ -58,7 +86,7 @@ void config_init_default(config_t* restrict config) {
 }
 
 void config_load_from_env(config_t* restrict config) {
-    if (config == nullptr) {
+    if (config == NULL) {
         return;
     }
     
@@ -79,7 +107,7 @@ void config_load_from_env(config_t* restrict config) {
     
     /* 关机配置 */
     value = getenv("OPENUPS_SHUTDOWN_MODE");
-    if (value != nullptr) {
+    if (value != NULL) {
         config->shutdown_mode = string_to_shutdown_mode(value);
     }
     
@@ -87,18 +115,18 @@ void config_load_from_env(config_t* restrict config) {
     config->dry_run = get_env_bool("OPENUPS_DRY_RUN", config->dry_run);
     
     value = getenv("OPENUPS_SHUTDOWN_CMD");
-    if (value != nullptr) {
+    if (value != NULL) {
         snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", value);
     }
     
     value = getenv("OPENUPS_CUSTOM_SCRIPT");
-    if (value != nullptr) {
+    if (value != NULL) {
         snprintf(config->custom_script, sizeof(config->custom_script), "%s", value);
     }
     
     /* 行为配置 */
     value = getenv("OPENUPS_LOG_LEVEL");
-    if (value != nullptr) {
+    if (value != NULL) {
         config->log_level = string_to_log_level(value);
     }
     
@@ -108,7 +136,7 @@ void config_load_from_env(config_t* restrict config) {
 }
 
 bool config_load_from_cmdline(config_t* restrict config, int argc, char** restrict argv) {
-    if (config == nullptr || argv == nullptr) {
+    if (config == NULL || argv == NULL) {
         return false;
     }
     
@@ -154,25 +182,35 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 snprintf(config->target, sizeof(config->target), "%s", optarg);
                 break;
             case 'i':
-                config->interval_sec = (int)strtol(optarg, nullptr, 10);
+                if (!parse_int_arg(optarg, &config->interval_sec, 1, INT_MAX, "--interval")) {
+                    return false;
+                }
                 break;
             case 'n':
-                config->fail_threshold = (int)strtol(optarg, nullptr, 10);
+                if (!parse_int_arg(optarg, &config->fail_threshold, 1, INT_MAX, "--threshold")) {
+                    return false;
+                }
                 break;
             case 'w':
-                config->timeout_ms = (int)strtol(optarg, nullptr, 10);
+                if (!parse_int_arg(optarg, &config->timeout_ms, 1, INT_MAX, "--timeout")) {
+                    return false;
+                }
                 break;
             case 's':
-                config->packet_size = (int)strtol(optarg, nullptr, 10);
+                if (!parse_int_arg(optarg, &config->packet_size, 0, 65507, "--packet-size")) {
+                    return false;
+                }
                 break;
             case 'r':
-                config->max_retries = (int)strtol(optarg, nullptr, 10);
+                if (!parse_int_arg(optarg, &config->max_retries, 0, INT_MAX, "--retries")) {
+                    return false;
+                }
                 break;
             case 'S':
                 config->shutdown_mode = string_to_shutdown_mode(optarg);
                 break;
             case 'D':
-                config->delay_minutes = (int)strtol(optarg, nullptr, 10);
+                config->delay_minutes = (int)strtol(optarg, NULL, 10);
                 break;
             case 'C':
                 snprintf(config->shutdown_cmd, sizeof(config->shutdown_cmd), "%s", optarg);
@@ -184,38 +222,38 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 config->log_level = string_to_log_level(optarg);
                 break;
             case '6':
-                if (optarg) {
-                    config->use_ipv6 = parse_bool_arg(optarg);
-                } else {
-                    config->use_ipv6 = true;
+                if (!parse_bool_arg(optarg, &config->use_ipv6)) {
+                    fprintf(stderr, "Invalid value for --ipv6: %s (use true|false)\n",
+                            optarg ? optarg : "<empty>");
+                    return false;
                 }
                 break;
             case 'd':
-                if (optarg) {
-                    config->dry_run = parse_bool_arg(optarg);
-                } else {
-                    config->dry_run = true;
+                if (!parse_bool_arg(optarg, &config->dry_run)) {
+                    fprintf(stderr, "Invalid value for --dry-run: %s (use true|false)\n",
+                            optarg ? optarg : "<empty>");
+                    return false;
                 }
                 break;
             case 'T':
-                if (optarg) {
-                    config->enable_timestamp = parse_bool_arg(optarg);
-                } else {
-                    config->enable_timestamp = true;  /* 默认启用时间戳 */
+                if (!parse_bool_arg(optarg, &config->enable_timestamp)) {
+                    fprintf(stderr, "Invalid value for --timestamp: %s (use true|false)\n",
+                            optarg ? optarg : "<empty>");
+                    return false;
                 }
                 break;
             case 'M':
-                if (optarg) {
-                    config->enable_systemd = parse_bool_arg(optarg);
-                } else {
-                    config->enable_systemd = false;
+                if (!parse_bool_arg(optarg, &config->enable_systemd)) {
+                    fprintf(stderr, "Invalid value for --systemd: %s (use true|false)\n",
+                            optarg ? optarg : "<empty>");
+                    return false;
                 }
                 break;
             case 'W':
-                if (optarg) {
-                    config->enable_watchdog = parse_bool_arg(optarg);
-                } else {
-                    config->enable_watchdog = false;
+                if (!parse_bool_arg(optarg, &config->enable_watchdog)) {
+                    fprintf(stderr, "Invalid value for --watchdog: %s (use true|false)\n",
+                            optarg ? optarg : "<empty>");
+                    return false;
                 }
                 break;
             /* --version */
@@ -236,7 +274,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
 }
 
 bool config_validate(const config_t* restrict config, char* restrict error_msg, size_t error_size) {
-    if (config == nullptr || error_msg == nullptr || error_size == 0) {
+    if (config == NULL || error_msg == NULL || error_size == 0) {
         return false;
     }
     
@@ -285,15 +323,16 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
     
     /* 验证自定义关机命令安全性 (仅允许已知的安全命令) */
     if (strlen(config->shutdown_cmd) > 0) {
-        /* 允许基本的 shutdown 命令格式 */
+        /* 允许基本的 shutdown 命令格式，但仍需要进行安全检查 */
         if (strncmp(config->shutdown_cmd, "shutdown", 8) != 0 &&
             strncmp(config->shutdown_cmd, "/sbin/shutdown", 14) != 0 &&
             strncmp(config->shutdown_cmd, "systemctl", 9) != 0) {
-            /* 对其他命令进行安全检查 */
-            if (!is_safe_path(config->shutdown_cmd)) {
-                snprintf(error_msg, error_size, "Shutdown command contains unsafe characters");
-                return false;
-            }
+            snprintf(error_msg, error_size, "Shutdown command must start with shutdown/systemctl");
+            return false;
+        }
+        if (!is_safe_path(config->shutdown_cmd)) {
+            snprintf(error_msg, error_size, "Shutdown command contains unsafe characters");
+            return false;
         }
     }
     
@@ -302,7 +341,7 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
 
 /* 打印当前配置（用于序列化和调试，仅在 DEBUG 模式下由 main() 调用） */
 void config_print(const config_t* restrict config) {
-    if (config == nullptr) {
+    if (config == NULL) {
         return;
     }
     
@@ -401,7 +440,7 @@ const char* shutdown_mode_to_string(shutdown_mode_t mode) {
 
 /* 将字符串转换为 shutdown_mode_t 枚举（不区分大小写） */
 shutdown_mode_t string_to_shutdown_mode(const char* restrict str) {
-    if (str == nullptr) {
+    if (str == NULL) {
         return SHUTDOWN_MODE_IMMEDIATE;
     }
     
