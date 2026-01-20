@@ -260,7 +260,20 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 7. monitor 模块 (`monitor.c/h`)
+### 7. shutdown 模块 (`shutdown.c/h`)
+
+**职责**：关机触发（命令构造 + `fork()` + `execvp()`），与监控策略解耦
+
+**关键 API**：
+- `shutdown_trigger()`
+
+**依赖**：`common`, `logger`, `config`
+
+补充说明：严格不经过 shell，参数只做空白分隔，并拒绝引号/反引号/控制字符。
+
+---
+
+### 8. monitor 模块 (`monitor.c/h`)
 
 **职责**：监控循环和关机触发
 
@@ -296,7 +309,7 @@ while (!stop_flag) {
 
 ---
 
-### 8. main 模块 (`main.c`)
+### 9. main 模块 (`main.c`)
 
 **职责**：程序入口
 

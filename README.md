@@ -40,6 +40,7 @@ src/
 ├── logger.c/h     # 日志系统
 ├── icmp.c/h       # ICMP ping 实现
 ├── metrics.c/h    # 指标统计（成功率/延迟/运行时长）
+├── shutdown.c/h   # 关机触发（fork/execvp，无 shell）
 ├── systemd.c/h    # systemd 集成
 └── monitor.c/h    # 监控核心逻辑
 ```

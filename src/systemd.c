@@ -235,3 +235,16 @@ bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
     }
     return ok;
 }
+
+uint64_t systemd_notifier_watchdog_interval_ms(const systemd_notifier_t* restrict notifier)
+{
+    if (notifier == NULL || !notifier->enabled || notifier->watchdog_usec == 0) {
+        return 0;
+    }
+
+    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 -> ms */
+    if (interval_ms == 0) {
+        interval_ms = 1;
+    }
+    return interval_ms;
+}

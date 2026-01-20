@@ -6,7 +6,7 @@ OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测
 
 ## 架构概览
 
-### 模块化设计（8 个独立模块）
+### 模块化设计（9 个独立模块）
 ```
 src/
 ├── main.c         # 程序入口，信号处理 (SIGINT/SIGTERM/SIGUSR1)
@@ -16,10 +16,11 @@ src/
 ├── icmp.c/h       # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
 ├── systemd.c/h    # systemd 集成：sd_notify、watchdog、状态通知
 ├── metrics.c/h    # 指标统计：成功率、延迟、运行时长
+├── shutdown.c/h   # 关机触发：fork/execvp（无 shell）
 └── monitor.c/h    # 监控循环：ping + 重试 + 失败统计 + 关机触发
 ```
 
-**依赖关系**: common → logger → config/icmp/systemd/metrics → monitor → main
+**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → monitor → main
 
 **关键特性**:
 - 零第三方依赖（仅 C 标准库和 Linux 系统调用）

@@ -1,15 +1,13 @@
 #include "monitor.h"
 #include "common.h"
 #include "metrics.h"
+#include "shutdown.h"
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -214,181 +212,46 @@ static void handle_ping_failure(monitor_t* monitor, const ping_result_t* result)
 }
 
 /* 构建命令参数数组（空白分隔，不支持引号） */
-static bool build_command_argv(const char* command, char* buffer, size_t buffer_size, char* argv[],
-                               size_t argv_size)
-{
-    if (command == NULL || buffer == NULL || argv == NULL || argv_size < 2) {
-        return false;
-    }
-
-    size_t cmd_len = strlen(command);
-    if (cmd_len == 0 || cmd_len >= buffer_size) {
-        return false;
-    }
-
-    /* Strictly reject quotes/backticks and control characters */
-    if (strchr(command, '\"') != NULL || strchr(command, '\'') != NULL ||
-        strchr(command, '`') != NULL) {
-        return false;
-    }
-
-    for (const char* p = command; *p != '\0'; ++p) {
-        if ((unsigned char)*p < 0x20 || *p == 0x7F) {
-            return false;
-        }
-    }
-
-    memcpy(buffer, command, cmd_len + 1);
-
-    size_t argc = 0;
-    char* saveptr = NULL;
-    char* token = strtok_r(buffer, " \t", &saveptr);
-    while (token != NULL) {
-        if (argc + 1 >= argv_size) {
-            return false;
-        }
-        if (!is_safe_path(token)) {
-            return false;
-        }
-        argv[argc++] = token;
-        token = strtok_r(NULL, " \t", &saveptr);
-    }
-
-    if (argc == 0) {
-        return false;
-    }
-
-    argv[argc] = NULL;
-    return true;
-}
-
 static void sleep_with_stop(monitor_t* monitor, int seconds);
-
-/* 触发关机 */
-static void trigger_shutdown(monitor_t* monitor)
-{
-    logger_warn(monitor->logger, "Shutdown threshold reached, mode is %s%s",
-                shutdown_mode_to_string(monitor->config->shutdown_mode),
-                monitor->config->dry_run ? " (dry-run enabled)" : "");
-
-    if (monitor->config->dry_run) {
-        logger_info(monitor->logger, "[DRY-RUN] Would trigger shutdown in %s mode",
-                    shutdown_mode_to_string(monitor->config->shutdown_mode));
-        return;
-    }
-
-    bool use_systemctl = monitor->config->enable_systemd && monitor_systemd_enabled(monitor);
-    char command_buf[512];
-    char* argv[16] = {0};
-
-    if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-        logger_error(monitor->logger,
-                     "LOG-ONLY mode: Network connectivity lost, would trigger shutdown");
-        return;
-    }
-
-    /* Default to userspace shutdown paths (no direct reboot syscall) */
-    if (monitor->config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-        if (use_systemctl) {
-            snprintf(command_buf, sizeof(command_buf), "systemctl poweroff");
-        } else {
-            snprintf(command_buf, sizeof(command_buf), "/sbin/shutdown -h now");
-        }
-    } else if (monitor->config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-        snprintf(command_buf, sizeof(command_buf), "/sbin/shutdown -h +%d",
-                 monitor->config->delay_minutes);
-    } else {
-        logger_error(monitor->logger, "Unknown shutdown mode");
-        return;
-    }
-
-    if (!build_command_argv(command_buf, command_buf, sizeof(command_buf), argv,
-                            sizeof(argv) / sizeof(argv[0]))) {
-        logger_error(monitor->logger, "Failed to parse shutdown command: %s", command_buf);
-        return;
-    }
-
-    if (monitor->config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-        logger_warn(monitor->logger, "Triggering immediate shutdown");
-    } else {
-        logger_warn(monitor->logger, "Triggering shutdown in %d minutes",
-                    monitor->config->delay_minutes);
-    }
-
-    /* 执行关机命令（使用 fork/execvp 以避免 shell 注入） */
-    pid_t child_pid = fork();
-    if (child_pid < 0) {
-        logger_error(monitor->logger, "fork() failed: %s", strerror(errno));
-        return;
-    }
-
-    if (child_pid == 0) {
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) {
-            (void)dup2(devnull, STDOUT_FILENO);
-            close(devnull);
-        }
-
-        execvp(argv[0], argv);
-
-        fprintf(stderr, "exec failed: %s\n", strerror(errno));
-        _exit(127);
-    }
-
-    /* 父进程：等待子进程完成（设置 5 秒超时） */
-    int status = 0;
-    time_t start_time = time(NULL);
-    while (1) {
-        pid_t result = waitpid(child_pid, &status, WNOHANG);
-        if (result == child_pid) {
-            if (WIFEXITED(status)) {
-                int exit_code = WEXITSTATUS(status);
-                if (exit_code == 0) {
-                    logger_info(monitor->logger, "Shutdown command executed successfully");
-                } else {
-                    logger_error(monitor->logger, "Shutdown command failed with exit code %d: %s",
-                                 exit_code, argv[0]);
-                }
-            } else if (WIFSIGNALED(status)) {
-                logger_error(monitor->logger, "Shutdown command terminated by signal %d: %s",
-                             WTERMSIG(status), argv[0]);
-            }
-            return;
-        }
-
-        if (result < 0) {
-            logger_error(monitor->logger, "waitpid() failed: %s", strerror(errno));
-            return;
-        }
-
-        if (time(NULL) - start_time > 5) {
-            logger_warn(monitor->logger, "Shutdown command timeout, killing process");
-            kill(child_pid, SIGKILL);
-            (void)waitpid(child_pid, &status, 0);
-            return;
-        }
-
-        usleep(100000);
-    }
-}
 
 /* 可中断的休眠（支持信号中断和 watchdog 心跳） */
 static void sleep_with_stop(monitor_t* monitor, int seconds)
 {
-    for (int i = 0; i < seconds; i++) {
+    if (monitor == NULL || seconds <= 0) {
+        return;
+    }
+
+    uint64_t remaining_ms = 0;
+    if (ckd_mul(&remaining_ms, (uint64_t)seconds, UINT64_C(1000))) {
+        remaining_ms = UINT64_MAX;
+    }
+
+    while (remaining_ms > 0) {
         if (monitor->stop_flag) {
             break;
         }
 
+        uint64_t chunk_ms = remaining_ms;
         if (monitor_systemd_enabled(monitor) && monitor->config->enable_watchdog) {
+            uint64_t interval_ms = systemd_notifier_watchdog_interval_ms(&monitor->systemd);
+            if (interval_ms > 0 && interval_ms < chunk_ms) {
+                chunk_ms = interval_ms;
+            }
             (void)systemd_notifier_watchdog(&monitor->systemd);
         }
 
-        struct timespec ts = {.tv_sec = 1, .tv_nsec = 0};
+        struct timespec ts = {.tv_sec = (time_t)(chunk_ms / 1000ULL),
+                              .tv_nsec = (long)((chunk_ms % 1000ULL) * 1000000ULL)};
         while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
             if (monitor->stop_flag) {
                 break;
             }
+        }
+
+        if (chunk_ms >= remaining_ms) {
+            remaining_ms = 0;
+        } else {
+            remaining_ms -= chunk_ms;
         }
     }
 }
@@ -450,10 +313,14 @@ int monitor_run(monitor_t* restrict monitor)
 
             if (monitor->consecutive_fails >= monitor->config->fail_threshold) {
                 if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-                    trigger_shutdown(monitor);
+                    bool use_systemctl = monitor->config->enable_systemd &&
+                                         monitor_systemd_enabled(monitor);
+                    shutdown_trigger(monitor->config, monitor->logger, use_systemctl);
                     monitor->consecutive_fails = 0;
                 } else {
-                    trigger_shutdown(monitor);
+                    bool use_systemctl = monitor->config->enable_systemd &&
+                                         monitor_systemd_enabled(monitor);
+                    shutdown_trigger(monitor->config, monitor->logger, use_systemctl);
                     logger_info(monitor->logger, "Shutdown triggered, exiting monitor loop");
                     break;
                 }

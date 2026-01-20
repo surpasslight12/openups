@@ -42,4 +42,12 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier);
 /* 发送 watchdog 心跳 */
 [[nodiscard]] bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier);
 
+/* 获取建议的 watchdog 心跳间隔（毫秒）。
+ * 返回值:
+ *   - 0: 未启用 watchdog 或 systemd 不可用
+ *   - >0: 建议调用 systemd_notifier_watchdog() 的最小间隔
+ */
+[[nodiscard]] uint64_t systemd_notifier_watchdog_interval_ms(
+    const systemd_notifier_t* restrict notifier);
+
 #endif /* OPENUPS_SYSTEMD_H */

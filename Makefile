@@ -40,6 +40,7 @@ SRCS := $(SRC_DIR)/main.c \
         $(SRC_DIR)/config.c \
         $(SRC_DIR)/icmp.c \
 	$(SRC_DIR)/metrics.c \
+	$(SRC_DIR)/shutdown.c \
         $(SRC_DIR)/systemd.c \
         $(SRC_DIR)/monitor.c
 
