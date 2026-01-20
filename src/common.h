@@ -6,12 +6,51 @@
 #include <stdint.h>
 #include <time.h>
 
+/* C23 checked integer arithmetic (with fallback for older compilers)
+ * Prefer using ckd_add/ckd_mul with uint64_t for time conversions.
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+#include <stdckdint.h>
+#else
+static inline bool openups_ckd_add_u64(uint64_t* result, uint64_t a, uint64_t b)
+{
+
+    if (result == NULL) {
+        return true;
+    }
+    if (b > UINT64_MAX - a) {
+        return true;
+    }
+    *result = a + b;
+    return false;
+}
+
+static inline bool openups_ckd_mul_u64(uint64_t* result, uint64_t a, uint64_t b)
+{
+
+    if (result == NULL) {
+        return true;
+    }
+    if (a != 0 && b > UINT64_MAX / a) {
+        return true;
+    }
+    *result = a * b;
+    return false;
+}
+
+#define ckd_add(result, a, b) openups_ckd_add_u64((result), (uint64_t)(a), (uint64_t)(b))
+#define ckd_mul(result, a, b) openups_ckd_mul_u64((result), (uint64_t)(a), (uint64_t)(b))
+#endif
+
 /* 版本信息 */
 #define VERSION "1.2.0"
 #define PROGRAM_NAME "openups"
 
 /* 获取当前时间戳（毫秒级） */
 [[nodiscard]] uint64_t get_timestamp_ms(void);
+
+/* 获取单调时钟（毫秒级，用于延迟/运行时长统计，避免系统时间跳变） */
+[[nodiscard]] uint64_t get_monotonic_ms(void);
 
 /* 获取格式化时间字符串 */
 [[nodiscard]] char* get_timestamp_str(char* restrict buffer, size_t size);

@@ -18,7 +18,7 @@ typedef struct {
     double min_latency;
     double max_latency;
     double total_latency;
-    uint64_t start_time;
+    uint64_t start_time_ms;
 } metrics_t;
 
 /* 监控器结构 */
@@ -27,17 +27,17 @@ typedef struct {
     logger_t* logger;
     metrics_t metrics;
     icmp_pinger_t pinger;
-    systemd_notifier_t* systemd;
-    
+    systemd_notifier_t systemd;
+
     volatile sig_atomic_t stop_flag;
     volatile sig_atomic_t print_stats_flag;
-    
+
     int consecutive_fails;
 } monitor_t;
 
 /* 初始化监控器 */
-[[nodiscard]] bool monitor_init(monitor_t* restrict monitor, config_t* restrict config, 
-                                logger_t* restrict logger, char* restrict error_msg, 
+[[nodiscard]] bool monitor_init(monitor_t* restrict monitor, config_t* restrict config,
+                                logger_t* restrict logger, char* restrict error_msg,
                                 size_t error_size);
 
 /* 销毁监控器 */

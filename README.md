@@ -13,7 +13,7 @@
 - **原生 ICMP 实现**：使用 raw socket 实现 ICMP ping，无需依赖系统 `ping` 命令
 - **IPv4/IPv6 双栈支持**：同时支持 IPv4 和 IPv6 网络
 - **智能重试机制**：可配置的重试次数
-- **灵活的关机策略**：immediate、delayed、log-only、custom 四种模式
+- **灵活的关机策略**：immediate、delayed、log-only 三种模式
 
 ### 性能优势
 - **C23 标准**：使用最新的 C 语言标准和编译器优化
@@ -123,6 +123,10 @@ Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_DRY_RUN=false"
 Environment="OPENUPS_TIMESTAMP=false"
+
+; 权限说明（默认 unit）：
+; - service 以 root 运行，但 CapabilityBoundingSet 仅保留 CAP_NET_RAW
+; - 关机通过 systemctl/shutdown 完成，不需要 CAP_SYS_BOOT
 ```
 
 应用并启动：
@@ -170,14 +174,10 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 ./bin/openups --target 2606:4700:4700::1111 --ipv6 --interval 10
 ```
 
-### 自定义关机脚本
+> 注意：OpenUPS 不做 DNS 解析，`--target` 仅支持 IP 字面量（IPv4/IPv6）。
 
-```bash
-./bin/openups --shutdown-mode custom --script /usr/local/bin/my-shutdown.sh --dry-run=false
-```
-
-> 注意：`--shutdown-cmd` 或 `OPENUPS_SHUTDOWN_CMD` 执行时不经过 shell，
-> 参数仅支持空白分隔，不支持引号或重定向语法。
+补充：默认不会直接调用内核 `reboot()` 关机接口；会通过 `fork()` + `exec*()` 调用
+`systemctl poweroff`（systemd 场景）或 `/sbin/shutdown`（非 systemd 场景）。
 
 ## ⚙️ 常用参数
 
@@ -188,7 +188,7 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 | 调整检测频率 | `--interval <sec>` / `--timeout <ms>` |
 | 调整容错阈值 | `--threshold <num>` / `--retries <num>` |
 | 生产启用关机 | `--dry-run=false` |
-| 选择关机策略 | `--shutdown-mode immediate|delayed|log-only|custom` |
+| 选择关机策略 | `--shutdown-mode immediate|delayed|log-only` |
 | systemd 集成 | `--systemd[=true/false]` / `--watchdog[=true/false]` |
 
 ## 🔒 安全特性

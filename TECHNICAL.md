@@ -21,7 +21,8 @@
 ### C23 特性使用
 
 #### ✅ 指针与返回值检查（C 风格说明）
-示例采用 C 语言惯用写法：使用 `NULL` 作为空指针检查，并建议在可用的编译器上使用 `__attribute__((warn_unused_result))` 或等效机制提示检查返回值。
+示例采用 C 语言惯用写法：使用 `NULL` 作为空指针检查；对关键 API 使用 C23 的 `[[nodiscard]]`
+提示调用方检查返回值。
 
 ```c
 static monitor_t* g_monitor = NULL;
@@ -30,11 +31,9 @@ if (monitor == NULL) {
     return false;
 }
 
-/* 若需强制检查返回值（GCC/Clang）可使用： */
-bool config_validate(const config_t* config, char* error_msg, size_t error_size)
-    __attribute__((warn_unused_result));
-
-int monitor_run(monitor_t* monitor) __attribute__((warn_unused_result));
+/* 示例：关键函数使用 [[nodiscard]] */
+[[nodiscard]] bool config_validate(const config_t* config, char* error_msg, size_t error_size);
+[[nodiscard]] int monitor_run(monitor_t* monitor);
 ```
 
 #### ✅ restrict（优化指针别名）
@@ -48,6 +47,13 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
 static_assert(sizeof(sig_atomic_t) >= sizeof(int),
               "sig_atomic_t must be at least int size");
 ```
+
+#### ✅ `stdckdint.h`（checked arithmetic）
+用于时间换算、延迟/运行时长等场景的溢出安全计算（如秒 → 毫秒）。在编译器不支持 C23 头文件时，
+项目会自动回退到等价的安全实现。
+
+#### ✅ `CLOCK_MONOTONIC`（稳定的延迟/运行时长）
+延迟测量与 uptime 统计使用单调时钟，避免系统时间调整（NTP/手动改时间）造成负数延迟或运行时长跳变。
 ├── README.md          # 项目说明
 ├── TECHNICAL.md       # 本文件
 ├── CONTRIBUTING.md    # 贡献指南
@@ -100,12 +106,10 @@ main.c (依赖 monitor.h, config.h, logger.h)
    - IMMEDIATE: 立即关机
    - DELAYED: 延迟关机
    - LOG_ONLY: 仅记录日志
-   - CUSTOM: 执行自定义脚本
 4. 记录日志（warn 级别）
 5. 执行系统命令（如非 dry-run）
 
-补充说明：关机命令通过 `fork()` + `execv/execvp` 执行，不经过 shell。
-因此 `OPENUPS_SHUTDOWN_CMD` 仅支持以空白分隔的参数，不支持引号或重定向语法。
+补充说明：关机命令通过 `fork()` + `execvp` 执行，不经过 shell。
 ```
 
 ---

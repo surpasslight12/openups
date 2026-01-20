@@ -156,7 +156,7 @@ if (!config_validate(&config, error_msg, sizeof(error_msg))) {
 
 **关机命令执行约束**：
 - 关机命令通过 `fork()` + `execv/execvp` 执行，不经过 shell。
-- `OPENUPS_SHUTDOWN_CMD` 仅支持空白分隔参数，不支持引号或重定向语法。
+- 自定义关机仅支持执行脚本路径（`shutdown-mode=custom`）。
 
 ### ICMP Ping 实现（原生 raw socket）
 ```c

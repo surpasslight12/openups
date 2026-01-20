@@ -3,13 +3,21 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 /* systemd 通知器结构 */
 typedef struct {
     bool enabled;
-    char* notify_socket;
     int sockfd;
     uint64_t watchdog_usec;
+    struct sockaddr_un addr;
+    socklen_t addr_len;
+
+    /* 轻量级降频：避免 STATUS / WATCHDOG 过于频繁 */
+    uint64_t last_watchdog_ms;
+    uint64_t last_status_ms;
+    char last_status[256];
 } systemd_notifier_t;
 
 /* 初始化 systemd 通知器 */
@@ -25,7 +33,7 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier);
 [[nodiscard]] bool systemd_notifier_ready(systemd_notifier_t* restrict notifier);
 
 /* 通知 systemd 状态 */
-[[nodiscard]] bool systemd_notifier_status(systemd_notifier_t* restrict notifier, 
+[[nodiscard]] bool systemd_notifier_status(systemd_notifier_t* restrict notifier,
                                            const char* restrict status);
 
 /* 通知 systemd 停止 */

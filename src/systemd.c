@@ -3,62 +3,94 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+
+#include <stddef.h>
+
+static uint64_t monotonic_ms(void)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0;
+    }
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+}
+
+static bool build_notify_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
+                              socklen_t* restrict addr_len)
+{
+    if (socket_path == NULL || addr == NULL || addr_len == NULL) {
+        return false;
+    }
+
+    memset(addr, 0, sizeof(*addr));
+    addr->sun_family = AF_UNIX;
+
+    /* 处理抽象命名空间（@ 前缀） */
+    if (socket_path[0] == '@') {
+        size_t name_len = strlen(socket_path + 1);
+        if (name_len == 0 || name_len > sizeof(addr->sun_path) - 1) {
+            return false;
+        }
+
+        addr->sun_path[0] = '\0';
+        memcpy(addr->sun_path + 1, socket_path + 1, name_len);
+        *addr_len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + 1 + name_len);
+        return true;
+    }
+
+    size_t path_len = strlen(socket_path);
+    if (path_len == 0 || path_len >= sizeof(addr->sun_path)) {
+        return false;
+    }
+
+    memcpy(addr->sun_path, socket_path, path_len + 1);
+    *addr_len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + path_len + 1);
+    return true;
+}
 
 /* 发送 systemd 通知
  * 实现: 通过 UNIX domain socket (SOCK_DGRAM) 发送消息到 systemd
  * 消息格式: "STATUS=...", "READY=1", "STOPPING=1", "WATCHDOG=1" 等
  */
-static bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message) {
-    if (notifier == NULL || message == NULL || 
-        !notifier->enabled || notifier->notify_socket == NULL) {
+static bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
+{
+    if (notifier == NULL || message == NULL || !notifier->enabled) {
         return false;
     }
-    
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    
-    /* 处理抽象命名空间（@ 前缀） */
-    if (notifier->notify_socket[0] == '@') {
-        addr.sun_path[0] = '\0';
-        /* 使用 memcpy 而不是 strncpy，因为可能包含 null 字节 */
-        size_t len = strlen(notifier->notify_socket + 1);
-        if (len >= sizeof(addr.sun_path) - 1) {
-            len = sizeof(addr.sun_path) - 2;
-        }
-        memcpy(addr.sun_path + 1, notifier->notify_socket + 1, len);
-    } else {
-        size_t len = strlen(notifier->notify_socket);
-        if (len >= sizeof(addr.sun_path)) {
-            len = sizeof(addr.sun_path) - 1;
-        }
-        memcpy(addr.sun_path, notifier->notify_socket, len);
-        addr.sun_path[len] = '\0';
-    }
-    
+
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags |= MSG_NOSIGNAL;
+#endif
+
     /* 重试发送直到成功或遇到非 EINTR 错误 */
     ssize_t sent;
     do {
-        sent = sendto(notifier->sockfd, message, strlen(message), 0,
-                      (struct sockaddr*)&addr, sizeof(addr));
+        sent = send(notifier->sockfd, message, strlen(message), flags);
     } while (sent < 0 && errno == EINTR);
-    
+
     return sent >= 0;
 }
 
-void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
+void systemd_notifier_init(systemd_notifier_t* restrict notifier)
+{
     if (notifier == NULL) {
         return;
     }
-    
+
     notifier->enabled = false;
-    notifier->notify_socket = NULL;
     notifier->sockfd = -1;
     notifier->watchdog_usec = 0;
-    
+    memset(&notifier->addr, 0, sizeof(notifier->addr));
+    notifier->addr_len = 0;
+    notifier->last_watchdog_ms = 0;
+    notifier->last_status_ms = 0;
+    notifier->last_status[0] = '\0';
+
     /* 检查 NOTIFY_SOCKET 环境变量
      * systemd 会为被管理的服务设置此变量
      * 如果不存在，表示程序不是由 systemd 启动的
@@ -67,23 +99,37 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
     if (socket_path == NULL) {
         return;
     }
-    
+
     /* 创建 UNIX domain socket (SOCK_DGRAM 无连接数据报)
      * 特殊注意: systemd 通知使用数据报方式，不需要预先建立连接
      */
-    notifier->sockfd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    int socket_type = SOCK_DGRAM;
+#ifdef SOCK_CLOEXEC
+    socket_type |= SOCK_CLOEXEC;
+#endif
+    notifier->sockfd = socket(AF_UNIX, socket_type, 0);
     if (notifier->sockfd < 0) {
         return;
     }
-    
-    notifier->notify_socket = strdup(socket_path);
-    if (notifier->notify_socket == NULL) {
+
+    if (!build_notify_addr(socket_path, &notifier->addr, &notifier->addr_len)) {
         close(notifier->sockfd);
         notifier->sockfd = -1;
         return;
     }
+
+    int rc;
+    do {
+        rc = connect(notifier->sockfd, (const struct sockaddr*)&notifier->addr, notifier->addr_len);
+    } while (rc < 0 && errno == EINTR);
+    if (rc < 0) {
+        close(notifier->sockfd);
+        notifier->sockfd = -1;
+        return;
+    }
+
     notifier->enabled = true;
-    
+
     /* 解析 WATCHDOG_USEC 环境变量
      * systemd 会设置 watchdog 超时时间（微秒）
      * 程序需要每隔 超时时间/2 秒向 systemd 发送一次心跳
@@ -95,58 +141,97 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier) {
     }
 }
 
-void systemd_notifier_destroy(systemd_notifier_t* restrict notifier) {
+void systemd_notifier_destroy(systemd_notifier_t* restrict notifier)
+{
     if (notifier == NULL) {
         return;
     }
-    
+
     if (notifier->sockfd >= 0) {
         close(notifier->sockfd);
         notifier->sockfd = -1;
     }
-    
-    if (notifier->notify_socket != NULL) {
-        free(notifier->notify_socket);
-        notifier->notify_socket = NULL;
-    }
-    
+
     notifier->enabled = false;
+    memset(&notifier->addr, 0, sizeof(notifier->addr));
+    notifier->addr_len = 0;
 }
 
 /* 检查 systemd 通知器是否已启用 */
-bool systemd_notifier_is_enabled(const systemd_notifier_t* restrict notifier) {
+bool systemd_notifier_is_enabled(const systemd_notifier_t* restrict notifier)
+{
     return notifier != NULL && notifier->enabled;
 }
 
 /* 通知 systemd 程序已就绪 (启动完成) */
-bool systemd_notifier_ready(systemd_notifier_t* restrict notifier) {
+bool systemd_notifier_ready(systemd_notifier_t* restrict notifier)
+{
     return send_notify(notifier, "READY=1");
 }
 
 /* 更新程序状态信息到 systemd */
-bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status) {
+bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status)
+{
     if (notifier == NULL || !notifier->enabled || status == NULL) {
         return false;
     }
-    
+
+    /* 降频：内容未变化且距离上次发送太近时跳过 */
+    uint64_t now_ms = monotonic_ms();
+    bool same = (strncmp(notifier->last_status, status, sizeof(notifier->last_status)) == 0);
+    if (same && notifier->last_status_ms != 0 && now_ms - notifier->last_status_ms < 2000) {
+        return true;
+    }
+
     /* 向 systemd 报告当前程序状态
      * 格式: "STATUS=..." (e.g., "STATUS=Monitoring 1.1.1.1")
      * systemd 会在 systemctl status 中显示此信息
      */
     char message[256];
     snprintf(message, sizeof(message), "STATUS=%s", status);
-    return send_notify(notifier, message);
+
+    bool ok = send_notify(notifier, message);
+    if (ok) {
+        snprintf(notifier->last_status, sizeof(notifier->last_status), "%s", status);
+        notifier->last_status_ms = now_ms;
+    }
+    return ok;
 }
 
 /* 通知 systemd 程序即将停止运行 */
-bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier) {
+bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier)
+{
     return send_notify(notifier, "STOPPING=1");
 }
 
-bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier) {
+bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
+{
     /* 发送 watchdog 心跳 (WATCHDOG=1)
      * 程序需要每隔 WATCHDOG_USEC/2 时间发送一次心跳
      * 如果超时未发送 watchdog 心跳，systemd 会强制重启应用程序
      */
-    return send_notify(notifier, "WATCHDOG=1");
+    if (notifier == NULL || !notifier->enabled) {
+        return false;
+    }
+
+    /* 未设置 WatchdogSec 时 systemd 不会提供 WATCHDOG_USEC，此时应默认 no-op。 */
+    if (notifier->watchdog_usec == 0) {
+        return true;
+    }
+
+    uint64_t now_ms = monotonic_ms();
+    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 -> ms */
+    if (interval_ms == 0) {
+        interval_ms = 1;
+    }
+
+    if (notifier->last_watchdog_ms != 0 && now_ms - notifier->last_watchdog_ms < interval_ms) {
+        return true;
+    }
+
+    bool ok = send_notify(notifier, "WATCHDOG=1");
+    if (ok) {
+        notifier->last_watchdog_ms = now_ms;
+    }
+    return ok;
 }

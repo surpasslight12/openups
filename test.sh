@@ -104,12 +104,12 @@ else
     exit 1
 fi
 
-# 危险的自定义脚本路径
-echo "[10/11] 测试危险路径注入..."
-if ./bin/openups --custom-script "/tmp/test;rm -rf /" 2>&1 | grep -q "unsafe characters"; then
-    echo "✓ 危险路径被拒绝"
+# 注入式 target（OpenUPS 禁用 DNS，且 target 必须为 IP 字面量）
+echo "[10/11] 测试 target 注入防护..."
+if ./bin/openups --target "1.1.1.1;rm -rf /" 2>&1 | grep -Eq "Target must be a valid|DNS is disabled"; then
+    echo "✓ 注入式 target 被拒绝"
 else
-    echo "❌ 路径注入防护失败"
+    echo "❌ target 注入防护失败"
     exit 1
 fi
 

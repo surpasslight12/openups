@@ -29,9 +29,8 @@ Restart=on-failure
 # Wait N seconds before restart attempt
 RestartSec=10
 
-# Systemd watchdog heartbeat (5 second timeout)
-# Program must call sd_notify with WATCHDOG=1 every 2.5 seconds
-WatchdogSec=5
+# Optional: enable systemd watchdog
+# WatchdogSec=30
 
 # Logging
 StandardOutput=journal
@@ -49,9 +48,9 @@ Environment="OPENUPS_SYSTEMD=true"
 Environment="OPENUPS_WATCHDOG=true"
 
 # Security
-DynamicUser=true
-CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
-AmbientCapabilities=CAP_NET_RAW CAP_SYS_BOOT
+User=root
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

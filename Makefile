@@ -15,6 +15,9 @@ CFLAGS ?= -O3 -std=c2x -Wall -Wextra -Wpedantic -Werror=implicit-function-declar
           -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
           -march=native -mtune=native -flto
 
+# 自动生成头文件依赖（避免增量构建遗漏头文件变化，导致 -flto 下结构体布局不一致）
+CFLAGS += -MMD -MP
+
 # 链接标志说明：
 #   RELRO: -Wl,-z,relro,-z,now (Full RELRO - 只读重定位表)
 #   NX: -Wl,-z,noexecstack (禁用可执行栈)
@@ -27,6 +30,9 @@ BIN_DIR := bin
 SRC_DIR := src
 TARGET := $(BIN_DIR)/openups
 
+CLANG_FORMAT ?= clang-format
+FORMAT_SRCS := $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/*.h)
+
 # 源文件
 SRCS := $(SRC_DIR)/main.c \
         $(SRC_DIR)/common.c \
@@ -37,14 +43,25 @@ SRCS := $(SRC_DIR)/main.c \
         $(SRC_DIR)/monitor.c
 
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BIN_DIR)/%.o)
+DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean run install uninstall test help
+.PHONY: all clean run install uninstall test format check-format help
 
 all: $(TARGET)
+
+-include $(DEPS)
 
 test: all
 	@echo "Running test suite..."
 	@./test.sh
+
+format:
+	@$(CLANG_FORMAT) -i $(FORMAT_SRCS)
+	@echo "Formatted: $(FORMAT_SRCS)"
+
+check-format:
+	@$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_SRCS)
+	@echo "Format check passed"
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
@@ -89,6 +106,8 @@ help:
 	@echo "  all        - Build the project (default target)"
 	@echo "  clean      - Remove build artifacts (bin/ directory)"
 	@echo "  test       - Build and run automated test suite"
+	@echo "  format     - Format src/*.c and src/*.h using clang-format"
+	@echo "  check-format - Verify formatting (clang-format --dry-run -Werror)"
 	@echo "  run        - Build and run in test mode with localhost"
 	@echo "  install    - Install binary to /usr/local/bin and set CAP_NET_RAW"
 	@echo "  uninstall  - Remove binary from /usr/local/bin"
@@ -98,9 +117,12 @@ help:
 	@echo "  CC         - C compiler executable (default: gcc)"
 	@echo "  CFLAGS     - Compiler optimization and safety flags"
 	@echo "  LDFLAGS    - Linker security and optimization flags"
+	@echo "  CLANG_FORMAT - clang-format executable (default: clang-format)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make                       # Build with optimizations"
+	@echo "  make format                # Apply code formatter"
+	@echo "  make check-format          # Check formatting in CI"
 	@echo "  make clean && make test    # Clean build and run tests"
 	@echo "  make CC=clang              # Build with clang instead of gcc"
 	@echo "  make install               # Install system-wide"
