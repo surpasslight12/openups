@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/socket.h>
 
 /* Ping 结果 */
 typedef struct {
@@ -21,6 +22,12 @@ typedef struct {
     uint16_t sequence;
     uint8_t* send_buf;
     size_t send_buf_capacity;
+
+    /* 目标地址缓存：避免每次 ping 都做 inet_pton/结构体填充 */
+    bool cached_target_valid;
+    char cached_target[256];
+    struct sockaddr_storage cached_addr;
+    socklen_t cached_addr_len;
 } icmp_pinger_t;
 
 /* 回调：用于在等待回包期间执行周期性动作（例如喂 watchdog） */

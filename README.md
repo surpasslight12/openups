@@ -39,6 +39,7 @@ src/
 ├── config.c/h     # 配置管理
 ├── logger.c/h     # 日志系统
 ├── icmp.c/h       # ICMP ping 实现
+├── metrics.c/h    # 指标统计（成功率/延迟/运行时长）
 ├── systemd.c/h    # systemd 集成
 └── monitor.c/h    # 监控核心逻辑
 ```

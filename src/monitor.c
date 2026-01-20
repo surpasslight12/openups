@@ -1,5 +1,6 @@
 #include "monitor.h"
 #include "common.h"
+#include "metrics.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -58,72 +59,7 @@ void monitor_setup_signals(monitor_t* restrict monitor)
     (void)sigaction(SIGUSR1, &sa, NULL);
 }
 
-/* 初始化指标
- * 用于统计 ping 操作的成功率、延迟和运行时间
- * 初始化所有计数器为 0，最小/最大延迟为 -1（表示尚未有数据）
- */
-static void metrics_init(metrics_t* metrics)
-{
-    metrics->total_pings = 0;
-    metrics->successful_pings = 0;
-    metrics->failed_pings = 0;
-    metrics->min_latency = -1.0;
-    metrics->max_latency = -1.0;
-    metrics->total_latency = 0.0;
-    metrics->start_time_ms = get_monotonic_ms();
-}
-
-/* 记录成功的 ping 操作 */
-static void metrics_record_success(metrics_t* metrics, double latency)
-{
-    metrics->total_pings++;
-    metrics->successful_pings++;
-    metrics->total_latency += latency;
-
-    if (metrics->min_latency < 0 || latency < metrics->min_latency) {
-        metrics->min_latency = latency;
-    }
-
-    if (latency > metrics->max_latency) {
-        metrics->max_latency = latency;
-    }
-}
-
-/* 记录失败 */
-static void metrics_record_failure(metrics_t* metrics)
-{
-    metrics->total_pings++;
-    metrics->failed_pings++;
-}
-
-/* 计算成功率 (百分比) */
-static double metrics_success_rate(const metrics_t* metrics)
-{
-    if (metrics->total_pings == 0) {
-        return 0.0;
-    }
-    return (double)metrics->successful_pings / metrics->total_pings * 100.0;
-}
-
-/* 计算平均延迟 */
-static double metrics_avg_latency(const metrics_t* metrics)
-{
-    if (metrics->successful_pings == 0) {
-        return 0.0;
-    }
-    return metrics->total_latency / metrics->successful_pings;
-}
-
-/* 计算运行时间 */
-static uint64_t metrics_uptime_seconds(const metrics_t* metrics)
-{
-    uint64_t now_ms = get_monotonic_ms();
-    if (now_ms == UINT64_MAX || metrics->start_time_ms == UINT64_MAX ||
-        now_ms < metrics->start_time_ms) {
-        return 0;
-    }
-    return (now_ms - metrics->start_time_ms) / 1000;
-}
+/* metrics_* moved to metrics.c */
 
 /* 判断 systemd 是否可用 */
 static bool monitor_systemd_enabled(const monitor_t* monitor)

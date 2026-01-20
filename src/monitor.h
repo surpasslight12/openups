@@ -5,21 +5,11 @@
 #include "logger.h"
 #include "icmp.h"
 #include "systemd.h"
+#include "metrics.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <signal.h>
-
-/* 监控指标 */
-typedef struct {
-    uint64_t total_pings;
-    uint64_t successful_pings;
-    uint64_t failed_pings;
-    double min_latency;
-    double max_latency;
-    double total_latency;
-    uint64_t start_time_ms;
-} metrics_t;
 
 /* 监控器结构 */
 typedef struct {

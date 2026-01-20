@@ -247,7 +247,20 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 6. monitor 模块 (`monitor.c/h`)
+### 6. metrics 模块 (`metrics.c/h`)
+
+**职责**：指标统计（成功率、延迟、运行时长），与监控逻辑解耦
+
+**关键 API**：
+- `metrics_init()`
+- `metrics_record_success()` / `metrics_record_failure()`
+- `metrics_success_rate()` / `metrics_avg_latency()` / `metrics_uptime_seconds()`
+
+**依赖**：`common`
+
+---
+
+### 7. monitor 模块 (`monitor.c/h`)
 
 **职责**：监控循环和关机触发
 
@@ -283,7 +296,7 @@ while (!stop_flag) {
 
 ---
 
-### 7. main 模块 (`main.c`)
+### 8. main 模块 (`main.c`)
 
 **职责**：程序入口
 

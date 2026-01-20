@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/icmp6.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -70,16 +71,30 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, char* restr
     pinger->sequence = 0;
     pinger->send_buf = NULL;
     pinger->send_buf_capacity = 0;
+    pinger->cached_target_valid = false;
+    pinger->cached_target[0] = '\0';
+    memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
+    pinger->cached_addr_len = 0;
 
     /* 创建 raw socket */
     int family = use_ipv6 ? AF_INET6 : AF_INET;
     int protocol = use_ipv6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
 
-    pinger->sockfd = socket(family, SOCK_RAW, protocol);
+    int sock_type = SOCK_RAW;
+#ifdef SOCK_CLOEXEC
+    sock_type |= SOCK_CLOEXEC;
+#endif
+    pinger->sockfd = socket(family, sock_type, protocol);
     if (pinger->sockfd < 0) {
         snprintf(error_msg, error_size, "Failed to create socket: %s (require root or CAP_NET_RAW)",
                  strerror(errno));
         return false;
+    }
+
+    /* 非阻塞：避免极端情况下 recvfrom 意外阻塞，配合 poll + EAGAIN 逻辑 */
+    int flags = fcntl(pinger->sockfd, F_GETFL, 0);
+    if (flags >= 0) {
+        (void)fcntl(pinger->sockfd, F_SETFL, flags | O_NONBLOCK);
     }
 
     return true;
@@ -100,6 +115,11 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
     free(pinger->send_buf);
     pinger->send_buf = NULL;
     pinger->send_buf_capacity = 0;
+
+    pinger->cached_target_valid = false;
+    pinger->cached_target[0] = '\0';
+    memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
+    pinger->cached_addr_len = 0;
 }
 
 /* 解析目标地址 (IPv4 或 IPv6)
@@ -210,10 +230,7 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
             timeout_ms = 1;
         }
 
-        struct pollfd pfd;
-        memset(&pfd, 0, sizeof(pfd));
-        pfd.fd = fd;
-        pfd.events = POLLIN;
+        struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
 
         int rc = poll(&pfd, 1, timeout_ms);
         if (rc > 0) {
@@ -297,11 +314,8 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
-    uint64_t send_ms = get_monotonic_ms();
-    if (send_ms == UINT64_MAX) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Failed to read monotonic time");
-        return result;
-    }
+    uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
+                       (uint64_t)send_time.tv_nsec / 1000000ULL;
     uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
 
     while (1) {
@@ -322,6 +336,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
         }
 
         ssize_t received;
+        recv_addr_len = sizeof(recv_addr);
         do {
             received = recvfrom(pinger->sockfd, recv_buf, sizeof(recv_buf), 0,
                                 (struct sockaddr*)&recv_addr, &recv_addr_len);
@@ -446,11 +461,8 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     struct sockaddr_in6 recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
-    uint64_t send_ms = get_monotonic_ms();
-    if (send_ms == UINT64_MAX) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Failed to read monotonic time");
-        return result;
-    }
+    uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
+                       (uint64_t)send_time.tv_nsec / 1000000ULL;
     uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
 
     while (1) {
@@ -471,6 +483,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
         }
 
         ssize_t received;
+        recv_addr_len = sizeof(recv_addr);
         do {
             received = recvfrom(pinger->sockfd, recv_buf, sizeof(recv_buf), 0,
                                 (struct sockaddr*)&recv_addr, &recv_addr_len);
@@ -536,19 +549,34 @@ ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger, const char* re
         return result;
     }
 
-    /* 解析目标地址 */
-    struct sockaddr_storage addr;
-    socklen_t addr_len;
+    /* 解析目标地址（带缓存） */
+    const struct sockaddr_storage* addr_ptr = NULL;
+    socklen_t addr_len = 0;
 
-    if (!resolve_target(target, pinger->use_ipv6, &addr, &addr_len, result.error_msg,
-                        sizeof(result.error_msg))) {
-        return result;
+    if (pinger->cached_target_valid &&
+        strncmp(pinger->cached_target, target, sizeof(pinger->cached_target)) == 0) {
+        addr_ptr = &pinger->cached_addr;
+        addr_len = pinger->cached_addr_len;
+    } else {
+        struct sockaddr_storage addr;
+        if (!resolve_target(target, pinger->use_ipv6, &addr, &addr_len, result.error_msg,
+                            sizeof(result.error_msg))) {
+            return result;
+        }
+
+        /* 尽量缓存（target 来自 config/CLI，正常长度 < 256） */
+        (void)snprintf(pinger->cached_target, sizeof(pinger->cached_target), "%s", target);
+        pinger->cached_addr = addr;
+        pinger->cached_addr_len = addr_len;
+        pinger->cached_target_valid = true;
+        addr_ptr = &pinger->cached_addr;
     }
 
+    (void)addr_len;
     if (pinger->use_ipv6) {
-        return ping_ipv6(pinger, (struct sockaddr_in6*)&addr, timeout_ms, packet_size, tick,
-                         tick_user_data, should_stop, stop_user_data);
+        return ping_ipv6(pinger, (struct sockaddr_in6*)(void*)addr_ptr, timeout_ms, packet_size,
+                         tick, tick_user_data, should_stop, stop_user_data);
     }
-    return ping_ipv4(pinger, (struct sockaddr_in*)&addr, timeout_ms, packet_size, tick,
+    return ping_ipv4(pinger, (struct sockaddr_in*)(void*)addr_ptr, timeout_ms, packet_size, tick,
                      tick_user_data, should_stop, stop_user_data);
 }
