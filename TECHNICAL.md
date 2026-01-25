@@ -60,26 +60,29 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 
 ```
 src/
-├── main.c         # 程序入口（简化为 22 行）
-├── context.c/h    # 统一上下文管理（核心模块）
-├── common.c/h     # 工具函数：时间戳、字符串处理、环境变量
-├── logger.c/h     # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
-├── config.c/h     # 配置管理：CLI + 环境变量 + 验证
-├── icmp.c/h       # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
-├── systemd.c/h    # systemd 集成：sd_notify、watchdog、状态通知
-├── metrics.c/h    # 指标统计：成功率、延迟、运行时长
-└── shutdown.c/h   # 关机触发：fork/execvp（无 shell）
+├── main.c              # CLI 入口（仅调用 openups_run）
+├── openups.c           # 库化入口实现（openups_run）
+├── openups.h           # 公共稳定 API
+├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
+├── context.c           # 统一上下文管理（核心模块）
+├── common.c            # 工具函数：时间戳、字符串处理、环境变量
+├── logger.c            # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
+├── config.c            # 配置管理：CLI + 环境变量 + 验证
+├── icmp.c              # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
+├── systemd.c           # systemd 集成：sd_notify、watchdog、状态通知
+├── metrics.c           # 指标统计：成功率、延迟、运行时长
+└── shutdown.c          # 关机触发：fork/execvp（无 shell）
 ```
 
-补充：`openups.h` 为公共入口头文件（聚合对外 API）。
+补充：`openups.h` 为公共入口头文件（对外稳定 API）；内部接口统一放在 `openups_internal.h`。
 
 库化建议：外部集成优先只包含 `openups.h` 并调用 `openups_run()`；`src/` 下其他头文件视为内部实现细节。
 
-**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → main
+**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → openups → main
 
 **关键变更**：
 - ✅ 移除 `monitor.c/h`（功能整合到 context.c）
-- ✅ 新增 `context.c/h`（统一上下文管理）
+- ✅ 新增 `context.c`（统一上下文管理）
 - ✅ 简化 `main.c`（71 行 → 22 行，减少 69%）
 
 ### 统一上下文架构（openups_ctx_t）
@@ -118,22 +121,14 @@ typedef struct openups_context {
 ### 依赖关系图（重构后）
 
 ```
-common.h (无依赖)
-  ↑
-logger.h (依赖 common.h)
-  ↑
-├─ config.h (依赖 logger.h, common.h)
-├─ icmp.h (依赖 common.h)
-├─ systemd.h (无额外依赖)
-├─ metrics.h (无额外依赖)
-└─ shutdown.h (依赖 config.h, logger.h)
-  ↑
-context.h (整合所有组件)
-  ↑
-main.c (仅依赖 context.h)
-```
+openups.h（公共稳定 API）
+    ↑
+main.c / 外部集成（仅 include openups.h）
 
-**层级简化**：3 层 → 2 层
+openups_internal.h（内部聚合头，仅供 src/*.c）
+    ↑
+common.c / logger.c / config.c / icmp.c / systemd.c / metrics.c / shutdown.c / context.c / openups.c
+```
 
 ### 数据流（重构后）
 
@@ -191,7 +186,7 @@ while (!ctx->stop_flag) {
 
 ## 模块详解
 
-### 1. common 模块 (`common.c/h`)
+### 1. common 模块（common.c；声明见 openups_internal.h）
 
 **职责**：通用工具函数
 
@@ -207,7 +202,7 @@ while (!ctx->stop_flag) {
 
 ---
 
-### 2. logger 模块 (`logger.c/h`)
+### 2. logger 模块（logger.c；声明见 openups_internal.h）
 
 **职责**：自然语序日志系统
 
@@ -240,7 +235,7 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 
 ---
 
-### 3. config 模块 (`config.c/h`)
+### 3. config 模块（config.c；声明见 openups_internal.h）
 
 **职责**：配置解析和验证
 
@@ -268,7 +263,7 @@ bool config_validate(const config_t* config, char* error_msg, size_t error_size)
 
 ---
 
-### 4. icmp 模块 (`icmp.c/h`)
+### 4. icmp 模块（icmp.c；声明见 openups_internal.h）
 
 **职责**：原生 ICMP ping 实现
 
@@ -298,7 +293,7 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 
 ---
 
-### 5. systemd 模块 (`systemd.c/h`)
+### 5. systemd 模块（systemd.c；声明见 openups_internal.h）
 
 **职责**：systemd 集成
 
@@ -332,7 +327,7 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 6. metrics 模块 (`metrics.c/h`)
+### 6. metrics 模块（metrics.c；声明见 openups_internal.h）
 
 **职责**：指标统计（成功率、延迟、运行时长），与监控逻辑解耦
 
@@ -345,7 +340,7 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 7. shutdown 模块 (`shutdown.c/h`)
+### 7. shutdown 模块（shutdown.c；声明见 openups_internal.h）
 
 **职责**：关机触发（命令构造 + `fork()` + `execvp()`），与监控策略解耦
 
@@ -358,7 +353,7 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 8. context 模块 (`context.c/h`)
+### 8. context 模块（context.c；声明见 openups_internal.h）
 
 **职责**：统一上下文管理（配置加载 + 组件初始化 + 监控循环 + 信号处理）
 
@@ -824,7 +819,7 @@ do {
 
 ### Q7: 如何添加新的配置项？
 ```
-1. config.h: 添加字段到 config_t
+1. openups_internal.h: 添加字段到 config_t
 2. config.c: config_init_default() 设置默认值
 3. config.c: config_load_from_env() 添加 OPENUPS_* 环境变量
 4. config.c: config_load_from_cmdline() 添加 --xxx 参数
@@ -839,7 +834,7 @@ do {
 
 ### 添加新的配置项
 
-1. 在 `config.h` 的 `config_t` 结构体添加字段
+1. 在 `openups_internal.h` 的 `config_t` 结构体添加字段
 2. 在 `config_init_default()` 设置默认值
 3. 在 `config_load_from_env()` 添加环境变量读取
 4. 在 `config_load_from_cmdline()` 添加 CLI 解析

@@ -2,8 +2,7 @@
 #define __USE_BSD
 #define __FAVOR_BSD
 
-#include "icmp.h"
-#include "common.h"
+#include "openups_internal.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>

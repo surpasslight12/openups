@@ -1,4 +1,4 @@
-#include "common.h"
+#include "openups_internal.h"
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>

@@ -1,6 +1,4 @@
-#include "context.h"
-#include "common.h"
-#include "shutdown.h"
+#include "openups_internal.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <signal.h>

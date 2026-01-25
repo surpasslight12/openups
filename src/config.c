@@ -1,5 +1,4 @@
-#include "config.h"
-#include "common.h"
+#include "openups_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <getopt.h>

@@ -1,4 +1,4 @@
-#include "systemd.h"
+#include "openups_internal.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

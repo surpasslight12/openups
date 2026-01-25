@@ -1,5 +1,4 @@
-#include "logger.h"
-#include "common.h"
+#include "openups_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

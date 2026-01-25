@@ -1,5 +1,4 @@
-#include "metrics.h"
-#include "common.h"
+#include "openups_internal.h"
 #include <limits.h>
 
 void metrics_init(metrics_t* metrics)

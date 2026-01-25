@@ -1,6 +1,6 @@
 #include "openups.h"
 
-#include "context.h"
+#include "openups_internal.h"
 
 #include <stddef.h>
 

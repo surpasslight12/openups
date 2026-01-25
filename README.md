@@ -37,15 +37,18 @@
 
 ```
 src/
-├── main.c         # 程序入口（简化为 22 行）
-├── context.c/h    # 统一上下文管理（核心模块）
-├── common.c/h     # 通用工具函数
-├── config.c/h     # 配置管理
-├── logger.c/h     # 日志系统
-├── icmp.c/h       # ICMP ping 实现
-├── metrics.c/h    # 指标统计（成功率/延迟/运行时长）
-├── shutdown.c/h   # 关机触发（fork/execvp，无 shell）
-└── systemd.c/h    # systemd 集成
+├── main.c              # CLI 入口（仅调用 openups_run）
+├── openups.c           # 库化入口实现（openups_run）
+├── openups.h           # 公共稳定 API
+├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
+├── context.c           # 统一上下文管理（核心模块）
+├── common.c            # 通用工具函数
+├── config.c            # 配置管理
+├── logger.c            # 日志系统
+├── icmp.c              # ICMP ping 实现
+├── metrics.c           # 指标统计（成功率/延迟/运行时长）
+├── shutdown.c          # 关机触发（fork/execvp，无 shell）
+└── systemd.c           # systemd 集成
 ```
 
 **设计原则**：
