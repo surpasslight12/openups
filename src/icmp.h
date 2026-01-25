@@ -22,6 +22,7 @@ typedef struct {
     uint16_t sequence;
     uint8_t* send_buf;
     size_t send_buf_capacity;
+    size_t payload_filled_size;
 
     /* 目标地址缓存：避免每次 ping 都做 inet_pton/结构体填充 */
     bool cached_target_valid;

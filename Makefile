@@ -33,16 +33,16 @@ TARGET := $(BIN_DIR)/openups
 CLANG_FORMAT ?= clang-format
 FORMAT_SRCS := $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/*.h)
 
-# 源文件
-SRCS := $(SRC_DIR)/main.c \
-        $(SRC_DIR)/common.c \
+# 源文件（优化顺序：按依赖关系排序）
+SRCS := $(SRC_DIR)/common.c \
         $(SRC_DIR)/logger.c \
         $(SRC_DIR)/config.c \
         $(SRC_DIR)/icmp.c \
-	$(SRC_DIR)/metrics.c \
-	$(SRC_DIR)/shutdown.c \
+        $(SRC_DIR)/metrics.c \
+        $(SRC_DIR)/shutdown.c \
         $(SRC_DIR)/systemd.c \
-        $(SRC_DIR)/monitor.c
+        $(SRC_DIR)/context.c \
+        $(SRC_DIR)/main.c
 
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BIN_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)

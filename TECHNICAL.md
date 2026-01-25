@@ -25,15 +25,15 @@
 提示调用方检查返回值。
 
 ```c
-static monitor_t* g_monitor = NULL;
+static openups_ctx_t* g_ctx = NULL;
 
-if (monitor == NULL) {
+if (ctx == NULL) {
     return false;
 }
 
 /* 示例：关键函数使用 [[nodiscard]] */
 [[nodiscard]] bool config_validate(const config_t* config, char* error_msg, size_t error_size);
-[[nodiscard]] int monitor_run(monitor_t* monitor);
+[[nodiscard]] int openups_ctx_run(openups_ctx_t* ctx);
 ```
 
 #### ✅ restrict（优化指针别名）
@@ -54,13 +54,64 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 
 #### ✅ `CLOCK_MONOTONIC`（稳定的延迟/运行时长）
 延迟测量与 uptime 统计使用单调时钟，避免系统时间调整（NTP/手动改时间）造成负数延迟或运行时长跳变。
-├── README.md          # 项目说明
-├── TECHNICAL.md       # 本文件
-├── CONTRIBUTING.md    # 贡献指南
-└── LICENSE            # MIT 许可证
+## 架构设计
+
+### 模块结构（重构版 - 2026-01-25）
+
+```
+src/
+├── main.c         # 程序入口（简化为 22 行）
+├── context.c/h    # 统一上下文管理（核心模块）
+├── common.c/h     # 工具函数：时间戳、字符串处理、环境变量
+├── logger.c/h     # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
+├── config.c/h     # 配置管理：CLI + 环境变量 + 验证
+├── icmp.c/h       # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
+├── systemd.c/h    # systemd 集成：sd_notify、watchdog、状态通知
+├── metrics.c/h    # 指标统计：成功率、延迟、运行时长
+└── shutdown.c/h   # 关机触发：fork/execvp（无 shell）
 ```
 
-### 依赖关系图
+**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → main
+
+**关键变更**：
+- ✅ 移除 `monitor.c/h`（功能整合到 context.c）
+- ✅ 新增 `context.c/h`（统一上下文管理）
+- ✅ 简化 `main.c`（71 行 → 22 行，减少 69%）
+
+### 统一上下文架构（openups_ctx_t）
+
+#### 设计理念
+```c
+typedef struct openups_context {
+    /* === 热路径数据（频繁访问，CPU 缓存友好）=== */
+    volatile sig_atomic_t stop_flag;        /* offset 0：信号安全 */
+    volatile sig_atomic_t print_stats_flag; /* offset 4 */
+    int consecutive_fails;                  /* offset 8：失败计数 */
+
+    /* === 核心组件（值类型，避免指针跳转）=== */
+    config_t config;           /* 配置（栈上，内存连续） */
+    logger_t logger;           /* 日志器 */
+    icmp_pinger_t pinger;      /* ICMP ping 器 */
+    systemd_notifier_t systemd; /* systemd 通知器 */
+    metrics_t metrics;         /* 统计指标 */
+
+    /* === 状态标志 === */
+    bool systemd_enabled;         /* systemd 是否启用 */
+    uint64_t watchdog_interval_ms; /* watchdog 心跳间隔 */
+
+    /* === 性能优化缓存 === */
+    uint64_t last_ping_time_ms;  /* 上次 ping 时间（避免重复 clock_gettime） */
+    uint64_t start_time_ms;      /* 启动时间（用于 uptime 计算） */
+} openups_ctx_t;
+```
+
+#### 优势
+1. **单参数传递**：所有函数只需 `openups_ctx_t* ctx`（消除多指针传递）
+2. **内存局部性**：所有组件内嵌（减少指针跳转，提升缓存命中率）
+3. **热数据优先**：信号标志和失败计数放在结构体前部（64 字节内）
+4. **初始化集中**：`openups_ctx_init()` 自动处理所有组件初始化
+
+### 依赖关系图（重构后）
 
 ```
 common.h (无依赖)
@@ -70,32 +121,48 @@ logger.h (依赖 common.h)
 ├─ config.h (依赖 logger.h, common.h)
 ├─ icmp.h (依赖 common.h)
 ├─ systemd.h (无额外依赖)
-└─ monitor.h (依赖 config.h, logger.h, icmp.h, systemd.h)
+├─ metrics.h (无额外依赖)
+└─ shutdown.h (依赖 config.h, logger.h)
   ↑
-main.c (依赖 monitor.h, config.h, logger.h)
+context.h (整合所有组件)
+  ↑
+main.c (仅依赖 context.h)
 ```
 
-### 数据流
+**层级简化**：3 层 → 2 层
+
+### 数据流（重构后）
 
 #### 启动流程
 ```
-1. main() 解析 CLI 参数
-2. config_load_from_env() 合并环境变量
-3. config_validate() 验证配置
-4. logger_init() 初始化日志
-5. monitor_init() 初始化监控器（包括 ICMP pinger、systemd notifier）
-6. systemd_notifier_ready() 通知 systemd
-7. 进入主循环
+1. main() 调用 openups_ctx_init()
+   ├─ config_init_default()          # 默认配置
+   ├─ config_load_from_env()         # 环境变量
+   ├─ config_load_from_cmdline()     # CLI 参数（最高优先级）
+   ├─ config_validate()              # 验证配置
+   ├─ logger_init()                  # 初始化日志
+   ├─ icmp_pinger_init()             # 初始化 ICMP pinger
+   ├─ systemd_notifier_init()        # 初始化 systemd 集成
+   └─ metrics_init()                 # 初始化指标
+2. main() 调用 openups_ctx_run()
+   ├─ setup_signal_handlers()        # 设置信号处理
+   ├─ systemd_notifier_ready()       # 通知 systemd
+   └─ 进入主循环
 ```
 
 #### 监控循环
 ```
-1. icmp_pinger_ping() 执行 ICMP ping
-2. handle_ping_success/failure() 处理结果
-3. metrics_record_success/failure() 更新指标
-4. 检查失败阈值 → trigger_shutdown()
-5. 固定间隔休眠
-6. 休眠期间每秒发送 watchdog 心跳
+while (!ctx->stop_flag) {
+    1. run_iteration(ctx)
+       ├─ openups_ctx_ping_once()      # 执行 ping（带重试）
+       ├─ handle_ping_success/failure() # 处理结果
+       ├─ metrics_record_*()            # 更新指标
+       └─ trigger_shutdown()            # 检查失败阈值
+    2. openups_ctx_sleep_interruptible() # 可中断休眠
+       ├─ 分块休眠（每块 ≤ watchdog_interval_ms）
+       ├─ systemd_notifier_watchdog()   # 周期性心跳
+       └─ 检查 ctx->stop_flag
+}
 ```
 
 #### 关机流程
@@ -110,6 +177,10 @@ main.c (依赖 monitor.h, config.h, logger.h)
 5. 执行系统命令（如非 dry-run）
 
 补充说明：关机命令通过 `fork()` + `execvp` 执行，不经过 shell。
+补充说明：关机流程拆分为“是否执行/命令选择/执行”三段，便于测试和替换。
+补充说明：当前重构版将监控循环与关机触发整合在 `context.c` 中；如需替换关机策略，
+建议通过扩展 `shutdown_mode_t` 或在 `shutdown_trigger()` 内实现策略分派。
+补充说明：关机执行等待超时使用单调时钟，避免系统时间跳变影响。
 ```
 
 ---
@@ -273,39 +344,36 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 8. monitor 模块 (`monitor.c/h`)
+### 8. context 模块 (`context.c/h`)
 
-**职责**：监控循环和关机触发
+**职责**：统一上下文管理（配置加载 + 组件初始化 + 监控循环 + 信号处理）
 
 **关键 API**：
 ```c
-typedef struct {
-    uint64_t total_pings;
-    uint64_t successful_pings;
-    uint64_t failed_pings;
-    double min_latency;
-    double max_latency;
-    double total_latency;
-} metrics_t;
+typedef struct openups_context openups_ctx_t;
 
-bool monitor_init(monitor_t* monitor, config_t* config, logger_t* logger, ...);
-int monitor_run(monitor_t* monitor);
-void monitor_print_statistics(monitor_t* monitor);
+bool openups_ctx_init(openups_ctx_t* ctx, int argc, char** argv,
+                      char* error_msg, size_t error_size);
+int openups_ctx_run(openups_ctx_t* ctx);
+void openups_ctx_destroy(openups_ctx_t* ctx);
+
+void openups_ctx_print_stats(openups_ctx_t* ctx);
+bool openups_ctx_ping_once(openups_ctx_t* ctx, ping_result_t* result);
+void openups_ctx_sleep_interruptible(openups_ctx_t* ctx, int seconds);
 ```
 
 **主循环伪代码**：
 ```c
-while (!stop_flag) {
+while (!ctx->stop_flag) {
     1. 执行 ICMP ping (带重试)
     2. 记录成功/失败
     3. 检查失败阈值
     4. 触发关机（如需要）
-    5. 固定间隔休眠
-    6. 发送 watchdog 心跳
+    5. 可中断休眠（watchdog 分块心跳）
 }
 ```
 
-**依赖**：config, logger, icmp, systemd
+**依赖**：config, logger, icmp, systemd, metrics, shutdown
 
 ---
 
@@ -390,9 +458,9 @@ const char* str;
 示例采用 C 语言惯用写法：使用 `NULL` 作为空指针检查，并建议在可用的编译器上使用 `__attribute__((warn_unused_result))` 或等效机制提示检查返回值。
 
 ```c
-static monitor_t* g_monitor = NULL;
+static openups_ctx_t* g_ctx = NULL;
 
-if (monitor == NULL) {
+if (ctx == NULL) {
     return false;
 }
 
@@ -400,7 +468,7 @@ if (monitor == NULL) {
 bool config_validate(const config_t* config, char* error_msg, size_t error_size)
     __attribute__((warn_unused_result));
 
-int monitor_run(monitor_t* monitor) __attribute__((warn_unused_result));
+int openups_ctx_run(openups_ctx_t* ctx) __attribute__((warn_unused_result));
 ```
 
 #### ✅ restrict（优化指针别名）
@@ -519,6 +587,15 @@ void func(int* restrict a, int* restrict b) {
     // 编译器知道 a 和 b 不会重叠
 }
 ```
+
+- **systemd 状态更新集中化**：减少重复格式化与分支判断，降低热路径开销。
+- **systemd 可用状态缓存**：初始化后缓存启用状态，避免重复查询。
+- **watchdog 间隔缓存**：在初始化阶段读取 watchdog 周期，避免循环内重复查询。
+
+### ICMP 热路径优化
+
+- **payload 预填充**：当 `packet_size` 不变时复用既有 payload 模板，避免每次 ping 重新填充。
+- **最小化清零**：仅清零 ICMP 头部字段，保留 payload 内容，减少内存写入量。
 
 ---
 
@@ -754,7 +831,7 @@ do {
 1. 在 `metrics_t` 结构体添加字段
 2. 在 `metrics_init()` 初始化
 3. 在 `metrics_record_success/failure()` 更新字段
-4. 在 `monitor_print_statistics()` 输出新指标
+4. 在 `openups_ctx_print_stats()` 输出新指标
 
 ### 添加新的日志级别
 

@@ -71,6 +71,7 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, char* restr
     pinger->sequence = 0;
     pinger->send_buf = NULL;
     pinger->send_buf_capacity = 0;
+    pinger->payload_filled_size = 0;
     pinger->cached_target_valid = false;
     pinger->cached_target[0] = '\0';
     memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
@@ -115,6 +116,7 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
     free(pinger->send_buf);
     pinger->send_buf = NULL;
     pinger->send_buf_capacity = 0;
+    pinger->payload_filled_size = 0;
 
     pinger->cached_target_valid = false;
     pinger->cached_target[0] = '\0';
@@ -168,6 +170,7 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
         return true;
     }
 
+    uint8_t* old_buf = pinger->send_buf;
     uint8_t* new_buf = (uint8_t*)realloc(pinger->send_buf, need);
     if (new_buf == NULL) {
         snprintf(error_msg, error_size, "Memory allocation failed");
@@ -176,7 +179,33 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
 
     pinger->send_buf = new_buf;
     pinger->send_buf_capacity = need;
+    if (new_buf != old_buf) {
+        pinger->payload_filled_size = 0;
+    }
     return true;
+}
+
+static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_size,
+                                 size_t payload_size)
+{
+    if (pinger == NULL || pinger->send_buf == NULL) {
+        return;
+    }
+
+    if (payload_size == 0) {
+        pinger->payload_filled_size = 0;
+        return;
+    }
+
+    if (pinger->payload_filled_size == payload_size) {
+        return;
+    }
+
+    for (size_t i = 0; i < payload_size; i++) {
+        pinger->send_buf[header_size + i] = (uint8_t)(i & 0xFFU);
+    }
+
+    pinger->payload_filled_size = payload_size;
 }
 
 static uint16_t next_sequence(icmp_pinger_t* restrict pinger)
@@ -277,20 +306,16 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
     }
-    memset(pinger->send_buf, 0, packet_len);
+    fill_payload_pattern(pinger, sizeof(struct icmphdr), (size_t)packet_size);
 
     struct icmphdr* icmp_hdr = (struct icmphdr*)pinger->send_buf;
+    memset(icmp_hdr, 0, sizeof(*icmp_hdr));
     icmp_hdr->type = ICMP_ECHO;
     icmp_hdr->code = 0;
     uint16_t ident = (uint16_t)(getpid() & 0xFFFF);
     uint16_t seq = next_sequence(pinger);
     icmp_hdr->un.echo.id = ident;
     icmp_hdr->un.echo.sequence = seq;
-
-    /* 填充数据 */
-    for (int i = 0; i < packet_size; i++) {
-        pinger->send_buf[sizeof(struct icmphdr) + (size_t)i] = (uint8_t)(i & 0xFF);
-    }
 
     /* 计算校验和 (标准流程: 先清零, 再计算) */
     icmp_hdr->checksum = 0;
@@ -426,20 +451,16 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
     }
-    memset(pinger->send_buf, 0, packet_len);
+    fill_payload_pattern(pinger, sizeof(struct icmp6_hdr), (size_t)packet_size);
 
     struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)pinger->send_buf;
+    memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
     icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST; /* 类型: Echo Request = 128 */
     icmp6_hdr->icmp6_code = 0;                  /* 代码: 0 */
     uint16_t ident = (uint16_t)(getpid() & 0xFFFF);
     uint16_t seq = next_sequence(pinger);
     icmp6_hdr->icmp6_id = ident;
     icmp6_hdr->icmp6_seq = seq;
-
-    /* 填充数据 */
-    for (int i = 0; i < packet_size; i++) {
-        pinger->send_buf[sizeof(struct icmp6_hdr) + (size_t)i] = (uint8_t)(i & 0xFF);
-    }
 
     /* IPv6 内核自动计算校验和 (不需手动设置) */
 

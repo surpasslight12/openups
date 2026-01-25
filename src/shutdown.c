@@ -58,61 +58,75 @@ static bool build_command_argv(const char* command, char* buffer, size_t buffer_
     return true;
 }
 
-void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl)
+static bool shutdown_select_command(const config_t* restrict config, bool use_systemctl,
+                                    char* restrict command_buf, size_t command_size)
 {
-    if (config == NULL || logger == NULL) {
+    if (config == NULL || command_buf == NULL || command_size == 0) {
+        return false;
+    }
+
+    if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
+        if (use_systemctl) {
+            snprintf(command_buf, command_size, "systemctl poweroff");
+        } else {
+            snprintf(command_buf, command_size, "/sbin/shutdown -h now");
+        }
+        return true;
+    }
+
+    if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
+        snprintf(command_buf, command_size, "/sbin/shutdown -h +%d", config->delay_minutes);
+        return true;
+    }
+
+    return false;
+}
+
+static void shutdown_log_planned(logger_t* restrict logger, shutdown_mode_t mode,
+                                 int delay_minutes)
+{
+    if (logger == NULL) {
         return;
     }
 
-    logger_warn(logger, "Shutdown threshold reached, mode is %s%s",
-                shutdown_mode_to_string(config->shutdown_mode),
-                config->dry_run ? " (dry-run enabled)" : "");
+    if (mode == SHUTDOWN_MODE_IMMEDIATE) {
+        logger_warn(logger, "Triggering immediate shutdown");
+    } else if (mode == SHUTDOWN_MODE_DELAYED) {
+        logger_warn(logger, "Triggering shutdown in %d minutes", delay_minutes);
+    }
+}
+
+static bool shutdown_should_execute(const config_t* restrict config, logger_t* restrict logger)
+{
+    if (config == NULL || logger == NULL) {
+        return false;
+    }
 
     if (config->dry_run) {
         logger_info(logger, "[DRY-RUN] Would trigger shutdown in %s mode",
                     shutdown_mode_to_string(config->shutdown_mode));
-        return;
+        return false;
     }
 
     if (config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
         logger_error(logger, "LOG-ONLY mode: Network connectivity lost, would trigger shutdown");
-        return;
+        return false;
     }
 
-    char command_buf[512];
-    char* argv[16] = {0};
+    return true;
+}
 
-    /* Default to userspace shutdown paths (no direct reboot syscall) */
-    if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-        if (use_systemctl) {
-            snprintf(command_buf, sizeof(command_buf), "systemctl poweroff");
-        } else {
-            snprintf(command_buf, sizeof(command_buf), "/sbin/shutdown -h now");
-        }
-    } else if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-        snprintf(command_buf, sizeof(command_buf), "/sbin/shutdown -h +%d", config->delay_minutes);
-    } else {
-        logger_error(logger, "Unknown shutdown mode");
-        return;
-    }
-
-    if (!build_command_argv(command_buf, command_buf, sizeof(command_buf), argv,
-                            sizeof(argv) / sizeof(argv[0]))) {
-        logger_error(logger, "Failed to parse shutdown command: %s", command_buf);
-        return;
-    }
-
-    if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-        logger_warn(logger, "Triggering immediate shutdown");
-    } else {
-        logger_warn(logger, "Triggering shutdown in %d minutes", config->delay_minutes);
+static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
+{
+    if (argv == NULL || argv[0] == NULL || logger == NULL) {
+        return false;
     }
 
     /* 执行关机命令（使用 fork/execvp 以避免 shell 注入） */
     pid_t child_pid = fork();
     if (child_pid < 0) {
         logger_error(logger, "fork() failed: %s", strerror(errno));
-        return;
+        return false;
     }
 
     if (child_pid == 0) {
@@ -130,7 +144,11 @@ void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemc
 
     /* 父进程：等待子进程完成（设置 5 秒超时） */
     int status = 0;
-    time_t start_time = time(NULL);
+    uint64_t start_ms = get_monotonic_ms();
+    bool use_monotonic = start_ms != UINT64_MAX;
+    if (!use_monotonic) {
+        start_ms = (uint64_t)time(NULL) * UINT64_C(1000);
+    }
     while (1) {
         pid_t result = waitpid(child_pid, &status, WNOHANG);
         if (result == child_pid) {
@@ -139,28 +157,69 @@ void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemc
                 if (exit_code == 0) {
                     logger_info(logger, "Shutdown command executed successfully");
                 } else {
-                    logger_error(logger, "Shutdown command failed with exit code %d: %s", exit_code,
-                                 argv[0]);
+                    logger_error(logger, "Shutdown command failed with exit code %d: %s",
+                                 exit_code, argv[0]);
                 }
             } else if (WIFSIGNALED(status)) {
-                logger_error(logger, "Shutdown command terminated by signal %d: %s", WTERMSIG(status),
-                             argv[0]);
+                logger_error(logger, "Shutdown command terminated by signal %d: %s",
+                             WTERMSIG(status), argv[0]);
             }
-            return;
+            return true;
         }
 
         if (result < 0) {
             logger_error(logger, "waitpid() failed: %s", strerror(errno));
-            return;
+            return false;
         }
 
-        if (time(NULL) - start_time > 5) {
+        uint64_t now_ms = use_monotonic ? get_monotonic_ms()
+                                        : (uint64_t)time(NULL) * UINT64_C(1000);
+        if (now_ms == UINT64_MAX) {
+            now_ms = (uint64_t)time(NULL) * UINT64_C(1000);
+            use_monotonic = false;
+        }
+
+        if (now_ms - start_ms > UINT64_C(5000)) {
             logger_warn(logger, "Shutdown command timeout, killing process");
             kill(child_pid, SIGKILL);
             (void)waitpid(child_pid, &status, 0);
-            return;
+            return false;
         }
 
         usleep(100000);
     }
+}
+
+void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl)
+{
+    if (config == NULL || logger == NULL) {
+        return;
+    }
+
+    logger_warn(logger, "Shutdown threshold reached, mode is %s%s",
+                shutdown_mode_to_string(config->shutdown_mode),
+                config->dry_run ? " (dry-run enabled)" : "");
+
+    if (!shutdown_should_execute(config, logger)) {
+        return;
+    }
+
+    char command_buf[512];
+    char* argv[16] = {0};
+
+    /* Default to userspace shutdown paths (no direct reboot syscall) */
+    if (!shutdown_select_command(config, use_systemctl, command_buf, sizeof(command_buf))) {
+        logger_error(logger, "Unknown shutdown mode");
+        return;
+    }
+
+    if (!build_command_argv(command_buf, command_buf, sizeof(command_buf), argv,
+                            sizeof(argv) / sizeof(argv[0]))) {
+        logger_error(logger, "Failed to parse shutdown command: %s", command_buf);
+        return;
+    }
+
+    shutdown_log_planned(logger, config->shutdown_mode, config->delay_minutes);
+
+    (void)shutdown_execute_command(argv, logger);
 }
