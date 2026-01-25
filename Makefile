@@ -42,7 +42,6 @@ SRCS := $(SRC_DIR)/common.c \
         $(SRC_DIR)/shutdown.c \
         $(SRC_DIR)/systemd.c \
         $(SRC_DIR)/context.c \
-	$(SRC_DIR)/openups.c \
         $(SRC_DIR)/main.c
 
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BIN_DIR)/%.o)

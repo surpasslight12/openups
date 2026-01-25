@@ -1,4 +1,4 @@
-#include "openups.h"
+#include "openups_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,7 +11,15 @@ int main(int argc, char** argv)
 {
     char error_msg[256];
 
-    int rc = openups_run(argc, argv, error_msg, sizeof(error_msg));
+    openups_ctx_t ctx;
+    if (!openups_ctx_init(&ctx, argc, argv, error_msg, sizeof(error_msg))) {
+        fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
+        return 1;
+    }
+
+    int rc = openups_ctx_run(&ctx);
+    openups_ctx_destroy(&ctx);
+
     if (rc != 0) {
         fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
     }

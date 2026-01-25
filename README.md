@@ -37,9 +37,7 @@
 
 ```
 src/
-├── main.c              # CLI 入口（仅调用 openups_run）
-├── openups.c           # 库化入口实现（openups_run）
-├── openups.h           # 公共稳定 API
+├── main.c              # CLI 入口（初始化上下文并运行主循环）
 ├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
 ├── context.c           # 统一上下文管理（核心模块）
 ├── common.c            # 通用工具函数
@@ -66,7 +64,7 @@ src/
 
 更多架构与实现细节见 [TECHNICAL.md](TECHNICAL.md)。
 
-补充：如需以“库”的方式集成，可直接使用 [src/openups.h](src/openups.h) 中的 `openups_run()` 入口。
+补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API。
 
 ## 🚀 快速开始
 

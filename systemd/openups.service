@@ -41,6 +41,7 @@ EnvironmentFile=-/etc/default/openups
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_PAYLOAD_SIZE=56"
 Environment="OPENUPS_DRY_RUN=true"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"

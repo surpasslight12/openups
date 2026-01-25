@@ -60,9 +60,7 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 
 ```
 src/
-├── main.c              # CLI 入口（仅调用 openups_run）
-├── openups.c           # 库化入口实现（openups_run）
-├── openups.h           # 公共稳定 API
+├── main.c              # CLI 入口（初始化上下文并运行主循环）
 ├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
 ├── context.c           # 统一上下文管理（核心模块）
 ├── common.c            # 工具函数：时间戳、字符串处理、环境变量
@@ -74,9 +72,7 @@ src/
 └── shutdown.c          # 关机触发：fork/execvp（无 shell）
 ```
 
-补充：`openups.h` 为公共入口头文件（对外稳定 API）；内部接口统一放在 `openups_internal.h`。
-
-库化建议：外部集成优先只包含 `openups.h` 并调用 `openups_run()`；`src/` 下其他头文件视为内部实现细节。
+补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口统一放在 `openups_internal.h`。
 
 **依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → openups → main
 
@@ -121,9 +117,7 @@ typedef struct openups_context {
 ### 依赖关系图（重构后）
 
 ```
-openups.h（公共稳定 API）
-    ↑
-main.c / 外部集成（仅 include openups.h）
+main.c（程序入口）
 
 openups_internal.h（内部聚合头，仅供 src/*.c）
     ↑
@@ -277,12 +271,12 @@ typedef struct {
 
 bool icmp_pinger_init(icmp_pinger_t* pinger, bool use_ipv6, ...);
 ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
-                               int timeout_ms, int packet_size);
+                               int timeout_ms, int payload_size);
 ```
 
 **实现细节**：
 - **IPv4**：手动计算 ICMP 校验和（标量实现为基线）
-- **IPv6**：内核自动处理校验和
+- **IPv6**：校验和由内核处理；程序会尽力设置 `IPV6_CHECKSUM`（不支持时忽略以兼容不同内核/实现）
 - 可选 AVX2 加速（x86 + GCC/Clang），运行时按 `__builtin_cpu_supports("avx2")` 分发
 - 校验和语义与标量版本一致：按 16-bit words 累加、折叠进位、取反；奇数字节按原值直接累加
 - raw socket 设置为 non-blocking，等待回包使用 `poll()`，并处理 `EINTR/EAGAIN`
@@ -609,7 +603,7 @@ void func(int* restrict a, int* restrict b) {
 
 ### ICMP 热路径优化
 
-- **payload 预填充**：当 `packet_size` 不变时复用既有 payload 模板，避免每次 ping 重新填充。
+- **payload 预填充**：当 `payload_size` 不变时复用既有 payload 模板，避免每次 ping 重新填充。
 - **最小化清零**：仅清零 ICMP 头部字段，保留 payload 内容，减少内存写入量。
 
 ---
@@ -644,7 +638,7 @@ void func(int* restrict a, int* restrict b) {
 - [x] 所有字符串操作使用 `snprintf`
 - [x] 路径验证（`is_safe_path()`）
 - [x] 整数溢出检查（`ckd_mul`, `ckd_add`）
-- [x] 边界检查（packet_size, timeout_ms）
+- [x] 边界检查（payload_size, timeout_ms）
 - [x] 信号处理异步安全
 
 ---

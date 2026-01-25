@@ -20,9 +20,7 @@
 #include <time.h>
 #include <unistd.h>
 
-/* IPv4 ICMP checksum 可选 AVX2 加速（x86 + GCC/Clang）；运行时按 CPU 特性分发。
- * 语义保持与标量版本一致（含 odd-byte 处理）。
- */
+/* IPv4 ICMP checksum 可选 AVX2 加速（x86 + GCC/Clang）。 */
 #if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
 #include <immintrin.h>
 #define OPENUPS_CAN_USE_CPU_SUPPORTS 1
@@ -34,7 +32,7 @@
 static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
 static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes");
 
-/* ICMP 校验和（IPv4 需要，IPv6 由内核处理）。 */
+/* ICMP 校验和（IPv4 需要；IPv6 由内核处理，见 TECHNICAL.md）。 */
 static uint16_t calculate_checksum_scalar(const void* data, size_t len)
 {
     const uint16_t* buf = (const uint16_t*)data;
@@ -45,7 +43,7 @@ static uint16_t calculate_checksum_scalar(const void* data, size_t len)
         sum += buf[i];
     }
 
-    /* 奇数字节：保持既有语义（按原字节值直接累加）。 */
+    /* 奇数字节：按原字节值直接累加。 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
@@ -106,7 +104,7 @@ static uint16_t calculate_checksum_avx2(const void* data, size_t len)
         sum += tail16[w];
     }
 
-    /* Odd byte: preserve existing semantics (added as-is, not shifted). */
+    /* Odd byte: added as-is (not shifted). */
     if (len % 2) {
         sum += bytes[len - 1];
     }
@@ -164,15 +162,18 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, char* restr
         return false;
     }
 
-    /* IPv6: 让内核自动计算/验证 ICMPv6 校验和。 */
+    /* IPv6: checksum 由内核处理；尽力设置 IPV6_CHECKSUM（不支持时继续运行）。 */
     if (use_ipv6) {
         int offset = (int)offsetof(struct icmp6_hdr, icmp6_cksum);
         if (setsockopt(pinger->sockfd, IPPROTO_IPV6, IPV6_CHECKSUM, &offset,
                        (socklen_t)sizeof(offset)) != 0) {
-            snprintf(error_msg, error_size, "Failed to set IPV6_CHECKSUM: %s", strerror(errno));
-            close(pinger->sockfd);
-            pinger->sockfd = -1;
-            return false;
+            if (errno != EINVAL && errno != ENOPROTOOPT) {
+                snprintf(error_msg, error_size, "Failed to set IPV6_CHECKSUM: %s",
+                         strerror(errno));
+                close(pinger->sockfd);
+                pinger->sockfd = -1;
+                return false;
+            }
         }
     }
 
@@ -364,10 +365,7 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
     }
 }
 
-/* IPv4 Ping 实现 (RFC 792)
- * 流程: 构造 ICMP Echo Request → 发送 → 等待 Echo Reply → 计算延迟
- * 特殊注意: 需要手动计算校验和, 需要 CAP_NET_RAW 权限
- */
+/* IPv4 ping (ICMP Echo Request/Reply, RFC 792). */
 static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in* restrict dest_addr, int timeout_ms,
                                int payload_size, icmp_tick_fn tick, void* tick_user_data,
@@ -401,7 +399,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     icmp_hdr->un.echo.id = ident;
     icmp_hdr->un.echo.sequence = seq;
 
-    /* 计算校验和 (标准流程: 先清零, 再计算) */
+    /* 计算校验和：先清零，再计算。 */
     icmp_hdr->checksum = 0;
     icmp_hdr->checksum = calculate_checksum(pinger->send_buf, packet_len);
 
@@ -507,12 +505,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     }
 }
 
-/* IPv6 Ping 实现 (RFC 4443)
- * 流程: 构造 ICMPv6 Echo Request → 发送 → 等待 Echo Reply → 计算延迟
- * 特殊注意:
- *   1. 校验和由内核自动计算 (IPV6_CHECKSUM socket 选项)
- *   2. 使用 ICMPv6 报头和类型
- */
+/* IPv6 ping (ICMPv6 Echo Request/Reply, RFC 4443). */
 static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in6* restrict dest_addr, int timeout_ms,
                                int payload_size, icmp_tick_fn tick, void* tick_user_data,
@@ -546,7 +539,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     icmp6_hdr->icmp6_id = ident;
     icmp6_hdr->icmp6_seq = seq;
 
-    /* IPv6 内核自动计算校验和 (不需手动设置) */
+    /* IPv6 checksum 由内核处理（细节见 TECHNICAL.md）。 */
 
     /* 发送 ICMPv6 Echo Request */
     struct timespec send_time;
@@ -651,6 +644,23 @@ ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger, const char* re
 
     if (pinger == NULL || target == NULL) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
+        return result;
+    }
+
+    if (timeout_ms <= 0) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid timeout");
+        return result;
+    }
+
+    if (payload_size < 0) {
+        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid payload size");
+        return result;
+    }
+
+    const int max_payload = pinger->use_ipv6 ? 65487 : 65507;
+    if (payload_size > max_payload) {
+        snprintf(result.error_msg, sizeof(result.error_msg),
+                 "Payload size must be between 0 and %d", max_payload);
         return result;
     }
 

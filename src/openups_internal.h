@@ -1,8 +1,9 @@
 #ifndef OPENUPS_INTERNAL_H
 #define OPENUPS_INTERNAL_H
 
-/* OpenUPS 内部实现头文件。
- * 约定：仅供本仓库内部 .c 使用；对外稳定 API 在 openups.h。
+/* OpenUPS 内部聚合头（仅供 src/ 下的 .c 文件使用）。
+ *
+ * 约定：仅供本仓库内部 .c 使用；本项目不提供对外稳定的 C API（仅提供可执行程序）。
  */
 
 #include <stdbool.h>

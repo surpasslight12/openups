@@ -9,9 +9,7 @@ OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测
 ### 模块化设计（9 个独立模块）
 ```
 src/
-├── main.c              # CLI 入口（仅调用 openups_run）
-├── openups.c           # 库化入口实现（openups_run）
-├── openups.h           # 公共稳定 API
+├── main.c              # CLI 入口（初始化上下文并运行主循环）
 ├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
 ├── common.c            # 工具函数：时间戳、字符串处理、环境变量
 ├── logger.c            # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
@@ -83,8 +81,8 @@ static bool is_safe_path(const char* path) {
 }
 
 // ✅ 边界检查
-if (packet_size < 0 || packet_size > 65507) {
-    snprintf(error_msg, error_size, "Packet size out of range");
+if (payload_size < 0 || payload_size > 65507) {
+    snprintf(error_msg, error_size, "Payload size out of range");
     return false;
 }
 
@@ -146,7 +144,7 @@ typedef struct {
     // ... 更多字段见 openups_internal.h（内部聚合头）
 } config_t;
 
-// 初始化流程（openups_ctx_init/openups_run 标准模式）
+// 初始化流程（openups_ctx_init/openups_ctx_run 标准模式）
 config_t config;
 config_init_default(&config);           // 1. 默认值
 config_load_from_env(&config);          // 2. 环境变量
@@ -174,7 +172,7 @@ if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
 
 // 执行 ping（微秒级延迟测量）
 ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1",
-                                        2000, 56);  // timeout_ms, packet_size
+                                        2000, 56);  // timeout_ms, payload_size
 if (result.success) {
     logger_debug(&logger, "Ping successful, latency: %.2fms", result.latency_ms);
 } else {
