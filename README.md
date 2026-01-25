@@ -61,7 +61,9 @@ src/
 - 内存占用降低 4.2%
 - 启动时间优化 16.7%
 
-详见 [REFACTORING.md](REFACTORING.md)
+更多架构与实现细节见 [TECHNICAL.md](TECHNICAL.md)。
+
+补充：如需以“库”的方式集成，可直接使用 [src/openups.h](src/openups.h) 中的 `openups_run()` 入口。
 
 ## 🚀 快速开始
 

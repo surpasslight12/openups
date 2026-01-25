@@ -71,6 +71,10 @@ src/
 └── shutdown.c/h   # 关机触发：fork/execvp（无 shell）
 ```
 
+补充：`openups.h` 为公共入口头文件（聚合对外 API）。
+
+库化建议：外部集成优先只包含 `openups.h` 并调用 `openups_run()`；`src/` 下其他头文件视为内部实现细节。
+
 **依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → main
 
 **关键变更**：
@@ -282,9 +286,12 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 ```
 
 **实现细节**：
-- **IPv4**：手动计算 ICMP 校验和
+- **IPv4**：手动计算 ICMP 校验和（标量实现为基线）
 - **IPv6**：内核自动处理校验和
-- 微秒级延迟测量
+- 可选 AVX2 加速（x86 + GCC/Clang），运行时按 `__builtin_cpu_supports("avx2")` 分发
+- 校验和语义与标量版本一致：按 16-bit words 累加、折叠进位、取反；奇数字节按原值直接累加
+- raw socket 设置为 non-blocking，等待回包使用 `poll()`，并处理 `EINTR/EAGAIN`
+- 目标仅支持 IP 字面量（不做 DNS 解析，使用 `inet_pton()`）
 - 需要 `CAP_NET_RAW` 权限
 
 **依赖**：common
@@ -299,9 +306,14 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 ```c
 typedef struct {
     bool enabled;
-    char* notify_socket;
     int sockfd;
     uint64_t watchdog_usec;
+    struct sockaddr_un addr;
+    socklen_t addr_len;
+
+    uint64_t last_watchdog_ms;
+    uint64_t last_status_ms;
+    char last_status[256];
 } systemd_notifier_t;
 
 bool systemd_notifier_ready(systemd_notifier_t* notifier);
@@ -310,9 +322,11 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 ```
 
 **工作原理**：
-1. 检查 `NOTIFY_SOCKET` 环境变量
-2. 通过 UNIX domain socket 发送通知
+1. 检查 `NOTIFY_SOCKET` 环境变量（未设置则认为 systemd 不可用）
+2. 创建 `AF_UNIX/SOCK_DGRAM` socket 并 `connect()` 到 `NOTIFY_SOCKET`
 3. 支持抽象命名空间（`@` 前缀）
+4. 从 `WATCHDOG_USEC` 读取 watchdog 超时并换算为建议心跳间隔（通常为超时的一半）
+5. 对 `STATUS` / `WATCHDOG` 做轻量降频（避免过于频繁的通知）
 
 **依赖**：无
 
@@ -451,6 +465,12 @@ const char* str;
 
 // 行长：<= 100 字符
 ```
+
+### 注释与文档分层
+
+- 源码（.c/.h）注释只保留：函数/结构体用途、关键参数含义、必要的边界条件。
+- 设计动机、性能原理、协议细节、系统集成说明等长文本统一放在本技术文档。
+- 需要解释“为什么这样做”时，优先补充 TECHNICAL.md，而不是在代码里堆叠段落注释。
 
 ### C23 特性使用
 

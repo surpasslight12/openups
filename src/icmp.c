@@ -21,41 +21,114 @@
 #include <time.h>
 #include <unistd.h>
 
+/* IPv4 ICMP checksum 可选 AVX2 加速（x86 + GCC/Clang）；运行时按 CPU 特性分发。
+ * 语义保持与标量版本一致（含 odd-byte 处理）。
+ */
+#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
+#include <immintrin.h>
+#define OPENUPS_CAN_USE_CPU_SUPPORTS 1
+#else
+#define OPENUPS_CAN_USE_CPU_SUPPORTS 0
+#endif
+
 /* 编译时检查 ICMP 结构体大小 */
 static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
 static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes");
 
-/* ICMP 校验和计算 (RFC 792)
- * 算法:
- *   1. 数据分为多个 16 位字，依次累加
- *   2. 如果长度是奇数，最后一个字节作为 16 位字的高位（补零作为低位）
- *   3. 将进位加回到和中
- *   4. 对结果取反码，零为全 1
- * IPv4: 需手动计算，因为 ICMP 是内核上层的协议
- * IPv6: 由内核自动计算 (IPV6_CHECKSUM socket 选项)
- */
-static uint16_t calculate_checksum(const void* data, size_t len)
+/* ICMP 校验和（IPv4 需要，IPv6 由内核处理）。 */
+static uint16_t calculate_checksum_scalar(const void* data, size_t len)
 {
     const uint16_t* buf = (const uint16_t*)data;
     uint32_t sum = 0;
 
-    /* 步骤 1: 累加所有 16 位字 */
+    /* 累加 16-bit words */
     for (size_t i = 0; i < len / 2; i++) {
         sum += buf[i];
     }
 
-    /* 步骤 2: 处理奇数位 */
+    /* 奇数字节：保持既有语义（按原字节值直接累加）。 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
 
-    /* 步骤 3: 处理进位 (IP 格式校验和需要一个循环算法) */
+    /* 处理进位 */
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
 
-    /* 步骤 4: 返回反码 */
     return ~sum;
+}
+
+#if OPENUPS_CAN_USE_CPU_SUPPORTS
+__attribute__((target("avx2")))
+static uint16_t calculate_checksum_avx2(const void* data, size_t len)
+{
+    const uint8_t* bytes = (const uint8_t*)data;
+    uint32_t sum = 0;
+
+    /* Process 32-byte blocks (16 x uint16_t). */
+    size_t i = 0;
+
+    const __m256i mask00ff = _mm256_set1_epi16(0x00FF);
+    const __m256i ones = _mm256_set1_epi16(1);
+    __m256i acc32 = _mm256_setzero_si256();
+
+    size_t vec_len = len & ~(size_t)31;
+    for (; i < vec_len; i += 32) {
+        __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(bytes + i));
+
+        /* Interpret as 16-bit little-endian words:
+         * word = even_byte + (odd_byte << 8)
+         */
+        __m256i even16 = _mm256_and_si256(v, mask00ff);
+        __m256i odd16 = _mm256_and_si256(_mm256_srli_epi16(v, 8), mask00ff);
+
+        /* Pairwise sum into 32-bit lanes. */
+        __m256i even32 = _mm256_madd_epi16(even16, ones);
+        __m256i odd32 = _mm256_madd_epi16(odd16, ones);
+        __m256i words32 = _mm256_add_epi32(even32, _mm256_slli_epi32(odd32, 8));
+
+        acc32 = _mm256_add_epi32(acc32, words32);
+    }
+
+    /* Horizontal sum of 8 x u32 lanes. */
+    __m128i lo = _mm256_castsi256_si128(acc32);
+    __m128i hi = _mm256_extracti128_si256(acc32, 1);
+    __m128i s = _mm_add_epi32(lo, hi);
+    s = _mm_hadd_epi32(s, s);
+    s = _mm_hadd_epi32(s, s);
+    sum += (uint32_t)_mm_cvtsi128_si32(s);
+
+    /* Tail: process remaining 16-bit words scalar. */
+    size_t tail_start = vec_len;
+    const uint16_t* tail16 = (const uint16_t*)(const void*)(bytes + tail_start);
+    size_t tail_words = (len - tail_start) / 2;
+    for (size_t w = 0; w < tail_words; w++) {
+        sum += tail16[w];
+    }
+
+    /* Odd byte: preserve existing semantics (added as-is, not shifted). */
+    if (len % 2) {
+        sum += bytes[len - 1];
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xFFFFU) + (sum >> 16);
+    }
+
+    return (uint16_t)(~sum);
+}
+#endif
+
+static uint16_t calculate_checksum(const void* data, size_t len)
+{
+#if OPENUPS_CAN_USE_CPU_SUPPORTS
+    /* GCC/Clang on x86: safe runtime dispatch. */
+    if (__builtin_cpu_supports("avx2")) {
+        return calculate_checksum_avx2(data, len);
+    }
+#endif
+    return calculate_checksum_scalar(data, len);
 }
 
 /* 初始化 ICMP pinger（需要 CAP_NET_RAW 权限） */

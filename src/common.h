@@ -6,9 +6,7 @@
 #include <stdint.h>
 #include <time.h>
 
-/* C23 checked integer arithmetic (with fallback for older compilers)
- * Prefer using ckd_add/ckd_mul with uint64_t for time conversions.
- */
+/* C23 checked arithmetic（stdckdint.h）；不支持时提供等价回退实现。 */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 #include <stdckdint.h>
 #else

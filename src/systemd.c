@@ -52,10 +52,7 @@ static bool build_notify_addr(const char* restrict socket_path, struct sockaddr_
     return true;
 }
 
-/* 发送 systemd 通知
- * 实现: 通过 UNIX domain socket (SOCK_DGRAM) 发送消息到 systemd
- * 消息格式: "STATUS=...", "READY=1", "STOPPING=1", "WATCHDOG=1" 等
- */
+/* 发送 systemd 通知消息（READY/STATUS/STOPPING/WATCHDOG）。 */
 static bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
 {
     if (notifier == NULL || message == NULL || !notifier->enabled) {
@@ -91,18 +88,13 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier)
     notifier->last_status_ms = 0;
     notifier->last_status[0] = '\0';
 
-    /* 检查 NOTIFY_SOCKET 环境变量
-     * systemd 会为被管理的服务设置此变量
-     * 如果不存在，表示程序不是由 systemd 启动的
-     */
+    /* 非 systemd 管理时通常不会设置 NOTIFY_SOCKET。 */
     const char* socket_path = getenv("NOTIFY_SOCKET");
     if (socket_path == NULL) {
         return;
     }
 
-    /* 创建 UNIX domain socket (SOCK_DGRAM 无连接数据报)
-     * 特殊注意: systemd 通知使用数据报方式，不需要预先建立连接
-     */
+    /* systemd 通知使用 AF_UNIX/SOCK_DGRAM。 */
     int socket_type = SOCK_DGRAM;
 #ifdef SOCK_CLOEXEC
     socket_type |= SOCK_CLOEXEC;
@@ -130,11 +122,7 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier)
 
     notifier->enabled = true;
 
-    /* 解析 WATCHDOG_USEC 环境变量
-     * systemd 会设置 watchdog 超时时间（微秒）
-     * 程序需要每隔 超时时间/2 秒向 systemd 发送一次心跳
-     * 如果 0 次未发送心跳，systemd 会强制重启服务
-     */
+    /* watchdog 超时时间（微秒）；用于计算心跳间隔。 */
     const char* watchdog_str = getenv("WATCHDOG_USEC");
     if (watchdog_str != NULL) {
         notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
@@ -183,10 +171,7 @@ bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* 
         return true;
     }
 
-    /* 向 systemd 报告当前程序状态
-     * 格式: "STATUS=..." (e.g., "STATUS=Monitoring 1.1.1.1")
-     * systemd 会在 systemctl status 中显示此信息
-     */
+    /* systemd 约定：STATUS=... */
     char message[256];
     snprintf(message, sizeof(message), "STATUS=%s", status);
 
@@ -206,10 +191,6 @@ bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier)
 
 bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
 {
-    /* 发送 watchdog 心跳 (WATCHDOG=1)
-     * 程序需要每隔 WATCHDOG_USEC/2 时间发送一次心跳
-     * 如果超时未发送 watchdog 心跳，systemd 会强制重启应用程序
-     */
     if (notifier == NULL || !notifier->enabled) {
         return false;
     }

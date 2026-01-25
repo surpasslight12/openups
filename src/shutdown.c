@@ -22,7 +22,7 @@ static bool build_command_argv(const char* command, char* buffer, size_t buffer_
         return false;
     }
 
-    /* Strictly reject quotes/backticks and control characters */
+    /* 严格拒绝引号/反引号与控制字符。 */
     if (strchr(command, '"') != NULL || strchr(command, '\'') != NULL ||
         strchr(command, '`') != NULL) {
         return false;
@@ -122,7 +122,7 @@ static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
         return false;
     }
 
-    /* 执行关机命令（使用 fork/execvp 以避免 shell 注入） */
+    /* 使用 fork/execvp 执行（不经过 shell）。 */
     pid_t child_pid = fork();
     if (child_pid < 0) {
         logger_error(logger, "fork() failed: %s", strerror(errno));
@@ -142,7 +142,7 @@ static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
         _exit(127);
     }
 
-    /* 父进程：等待子进程完成（设置 5 秒超时） */
+    /* 父进程：等待子进程完成（5 秒超时）。 */
     int status = 0;
     uint64_t start_ms = get_monotonic_ms();
     bool use_monotonic = start_ms != UINT64_MAX;
@@ -207,7 +207,6 @@ void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemc
     char command_buf[512];
     char* argv[16] = {0};
 
-    /* Default to userspace shutdown paths (no direct reboot syscall) */
     if (!shutdown_select_command(config, use_systemctl, command_buf, sizeof(command_buf))) {
         logger_error(logger, "Unknown shutdown mode");
         return;
