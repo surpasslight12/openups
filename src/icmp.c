@@ -164,6 +164,18 @@ bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6, char* restr
         return false;
     }
 
+    /* IPv6: 让内核自动计算/验证 ICMPv6 校验和。 */
+    if (use_ipv6) {
+        int offset = (int)offsetof(struct icmp6_hdr, icmp6_cksum);
+        if (setsockopt(pinger->sockfd, IPPROTO_IPV6, IPV6_CHECKSUM, &offset,
+                       (socklen_t)sizeof(offset)) != 0) {
+            snprintf(error_msg, error_size, "Failed to set IPV6_CHECKSUM: %s", strerror(errno));
+            close(pinger->sockfd);
+            pinger->sockfd = -1;
+            return false;
+        }
+    }
+
     /* 非阻塞：避免极端情况下 recvfrom 意外阻塞，配合 poll + EAGAIN 逻辑 */
     int flags = fcntl(pinger->sockfd, F_GETFL, 0);
     if (flags >= 0) {
@@ -358,7 +370,7 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
  */
 static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in* restrict dest_addr, int timeout_ms,
-                               int packet_size, icmp_tick_fn tick, void* tick_user_data,
+                               int payload_size, icmp_tick_fn tick, void* tick_user_data,
                                icmp_should_stop_fn should_stop, void* stop_user_data)
 {
     ping_result_t result = {false, 0.0, ""};
@@ -374,11 +386,11 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     }
 
     /* 构建 ICMP Echo Request 数据包（复用缓冲区） */
-    size_t packet_len = sizeof(struct icmphdr) + (size_t)packet_size;
+    size_t packet_len = sizeof(struct icmphdr) + (size_t)payload_size;
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
     }
-    fill_payload_pattern(pinger, sizeof(struct icmphdr), (size_t)packet_size);
+    fill_payload_pattern(pinger, sizeof(struct icmphdr), (size_t)payload_size);
 
     struct icmphdr* icmp_hdr = (struct icmphdr*)pinger->send_buf;
     memset(icmp_hdr, 0, sizeof(*icmp_hdr));
@@ -503,7 +515,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
  */
 static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in6* restrict dest_addr, int timeout_ms,
-                               int packet_size, icmp_tick_fn tick, void* tick_user_data,
+                               int payload_size, icmp_tick_fn tick, void* tick_user_data,
                                icmp_should_stop_fn should_stop, void* stop_user_data)
 {
     ping_result_t result = {false, 0.0, ""};
@@ -519,11 +531,11 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     }
 
     /* 构造 ICMPv6 Echo Request 数据包（复用缓冲区） */
-    size_t packet_len = sizeof(struct icmp6_hdr) + (size_t)packet_size;
+    size_t packet_len = sizeof(struct icmp6_hdr) + (size_t)payload_size;
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
     }
-    fill_payload_pattern(pinger, sizeof(struct icmp6_hdr), (size_t)packet_size);
+    fill_payload_pattern(pinger, sizeof(struct icmp6_hdr), (size_t)payload_size);
 
     struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)pinger->send_buf;
     memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
@@ -625,13 +637,13 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
 
 /* 执行 ping 操作 (自动根据地址类型选择 IPv4/IPv6） */
 ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger, const char* restrict target,
-                               int timeout_ms, int packet_size)
+                               int timeout_ms, int payload_size)
 {
-    return icmp_pinger_ping_ex(pinger, target, timeout_ms, packet_size, NULL, NULL, NULL, NULL);
+    return icmp_pinger_ping_ex(pinger, target, timeout_ms, payload_size, NULL, NULL, NULL, NULL);
 }
 
 ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger, const char* restrict target,
-                                  int timeout_ms, int packet_size, icmp_tick_fn tick,
+                                  int timeout_ms, int payload_size, icmp_tick_fn tick,
                                   void* tick_user_data, icmp_should_stop_fn should_stop,
                                   void* stop_user_data)
 {
@@ -667,9 +679,9 @@ ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger, const char* re
 
     (void)addr_len;
     if (pinger->use_ipv6) {
-        return ping_ipv6(pinger, (struct sockaddr_in6*)(void*)addr_ptr, timeout_ms, packet_size,
+        return ping_ipv6(pinger, (struct sockaddr_in6*)(void*)addr_ptr, timeout_ms, payload_size,
                          tick, tick_user_data, should_stop, stop_user_data);
     }
-    return ping_ipv4(pinger, (struct sockaddr_in*)(void*)addr_ptr, timeout_ms, packet_size, tick,
+    return ping_ipv4(pinger, (struct sockaddr_in*)(void*)addr_ptr, timeout_ms, payload_size, tick,
                      tick_user_data, should_stop, stop_user_data);
 }

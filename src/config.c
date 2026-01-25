@@ -80,7 +80,7 @@ void config_init_default(config_t* restrict config)
     config->interval_sec = 10;                                   /* 检测间隔: 10 秒 */
     config->fail_threshold = 5;                                  /* 连续失败达到此阈值时触发关机 */
     config->timeout_ms = 2000;                                   /* 每次 ping 超时: 2 秒 */
-    config->packet_size = 56; /* IPv4/IPv6 标准 ping 负载体大小 */
+    config->payload_size = 56; /* IPv4/IPv6 标准 ping 负载体大小 */
     config->max_retries = 2;  /* 失败后的重试次数 */
     config->use_ipv6 = false; /* 默认 IPv4 */
 
@@ -115,7 +115,7 @@ void config_load_from_env(config_t* restrict config)
     config->interval_sec = get_env_int("OPENUPS_INTERVAL", config->interval_sec);
     config->fail_threshold = get_env_int("OPENUPS_THRESHOLD", config->fail_threshold);
     config->timeout_ms = get_env_int("OPENUPS_TIMEOUT", config->timeout_ms);
-    config->packet_size = get_env_int("OPENUPS_PACKET_SIZE", config->packet_size);
+    config->payload_size = get_env_int("OPENUPS_PACKET_SIZE", config->payload_size);
     config->max_retries = get_env_int("OPENUPS_RETRIES", config->max_retries);
     config->use_ipv6 = get_env_bool("OPENUPS_IPV6", config->use_ipv6);
 
@@ -201,7 +201,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 }
                 break;
             case 's':
-                if (!parse_int_arg(optarg, &config->packet_size, 0, 65507, "--packet-size")) {
+                if (!parse_int_arg(optarg, &config->payload_size, 0, 65507, "--packet-size")) {
                     return false;
                 }
                 break;
@@ -315,8 +315,8 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
         return false;
     }
 
-    if (config->packet_size < 0 || config->packet_size > 65507) {
-        snprintf(error_msg, error_size, "Packet size must be between 0 and 65507");
+    if (config->payload_size < 0 || config->payload_size > 65507) {
+        snprintf(error_msg, error_size, "Payload size must be between 0 and 65507");
         return false;
     }
 
@@ -353,7 +353,7 @@ void config_print(const config_t* restrict config)
     printf("  Interval: %d seconds\n", config->interval_sec);
     printf("  Threshold: %d\n", config->fail_threshold);
     printf("  Timeout: %d ms\n", config->timeout_ms);
-    printf("  Packet Size: %d bytes\n", config->packet_size);
+    printf("  Payload Size: %d bytes\n", config->payload_size);
     printf("  Max Retries: %d\n", config->max_retries);
     printf("  IPv6: %s\n", config->use_ipv6 ? "true" : "false");
     printf("  Shutdown Mode: %s\n", shutdown_mode_to_string(config->shutdown_mode));

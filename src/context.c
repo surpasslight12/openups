@@ -212,7 +212,7 @@ bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_result_t* restrict 
         ctx->last_ping_time_ms = get_monotonic_ms();
 
         *result = icmp_pinger_ping_ex(&ctx->pinger, config->target, config->timeout_ms,
-                                      config->packet_size, icmp_tick_callback, ctx,
+                                      config->payload_size, icmp_tick_callback, ctx,
                                       icmp_should_stop_callback, ctx);
 
         if (result->success) {
@@ -342,8 +342,8 @@ static bool trigger_shutdown(openups_ctx_t* restrict ctx)
         return false;
     }
 
-    const bool use_systemctl = ctx->config.enable_systemd && ctx->systemd_enabled;
-    shutdown_trigger(&ctx->config, &ctx->logger, use_systemctl);
+    const bool use_systemctl_poweroff = ctx->config.enable_systemd && ctx->systemd_enabled;
+    shutdown_trigger(&ctx->config, &ctx->logger, use_systemctl_poweroff);
 
     if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
         ctx->consecutive_fails = 0; /* 重置计数器，继续监控 */

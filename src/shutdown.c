@@ -57,7 +57,7 @@ static bool build_command_argv(const char* command, char* buffer, size_t buffer_
     return true;
 }
 
-static bool shutdown_select_command(const config_t* restrict config, bool use_systemctl,
+static bool shutdown_select_command(const config_t* restrict config, bool use_systemctl_poweroff,
                                     char* restrict command_buf, size_t command_size)
 {
     if (config == NULL || command_buf == NULL || command_size == 0) {
@@ -65,7 +65,7 @@ static bool shutdown_select_command(const config_t* restrict config, bool use_sy
     }
 
     if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-        if (use_systemctl) {
+        if (use_systemctl_poweroff) {
             snprintf(command_buf, command_size, "systemctl poweroff");
         } else {
             snprintf(command_buf, command_size, "/sbin/shutdown -h now");
@@ -167,6 +167,9 @@ static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
         }
 
         if (result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             logger_error(logger, "waitpid() failed: %s", strerror(errno));
             return false;
         }
@@ -189,7 +192,7 @@ static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
     }
 }
 
-void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl)
+void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl_poweroff)
 {
     if (config == NULL || logger == NULL) {
         return;
@@ -206,7 +209,8 @@ void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemc
     char command_buf[512];
     char* argv[16] = {0};
 
-    if (!shutdown_select_command(config, use_systemctl, command_buf, sizeof(command_buf))) {
+    if (!shutdown_select_command(config, use_systemctl_poweroff, command_buf,
+                                 sizeof(command_buf))) {
         logger_error(logger, "Unknown shutdown mode");
         return;
     }

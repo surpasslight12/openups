@@ -102,7 +102,7 @@ typedef struct {
     int interval_sec;
     int fail_threshold;
     int timeout_ms;
-    int packet_size;
+    int payload_size;
     int max_retries;
     bool use_ipv6;
 
@@ -164,10 +164,10 @@ void icmp_pinger_destroy(icmp_pinger_t* restrict pinger);
 
 [[nodiscard]] ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger,
                                              const char* restrict target, int timeout_ms,
-                                             int packet_size);
+                                                            int payload_size);
 [[nodiscard]] ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
                                                 const char* restrict target, int timeout_ms,
-                                                int packet_size, icmp_tick_fn tick,
+                                                                int payload_size, icmp_tick_fn tick,
                                                 void* tick_user_data,
                                                 icmp_should_stop_fn should_stop,
                                                 void* stop_user_data);
@@ -219,7 +219,7 @@ void metrics_record_failure(metrics_t* metrics);
 
 /* ===== shutdown ===== */
 
-void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl);
+void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl_poweroff);
 
 /* ===== context ===== */
 
