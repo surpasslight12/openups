@@ -115,7 +115,7 @@ void config_load_from_env(config_t* restrict config)
     config->interval_sec = get_env_int("OPENUPS_INTERVAL", config->interval_sec);
     config->fail_threshold = get_env_int("OPENUPS_THRESHOLD", config->fail_threshold);
     config->timeout_ms = get_env_int("OPENUPS_TIMEOUT", config->timeout_ms);
-    config->payload_size = get_env_int("OPENUPS_PACKET_SIZE", config->payload_size);
+    config->payload_size = get_env_int("OPENUPS_PAYLOAD_SIZE", config->payload_size);
     config->max_retries = get_env_int("OPENUPS_RETRIES", config->max_retries);
     config->use_ipv6 = get_env_bool("OPENUPS_IPV6", config->use_ipv6);
 
@@ -154,7 +154,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                                            {"interval", required_argument, 0, 'i'},
                                            {"threshold", required_argument, 0, 'n'},
                                            {"timeout", required_argument, 0, 'w'},
-                                           {"packet-size", required_argument, 0, 's'},
+                                           {"payload-size", required_argument, 0, 's'},
                                            {"retries", required_argument, 0, 'r'},
                                            {"ipv6", optional_argument, 0, '6'},
 
@@ -201,7 +201,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                 }
                 break;
             case 's':
-                if (!parse_int_arg(optarg, &config->payload_size, 0, 65507, "--packet-size")) {
+                if (!parse_int_arg(optarg, &config->payload_size, 0, 65507, "--payload-size")) {
                     return false;
                 }
                 break;
@@ -278,6 +278,12 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
         }
     }
 
+    /* getopt_long 结束后，拒绝任何多余的非选项参数，避免误输入被静默忽略。 */
+    if (optind < argc) {
+        fprintf(stderr, "Unexpected argument: %s\n", argv[optind]);
+        return false;
+    }
+
     return true;
 }
 
@@ -315,8 +321,12 @@ bool config_validate(const config_t* restrict config, char* restrict error_msg, 
         return false;
     }
 
-    if (config->payload_size < 0 || config->payload_size > 65507) {
-        snprintf(error_msg, error_size, "Payload size must be between 0 and 65507");
+    /* IPv4 最大 payload: 65535 - 20(IP) - 8(ICMP) = 65507
+     * IPv6 最大 payload: 65535 - 40(IPv6) - 8(ICMPv6) = 65487
+     */
+    const int max_payload = config->use_ipv6 ? 65487 : 65507;
+    if (config->payload_size < 0 || config->payload_size > max_payload) {
+        snprintf(error_msg, error_size, "Payload size must be between 0 and %d", max_payload);
         return false;
     }
 
@@ -373,7 +383,7 @@ void config_print_usage(void)
     printf("  -i, --interval <sec>        Ping interval in seconds (default: 10)\n");
     printf("  -n, --threshold <num>       Consecutive failures threshold (default: 5)\n");
     printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: 2000)\n");
-    printf("  -s, --packet-size <bytes>   ICMP packet payload size (default: 56)\n");
+    printf("  -s, --payload-size <bytes>  ICMP payload size (default: 56)\n");
     printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n");
     printf("  -6, --ipv6[=true|false]     Enable/disable IPv6 mode (default: false)\n\n");
 
@@ -403,7 +413,7 @@ void config_print_usage(void)
 
     printf("Environment Variables (lower priority than CLI args):\n");
     printf("  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
-    printf("                OPENUPS_TIMEOUT, OPENUPS_PACKET_SIZE, OPENUPS_RETRIES,\n");
+    printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE, OPENUPS_RETRIES,\n");
     printf("                OPENUPS_IPV6\n");
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_DRY_RUN\n");

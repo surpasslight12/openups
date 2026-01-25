@@ -115,8 +115,8 @@ fi
 
 # 超大包大小
 echo "[11/11] 测试超大包大小..."
-if ./bin/openups --target 127.0.0.1 --packet-size 99999 2>&1 | \
-   grep -Eq "Packet size must be between|Invalid value for --packet-size"; then
+if ./bin/openups --target 127.0.0.1 --payload-size 99999 2>&1 | \
+    grep -Eq "Payload size must be between|Invalid value for --payload-size"; then
     echo "✓ 超大包大小被拒绝"
 else
     echo "❌ 包大小检查失败"
