@@ -61,20 +61,16 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
 ├── context.c           # 统一上下文管理（核心模块）
-├── common.c            # 工具函数：时间戳、字符串处理、环境变量
-├── logger.c            # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
 ├── config.c            # 配置管理：CLI + 环境变量 + 验证
 ├── icmp.c              # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
-├── systemd.c           # systemd 集成：sd_notify、watchdog、状态通知
-├── metrics.c           # 指标统计：成功率、延迟、运行时长
-└── shutdown.c          # 关机触发：fork/execvp（无 shell）
+├── base.c              # 基础设施：common + logger + metrics
+└── integrations.c      # 系统集成：systemd + shutdown
 ```
 
-补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口统一放在 `openups_internal.h`。
+补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口按模块拆分在 `base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h` 中。
 
-**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → openups → main
+**依赖关系**: openups_base → config/icmp/openups_integrations → context → main
 
 **关键变更**：
 - ✅ 移除 `monitor.c/h`（功能整合到 context.c）
@@ -117,11 +113,7 @@ typedef struct openups_context {
 ### 依赖关系图（重构后）
 
 ```
-main.c（程序入口）
-
-openups_internal.h（内部聚合头，仅供 src/*.c）
-    ↑
-common.c / logger.c / config.c / icmp.c / systemd.c / metrics.c / shutdown.c / context.c / openups.c
+base.c → config.c / icmp.c / integrations.c → context.c → main.c
 ```
 
 ### 数据流（重构后）
@@ -180,7 +172,7 @@ while (!ctx->stop_flag) {
 
 ## 模块详解
 
-### 1. common 模块（common.c；声明见 openups_internal.h）
+### 1. common/logger/metrics 模块（base.c；声明见 base.h）
 
 **职责**：通用工具函数
 
@@ -196,9 +188,7 @@ while (!ctx->stop_flag) {
 
 ---
 
-### 2. logger 模块（logger.c；声明见 openups_internal.h）
-
-**职责**：自然语序日志系统
+**职责**：通用工具函数 + 自然语序日志系统 + 指标统计
 
 **关键 API**：
 ```c
@@ -229,7 +219,7 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 
 ---
 
-### 3. config 模块（config.c；声明见 openups_internal.h）
+### 2. config 模块（config.c；声明见 config.h）
 
 **职责**：配置解析和验证
 
@@ -257,7 +247,7 @@ bool config_validate(const config_t* config, char* error_msg, size_t error_size)
 
 ---
 
-### 4. icmp 模块（icmp.c；声明见 openups_internal.h）
+### 3. icmp 模块（icmp.c；声明见 icmp.h）
 
 **职责**：原生 ICMP ping 实现
 
@@ -287,7 +277,7 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 
 ---
 
-### 5. systemd 模块（systemd.c；声明见 openups_internal.h）
+### 4. systemd/shutdown 模块（integrations.c；声明见 integrations.h）
 
 **职责**：systemd 集成
 
@@ -321,33 +311,7 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 6. metrics 模块（metrics.c；声明见 openups_internal.h）
-
-**职责**：指标统计（成功率、延迟、运行时长），与监控逻辑解耦
-
-**关键 API**：
-- `metrics_init()`
-- `metrics_record_success()` / `metrics_record_failure()`
-- `metrics_success_rate()` / `metrics_avg_latency()` / `metrics_uptime_seconds()`
-
-**依赖**：`common`
-
----
-
-### 7. shutdown 模块（shutdown.c；声明见 openups_internal.h）
-
-**职责**：关机触发（命令构造 + `fork()` + `execvp()`），与监控策略解耦
-
-**关键 API**：
-- `shutdown_trigger()`
-
-**依赖**：`common`, `logger`, `config`
-
-补充说明：严格不经过 shell，参数只做空白分隔，并拒绝引号/反引号/控制字符。
-
----
-
-### 8. context 模块（context.c；声明见 openups_internal.h）
+### 5. context 模块（context.c；声明见 context.h）
 
 **职责**：统一上下文管理（配置加载 + 组件初始化 + 监控循环 + 信号处理）
 
@@ -380,7 +344,7 @@ while (!ctx->stop_flag) {
 
 ---
 
-### 9. main 模块 (`main.c`)
+### 6. main 模块 (`main.c`)
 
 **职责**：程序入口
 

@@ -38,15 +38,11 @@
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
-├── context.c           # 统一上下文管理（核心模块）
-├── common.c            # 通用工具函数
+├── base.c              # 基础设施：common + logger + metrics
 ├── config.c            # 配置管理
-├── logger.c            # 日志系统
 ├── icmp.c              # ICMP ping 实现
-├── metrics.c           # 指标统计（成功率/延迟/运行时长）
-├── shutdown.c          # 关机触发（fork/execvp，无 shell）
-└── systemd.c           # systemd 集成
+├── integrations.c      # 系统集成：systemd + shutdown
+└── context.c           # 统一上下文管理（核心模块）
 ```
 
 **设计原则**：

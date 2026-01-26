@@ -6,22 +6,20 @@ OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测
 
 ## 架构概览
 
-### 模块化设计（9 个独立模块）
+### 模块化设计（更少文件分块）
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── openups_internal.h  # 内部聚合头（仅供 src/*.c 使用）
-├── common.c            # 工具函数：时间戳、字符串处理、环境变量
-├── logger.c            # 5 级日志系统 (SILENT/ERROR/WARN/INFO/DEBUG)
+├── context.c           # 统一上下文：配置+组件初始化+监控循环+信号处理
 ├── config.c            # 配置管理：CLI + 环境变量 + 验证
 ├── icmp.c              # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
-├── systemd.c           # systemd 集成：sd_notify、watchdog、状态通知
-├── metrics.c           # 指标统计：成功率、延迟、运行时长
-├── shutdown.c          # 关机触发：fork/execvp（无 shell）
-└── context.c           # 统一上下文：配置+组件初始化+监控循环+信号处理
+├── base.c              # 基础设施：common + logger + metrics
+└── integrations.c      # 系统集成：systemd + shutdown
 ```
 
-**依赖关系**: common → logger → config/icmp/systemd/metrics/shutdown → context → openups → main
+补充：逻辑模块边界仍保持（common/logger/metrics/systemd/shutdown 仅做物理合并），但头文件按模块拆分：`base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h`。
+
+**依赖关系**: base → config/icmp/integrations → context → main
 
 **关键特性**:
 - 零第三方依赖（仅 C 标准库和 Linux 系统调用）
@@ -141,7 +139,7 @@ typedef struct {
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only/custom
     bool dry_run;               // 默认 true（防止误操作）
     bool use_ipv6;
-    // ... 更多字段见 openups_internal.h（内部聚合头）
+    // ... 更多字段见 config.h（内部配置头）
 } config_t;
 
 // 初始化流程（openups_ctx_init/openups_ctx_run 标准模式）
@@ -252,7 +250,7 @@ journalctl -u openups -f
 ## 常见任务模式
 
 ### 添加新配置项
-1. 在 `openups_internal.h` 的 `config_t` 添加字段
+1. 在 `config.h` 的 `config_t` 添加字段
 2. `config_init_default()` 设置默认值
 3. `config_load_from_env()` 添加环境变量 `OPENUPS_*`
 4. `config_load_from_cmdline()` 添加 `--xxx` 选项
@@ -261,7 +259,7 @@ journalctl -u openups -f
 7. 更新 README.md 配置表格
 
 ### 添加新日志级别或函数
-1. `openups_internal.h` 中 `log_level_t` 添加枚举值
+1. `base.h` 中 `log_level_t` 添加枚举值
 2. `logger.c` 中 `log_level_to_string()` 添加字符串映射
 3. `string_to_log_level()` 添加解析逻辑
 4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
