@@ -21,7 +21,7 @@ int main(int argc, char** argv)
     openups_ctx_destroy(&ctx);
 
     if (rc != 0) {
-        fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
+        fprintf(stderr, "OpenUPS exited with code %d\n", rc);
     }
     return rc;
 }

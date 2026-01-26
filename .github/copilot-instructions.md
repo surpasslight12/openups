@@ -136,7 +136,7 @@ typedef struct {
     int fail_threshold;
     log_level_t log_level;      // 统一日志级别
     bool enable_timestamp;      // 时间戳开关（systemd 场景下禁用）
-    shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only/custom
+    shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only
     bool dry_run;               // 默认 true（防止误操作）
     bool use_ipv6;
     // ... 更多字段见 config.h（内部配置头）
@@ -157,7 +157,7 @@ if (!config_validate(&config, error_msg, sizeof(error_msg))) {
 
 **关机命令执行约束**：
 - 关机命令通过 `fork()` + `execv/execvp` 执行，不经过 shell。
-- 自定义关机仅支持执行脚本路径（`shutdown-mode=custom`）。
+    当前实现仅支持 immediate/delayed/log-only 三种模式，如需扩展请先更新配置和实现。
 
 ### ICMP Ping 实现（原生 raw socket）
 ```c
@@ -260,8 +260,8 @@ journalctl -u openups -f
 
 ### 添加新日志级别或函数
 1. `base.h` 中 `log_level_t` 添加枚举值
-2. `logger.c` 中 `log_level_to_string()` 添加字符串映射
-3. `string_to_log_level()` 添加解析逻辑
+2. `base.c` 中 `log_level_to_string()` 添加字符串映射
+3. 在 `string_to_log_level()` 中添加解析逻辑
 4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
 
 ### 修改 ICMP 行为

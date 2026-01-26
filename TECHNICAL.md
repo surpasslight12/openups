@@ -70,7 +70,7 @@ src/
 
 补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口按模块拆分在 `base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h` 中。
 
-**依赖关系**: openups_base → config/icmp/openups_integrations → context → main
+**依赖关系**: base → config/icmp/integrations → context → main
 
 **关键变更**：
 - ✅ 移除 `monitor.c/h`（功能整合到 context.c）
@@ -705,7 +705,7 @@ nslookup 目标主机
 ### 已知限制
 
 - 仅支持 ICMP（不支持 TCP/UDP 探测）；某些网络可能过滤 ICMP。
-- 目标地址：当前建议使用数字 IP；域名解析行为以实现与系统解析配置为准。
+- 目标地址：仅支持 IPv4/IPv6 数字 IP 字面量（不做 DNS 解析）。
 - Linux 专属；ICMP raw socket 需要 root 或 `CAP_NET_RAW`。
 - 单进程单目标；多目标需要启动多个实例。
 
@@ -762,13 +762,13 @@ const char* watchdog_str = getenv("WATCHDOG_USEC");
 notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
 
 // 每秒发送心跳（在 sleep_with_stop 循环中）
-systemd_notifier_watchdog(monitor->systemd);
+systemd_notifier_watchdog(&monitor->systemd);
 ```
 
 ### Q6: 为什么需要 EINTR 重试？
 **A**: 系统调用可能被信号中断（如 SIGWINCH）
 ```c
-// systemd.c 中的正确实现
+// integrations.c 中的正确实现（systemd 部分）
 ssize_t sent;
 do {
     sent = sendto(sockfd, message, len, 0, addr, addrlen);
@@ -777,7 +777,7 @@ do {
 
 ### Q7: 如何添加新的配置项？
 ```
-1. openups_internal.h: 添加字段到 config_t
+1. config.h: 添加字段到 config_t
 2. config.c: config_init_default() 设置默认值
 3. config.c: config_load_from_env() 添加 OPENUPS_* 环境变量
 4. config.c: config_load_from_cmdline() 添加 --xxx 参数
@@ -792,7 +792,7 @@ do {
 
 ### 添加新的配置项
 
-1. 在 `openups_internal.h` 的 `config_t` 结构体添加字段
+1. 在 `config.h` 的 `config_t` 结构体添加字段
 2. 在 `config_init_default()` 设置默认值
 3. 在 `config_load_from_env()` 添加环境变量读取
 4. 在 `config_load_from_cmdline()` 添加 CLI 解析
