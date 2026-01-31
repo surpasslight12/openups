@@ -1,13 +1,19 @@
 #ifndef BASE_H
 #define BASE_H
 
+/**
+ * @file base.h
+ * @brief 基础设施：通用工具、日志系统、指标统计
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "openups.h"
 
-/* C23 checked arithmetic（stdckdint.h）；不支持时提供等价回退实现。 */
+/* === C23 checked arithmetic（stdckdint.h）=== */
+/* 不支持时提供等价回退实现 */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
 #include <stdckdint.h>
 #else

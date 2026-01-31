@@ -56,7 +56,7 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 延迟测量与 uptime 统计使用单调时钟，避免系统时间调整（NTP/手动改时间）造成负数延迟或运行时长跳变。
 ## 架构设计
 
-### 模块结构（重构版 - 2026-01-25）
+### 模块结构（v1.3.0 - 2026-01-31）
 
 ```
 src/
@@ -68,14 +68,15 @@ src/
 └── integrations.c      # 系统集成：systemd + shutdown
 ```
 
-补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口按模块拆分在 `base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h` 中。
+补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口按模块拆分在 `base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h` 中。所有头文件使用 Doxygen 风格文档注释。
 
 **依赖关系**: base → config/icmp/integrations → context → main
 
-**关键变更**：
-- ✅ 移除 `monitor.c/h`（功能整合到 context.c）
-- ✅ 新增 `context.c`（统一上下文管理）
-- ✅ 简化 `main.c`（71 行 → 22 行，减少 69%）
+**关键变更（v1.2.0 → v1.3.0）**：
+- ✅ 统一 Doxygen 风格文档注释（`@file`, `@brief`）
+- ✅ 规范化节分隔符格式（`/* ===...=== */`）
+- ✅ 代码风格全面对齐
+- ✅ 版本号更新至 1.3.0
 
 ### 统一上下文架构（openups_ctx_t）
 

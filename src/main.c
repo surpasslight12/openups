@@ -6,7 +6,11 @@
 #error "This program currently targets Linux."
 #endif
 
-/* OpenUPS 程序入口：初始化上下文并运行主循环。 */
+/**
+ * @brief OpenUPS 程序入口
+ *
+ * 初始化上下文并运行主监控循环。
+ */
 int main(int argc, char** argv)
 {
     char error_msg[256];

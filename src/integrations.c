@@ -13,7 +13,9 @@
 #include <time.h>
 #include <unistd.h>
 
-/* ===== systemd.c ===== */
+/* ============================================================
+ * systemd 通知器
+ * ============================================================ */
 
 static uint64_t monotonic_ms(void)
 {
@@ -235,7 +237,9 @@ uint64_t systemd_notifier_watchdog_interval_ms(const systemd_notifier_t* restric
     return interval_ms;
 }
 
-/* ===== shutdown.c ===== */
+/* ============================================================
+ * shutdown 关机触发
+ * ============================================================ */
 
 /* 构建命令参数数组（空白分隔，不支持引号） */
 static bool build_command_argv(const char* command, char* buffer, size_t buffer_size, char* argv[],

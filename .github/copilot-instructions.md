@@ -3,10 +3,11 @@
 OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测网络可达性并在失败时执行关机策略。使用 C23 标准，零第三方依赖，深度集成 systemd。
 
 **本文档用于**: GitHub Copilot, Cursor AI, 以及其他 AI 编程助手
+**当前版本**: 1.3.0
 
 ## 架构概览
 
-### 模块化设计（更少文件分块）
+### 模块化设计（v1.3.0）
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
@@ -17,7 +18,7 @@ src/
 └── integrations.c      # 系统集成：systemd + shutdown
 ```
 
-补充：逻辑模块边界仍保持（common/logger/metrics/systemd/shutdown 仅做物理合并），但头文件按模块拆分：`base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h`。
+补充：逻辑模块边界仍保持（common/logger/metrics/systemd/shutdown 仅做物理合并），但头文件按模块拆分：`base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h`。所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
 
 **依赖关系**: base → config/icmp/integrations → context → main
 

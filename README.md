@@ -4,6 +4,7 @@
 [![C23](https://img.shields.io/badge/C-23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![systemd](https://img.shields.io/badge/systemd-integrated-green.svg)](https://systemd.io/)
 [![Security](https://img.shields.io/badge/security-10%2F10-brightgreen.svg)](#-安全特性)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](src/openups.h)
 
 **OpenUPS** 是一个**轻量级、高性能、高安全**的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
 
@@ -33,7 +34,7 @@
 - **指标统计**：实时监控成功率、延迟、运行时长
 - **dry-run 模式**：默认启用，防止误操作
 
-## 🏗️ 架构（重构版 - 2026-01-25）
+## 🏗️ 架构（v1.3.0 - 2026-01-31）
 
 ```
 src/
@@ -51,12 +52,13 @@ src/
 - ✅ 内存局部性优化（CPU 缓存友好）
 - ✅ 零第三方依赖（仅 C 标准库和 Linux 系统调用）
 - ✅ 单一二进制文件，易于部署
+- ✅ Doxygen 风格文档注释
 
-**重构改进**：
-- 代码量减少 13.3%（487 → 422 行）
-- 主程序简化 69%（71 → 22 行）
-- 内存占用降低 4.2%
-- 启动时间优化 16.7%
+**重构改进（v1.2.0 → v1.3.0）**：
+- 统一 Doxygen 风格文档注释
+- 规范化节分隔符格式
+- 代码风格全面对齐
+- 版本号和文档同步更新
 
 更多架构与实现细节见 [TECHNICAL.md](TECHNICAL.md)。
 

@@ -1,6 +1,11 @@
 #ifndef INTEGRATIONS_H
 #define INTEGRATIONS_H
 
+/**
+ * @file integrations.h
+ * @brief 系统集成：systemd 通知、关机触发
+ */
+
 #include "config.h"
 
 #include <stdbool.h>
@@ -8,6 +13,8 @@
 
 #include <sys/socket.h>
 #include <sys/un.h>
+
+/* === systemd 通知器 === */
 
 typedef struct {
     bool enabled;

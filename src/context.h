@@ -1,6 +1,11 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
+/**
+ * @file context.h
+ * @brief 统一上下文管理：配置、组件、监控循环、信号处理
+ */
+
 #include "base.h"
 #include "config.h"
 #include "icmp.h"
@@ -9,6 +14,8 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+/* === 统一上下文结构 === */
 
 typedef struct openups_context {
     volatile sig_atomic_t stop_flag;

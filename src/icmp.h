@@ -1,11 +1,18 @@
 #ifndef ICMP_H
 #define ICMP_H
 
+/**
+ * @file icmp.h
+ * @brief 原生 ICMP ping 实现（raw socket, IPv4/IPv6）
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include <sys/socket.h>
+
+/* === Ping 结果结构 === */
 
 typedef struct {
     bool success;

@@ -11,7 +11,9 @@
 #include <time.h>
 #include <sys/time.h>
 
-/* ===== common.c ===== */
+/* ============================================================
+ * common 通用工具函数
+ * ============================================================ */
 
 /* 编译时检查 */
 static_assert(sizeof(uint64_t) == 8, "uint64_t must be 8 bytes");
@@ -148,7 +150,9 @@ bool is_safe_path(const char* restrict path)
     return true;
 }
 
-/* ===== logger.c ===== */
+/* ============================================================
+ * logger 日志系统
+ * ============================================================ */
 
 void logger_init(logger_t* restrict logger, log_level_t level, bool enable_timestamp)
 {
@@ -301,7 +305,9 @@ log_level_t string_to_log_level(const char* restrict str)
     return LOG_LEVEL_INFO;
 }
 
-/* ===== metrics.c ===== */
+/* ============================================================
+ * metrics 指标统计
+ * ============================================================ */
 
 void metrics_init(metrics_t* metrics)
 {

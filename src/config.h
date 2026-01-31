@@ -1,9 +1,16 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+/**
+ * @file config.h
+ * @brief 配置管理：CLI 参数、环境变量、验证
+ */
+
 #include "base.h"
 
 #include <stdbool.h>
+
+/* === 关机模式枚举 === */
 
 typedef enum {
     SHUTDOWN_MODE_IMMEDIATE,
