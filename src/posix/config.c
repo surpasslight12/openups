@@ -93,9 +93,11 @@ void config_init_default(config_t* restrict config)
     config->enable_timestamp = true;    /* 是否在日志中输出时间戳 (systemd 场景下建议禁用) */
     config->log_level = LOG_LEVEL_INFO; /* 日志级别: INFO 等级 */
 
+#ifdef OPENUPS_HAS_SYSTEMD
     /* systemd 配置 (仅当由 systemd 管理程序时需要) */
     config->enable_systemd = true;  /* 是否启用 systemd 集成 */
     config->enable_watchdog = true; /* 是否发送 watchdog 心跳 */
+#endif
 }
 
 void config_load_from_env(config_t* restrict config)
@@ -137,8 +139,10 @@ void config_load_from_env(config_t* restrict config)
         config->log_level = string_to_log_level(value);
     }
 
+#ifdef OPENUPS_HAS_SYSTEMD
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
     config->enable_watchdog = get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
+#endif
     config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
 }
 
@@ -166,9 +170,11 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                                            {"log-level", required_argument, 0, 'L'},
                                            {"timestamp", optional_argument, 0, 'T'},
 
+#ifdef OPENUPS_HAS_SYSTEMD
                                            /* 系统集成 */
                                            {"systemd", optional_argument, 0, 'M'},
                                            {"watchdog", optional_argument, 0, 'W'},
+#endif
 
                                            /* 其他 */
                                            {"version", no_argument, 0, 'v'},
@@ -178,7 +184,13 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
     int c;
     int option_index = 0;
 
-    while ((c = getopt_long(argc, argv, "t:i:n:w:s:r:6::S:D:d::L:T::M::W::vh", long_options,
+#ifdef OPENUPS_HAS_SYSTEMD
+    const char* optstring = "t:i:n:w:s:r:6::S:D:d::L:T::M::W::vh";
+#else
+    const char* optstring = "t:i:n:w:s:r:6::S:D:d::L:T::vh";
+#endif
+
+    while ((c = getopt_long(argc, argv, optstring, long_options,
                             &option_index)) != -1) {
         switch (c) {
             case 't':
@@ -249,6 +261,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                     return false;
                 }
                 break;
+#ifdef OPENUPS_HAS_SYSTEMD
             case 'M':
                 if (!parse_bool_arg(optarg, &config->enable_systemd)) {
                     fprintf(stderr, "Invalid value for --systemd: %s (use true|false)\n",
@@ -263,6 +276,7 @@ bool config_load_from_cmdline(config_t* restrict config, int argc, char** restri
                     return false;
                 }
                 break;
+#endif
             /* --version */
             case 'v':
                 config_print_version();
@@ -369,8 +383,10 @@ void config_print(const config_t* restrict config)
     printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
     printf("  Log Level: %s\n", log_level_to_string(config->log_level));
     printf("  Timestamp: %s\n", config->enable_timestamp ? "true" : "false");
+#ifdef OPENUPS_HAS_SYSTEMD
     printf("  Systemd: %s\n", config->enable_systemd ? "true" : "false");
     printf("  Watchdog: %s\n", config->enable_watchdog ? "true" : "false");
+#endif
 }
 
 /* 打印帮助信息和可用参数 */
@@ -401,10 +417,12 @@ void config_print_usage(void)
     printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: true)\n");
     printf("                              ARG format: true|false\n\n");
 
+#ifdef OPENUPS_HAS_SYSTEMD
     printf("System Integration:\n");
     printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: true)\n");
     printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: true)\n");
     printf("                              ARG format: true|false\n\n");
+#endif
 
     printf("General Options:\n");
     printf("  -v, --version               Show version information\n");
@@ -417,7 +435,10 @@ void config_print_usage(void)
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_DRY_RUN\n");
     printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP\n");
-    printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n\n");
+#ifdef OPENUPS_HAS_SYSTEMD
+    printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n");
+#endif
+    printf("\n");
 
     printf("Examples:\n");
     printf("  # Basic monitoring with dry-run\n");

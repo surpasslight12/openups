@@ -1,12 +1,12 @@
-#ifndef INTEGRATIONS_H
-#define INTEGRATIONS_H
+#ifndef SYSTEMD_H
+#define SYSTEMD_H
 
 /**
- * @file integrations.h
- * @brief 系统集成：systemd 通知、关机触发
+ * @file systemd.h
+ * @brief systemd 集成：sd_notify 协议通知、watchdog 心跳
  */
 
-#include "config.h"
+#include "base.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -39,6 +39,4 @@ void systemd_notifier_destroy(systemd_notifier_t* restrict notifier);
 [[nodiscard]] OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(
     const systemd_notifier_t* restrict notifier);
 
-OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl_poweroff);
-
-#endif /* INTEGRATIONS_H */
+#endif /* SYSTEMD_H */

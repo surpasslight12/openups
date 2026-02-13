@@ -9,7 +9,7 @@
  * 此头文件主要用于信息展示或未来可能的库化预留。
  */
 
-#define OPENUPS_VERSION "1.3.0"
+#define OPENUPS_VERSION "1.4.0"
 #define OPENUPS_PROGRAM_NAME "openups"
 
 /* 向现有内部代码提供兼容宏别名 */

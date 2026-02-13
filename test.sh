@@ -10,17 +10,31 @@ echo "========================================"
 echo
 
 # 编译检查
-echo "[1/11] 编译检查..."
+echo "[1/12] 编译检查 (SYSTEMD=1)..."
 make clean > /dev/null 2>&1
 if make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
     echo "❌ 编译有警告或错误"
     make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
     exit 1
 fi
-echo "✓ 编译成功，无警告"
+echo "✓ 编译成功 (SYSTEMD=1)，无警告"
+
+# 无 systemd 编译检查
+echo "[2/12] 编译检查 (SYSTEMD=0)..."
+make clean > /dev/null 2>&1
+if make SYSTEMD=0 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
+    echo "❌ 无 systemd 编译有警告或错误"
+    make SYSTEMD=0 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
+    exit 1
+fi
+echo "✓ 编译成功 (SYSTEMD=0)，无警告"
+
+# 重新构建含 systemd 版本用于后续测试
+make clean > /dev/null 2>&1
+make > /dev/null 2>&1
 
 # 帮助信息
-echo "[2/11] 测试帮助信息..."
+echo "[3/12] 测试帮助信息..."
 if ! ./bin/openups --help > /dev/null 2>&1; then
     echo "❌ 帮助信息失败"
     exit 1
@@ -28,7 +42,7 @@ fi
 echo "✓ 帮助信息正常"
 
 # 版本信息
-echo "[3/11] 测试版本信息..."
+echo "[4/12] 测试版本信息..."
 if ! ./bin/openups --version > /dev/null 2>&1; then
     echo "❌ 版本信息失败"
     exit 1
@@ -36,7 +50,7 @@ fi
 echo "✓ 版本信息正常"
 
 # 参数验证测试
-echo "[4/11] 测试布尔参数 --dry-run..."
+echo "[5/12] 测试布尔参数 --dry-run..."
 if ! ./bin/openups --help --dry-run=true > /dev/null 2>&1; then
     echo "❌ --dry-run=true 参数解析失败"
     exit 1
@@ -52,7 +66,7 @@ if ! ./bin/openups --help -dfalse > /dev/null 2>&1; then
 fi
 echo "✓ 布尔参数和短选项解析正常"
 
-echo "[5/11] 测试环境变量优先级..."
+echo "[6/12] 测试环境变量优先级..."
 # 环境变量设置
 if ! OPENUPS_TARGET=127.0.0.1 OPENUPS_INTERVAL=5 OPENUPS_THRESHOLD=3 ./bin/openups --help > /dev/null 2>&1; then
     echo "❌ 环境变量设置失败"
@@ -66,7 +80,7 @@ fi
 echo "✓ 环境变量和优先级处理正常"
 
 # 错误处理测试
-echo "[6/11] 测试空目标地址..."
+echo "[7/12] 测试空目标地址..."
 if ./bin/openups --target "" 2>&1 | grep -q "Target host cannot be empty"; then
     echo "✓ 空目标地址被拒绝"
 else
@@ -75,7 +89,7 @@ else
 fi
 
 # 负数间隔
-echo "[7/11] 测试负数间隔..."
+echo "[8/12] 测试负数间隔..."
 if ./bin/openups --target 127.0.0.1 --interval -1 2>&1 | \
    grep -Eq "Interval must be positive|Invalid value for --interval"; then
     echo "✓ 负数间隔被拒绝"
@@ -85,7 +99,7 @@ else
 fi
 
 # 零阈值
-echo "[8/11] 测试零阈值..."
+echo "[9/12] 测试零阈值..."
 if ./bin/openups --target 127.0.0.1 --threshold 0 2>&1 | \
    grep -Eq "Failure threshold must be positive|Invalid value for --threshold"; then
     echo "✓ 零阈值被拒绝"
@@ -95,7 +109,7 @@ else
 fi
 
 # 零超时
-echo "[9/11] 测试零超时..."
+echo "[10/12] 测试零超时..."
 if ./bin/openups --target 127.0.0.1 --timeout 0 2>&1 | \
    grep -Eq "Timeout must be positive|Invalid value for --timeout"; then
     echo "✓ 零超时被拒绝"
@@ -105,7 +119,7 @@ else
 fi
 
 # 注入式 target（OpenUPS 禁用 DNS，且 target 必须为 IP 字面量）
-echo "[10/11] 测试 target 注入防护..."
+echo "[11/12] 测试 target 注入防护..."
 if ./bin/openups --target "1.1.1.1;rm -rf /" 2>&1 | grep -Eq "Target must be a valid|DNS is disabled"; then
     echo "✓ 注入式 target 被拒绝"
 else
@@ -114,7 +128,7 @@ else
 fi
 
 # 超大包大小
-echo "[11/11] 测试超大包大小..."
+echo "[12/12] 测试超大包大小..."
 if ./bin/openups --target 127.0.0.1 --payload-size 99999 2>&1 | \
     grep -Eq "Payload size must be between|Invalid value for --payload-size"; then
     echo "✓ 超大包大小被拒绝"
@@ -129,13 +143,13 @@ echo "代码质量检查..."
 errors=0
 
 # 检查是否有不安全的函数
-if grep -E "(strcpy|strcat|sprintf)\(" src/*.c 2>/dev/null | grep -v "//" > /dev/null; then
+if grep -rE "(strcpy|strcat|sprintf)\(" src/common/ src/posix/ src/linux/ src/systemd/ 2>/dev/null | grep -v "//" > /dev/null; then
     echo "  ❌ 发现不安全的字符串函数"
     ((errors++))
 fi
 
 # 检查是否有 syslog 遗留代码
-if grep -i "syslog" src/*.c src/*.h 2>/dev/null | grep -v "^Binary"; then
+if grep -ri "syslog" src/common/ src/posix/ src/linux/ src/systemd/ 2>/dev/null | grep -v "^Binary"; then
     echo "  ⚠️ 发现 syslog 遗留代码"
     ((errors++))
 fi

@@ -56,27 +56,35 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 延迟测量与 uptime 统计使用单调时钟，避免系统时间调整（NTP/手动改时间）造成负数延迟或运行时长跳变。
 ## 架构设计
 
-### 模块结构（v1.3.0 - 2026-01-31）
+### 模块结构（v1.4.0 - 2026-02-13）
 
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── context.c           # 统一上下文管理（核心模块）
-├── config.c            # 配置管理：CLI + 环境变量 + 验证
-├── icmp.c              # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
-├── base.c              # 基础设施：common + logger + metrics
-└── integrations.c      # 系统集成：systemd + shutdown
+├── common/             # Layer 0: 纯 C 标准库（无 OS 依赖）
+│   └── openups.h       #   版本常量、编译器优化提示宏
+├── posix/              # Layer 1: POSIX 通用（clock_gettime, getopt_long 等）
+│   ├── base.h / base.c #   通用工具 + 日志系统 + 指标统计
+│   └── config.h / config.c  # 配置管理：CLI + 环境变量 + 验证
+├── linux/              # Layer 2: Linux 特有
+│   ├── icmp.h / icmp.c #   原生 ICMP 实现 (raw socket, IPv4/IPv6)
+│   ├── shutdown.h / shutdown.c  # 关机触发：fork/execvp 执行
+│   └── context.h / context.c   # 统一上下文管理（核心编排器）
+└── systemd/            # Layer 3: systemd 集成（条件编译）
+    └── systemd.h / systemd.c   # sd_notify 协议通知、watchdog 心跳
 ```
 
-补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API；内部接口按模块拆分在 `base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h` 中。所有头文件使用 Doxygen 风格文档注释。
+所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
 
-**依赖关系**: base → config/icmp/integrations → context → main
+**依赖关系**: common → posix → linux → systemd（systemd 层通过 `#ifdef OPENUPS_HAS_SYSTEMD` 条件编译）
 
-**关键变更（v1.2.0 → v1.3.0）**：
-- ✅ 统一 Doxygen 风格文档注释（`@file`, `@brief`）
-- ✅ 规范化节分隔符格式（`/* ===...=== */`）
-- ✅ 代码风格全面对齐
-- ✅ 版本号更新至 1.3.0
+**构建选项**: `make SYSTEMD=0` 可构建不含 systemd 支持的版本（适用于 Alpine/OpenRC 等非 systemd Linux 发行版）
+
+**关键变更（v1.3.0 → v1.4.0）**：
+- ✅ 四层平台分离架构（Generic → POSIX → Linux → systemd）
+- ✅ systemd 条件编译（`OPENUPS_HAS_SYSTEMD` 宏）
+- ✅ integrations.c 拆分为 shutdown.c + systemd.c
+- ✅ 子目录化源码组织
 
 ### 统一上下文架构（openups_ctx_t）
 
@@ -92,12 +100,14 @@ typedef struct openups_context {
     config_t config;           /* 配置（栈上，内存连续） */
     logger_t logger;           /* 日志器 */
     icmp_pinger_t pinger;      /* ICMP ping 器 */
-    systemd_notifier_t systemd; /* systemd 通知器 */
     metrics_t metrics;         /* 统计指标 */
 
-    /* === 状态标志 === */
+#ifdef OPENUPS_HAS_SYSTEMD
+    /* === systemd 集成（条件编译）=== */
     bool systemd_enabled;         /* systemd 是否启用 */
     uint64_t watchdog_interval_ms; /* watchdog 心跳间隔 */
+    systemd_notifier_t systemd;    /* systemd 通知器 */
+#endif
 
     /* === 性能优化缓存 === */
     uint64_t last_ping_time_ms;  /* 上次 ping 时间（避免重复 clock_gettime） */
@@ -114,7 +124,10 @@ typedef struct openups_context {
 ### 依赖关系图（重构后）
 
 ```
-base.c → config.c / icmp.c / integrations.c → context.c → main.c
+common/ → posix/ → linux/ → systemd/ (条件编译)
+openups.h → base.h → config.h → icmp.h / shutdown.h → context.h → main.c
+                                                  ↑
+                                          systemd.h (ifdef)
 ```
 
 ### 数据流（重构后）
@@ -278,7 +291,7 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 
 ---
 
-### 4. systemd/shutdown 模块（integrations.c；声明见 integrations.h）
+### 4. systemd/shutdown 模块（systemd/systemd.c + linux/shutdown.c）
 
 **职责**：systemd 集成
 
@@ -474,7 +487,7 @@ sprintf(buffer, ...);     // 不安全
 
 #### 路径验证
 ```c
-// common.c
+// base.c
 bool is_safe_path(const char* path) {
     return !(strstr(path, "..") || strstr(path, "//") ||
              strchr(path, ';') || strchr(path, '|') ||
@@ -771,7 +784,7 @@ systemd_notifier_watchdog(&ctx->systemd);
 ### Q6: 为什么需要 EINTR 重试？
 **A**: 系统调用可能被信号中断（如 SIGWINCH）
 ```c
-// integrations.c 中的正确实现（systemd 部分）
+// systemd.c 中的正确实现
 ssize_t sent;
 do {
     sent = sendto(sockfd, message, len, 0, addr, addrlen);

@@ -34,8 +34,10 @@ typedef struct {
     bool enable_timestamp;
     log_level_t log_level;
 
+#ifdef OPENUPS_HAS_SYSTEMD
     bool enable_systemd;
     bool enable_watchdog;
+#endif
 } config_t;
 
 void config_init_default(config_t* restrict config);

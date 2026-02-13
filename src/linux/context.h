@@ -9,7 +9,11 @@
 #include "base.h"
 #include "config.h"
 #include "icmp.h"
-#include "integrations.h"
+#include "shutdown.h"
+
+#ifdef OPENUPS_HAS_SYSTEMD
+#include "systemd.h"
+#endif
 
 #include <signal.h>
 #include <stdbool.h>
@@ -24,8 +28,10 @@ typedef struct openups_context {
     int consecutive_fails;
 
     /* 快速路径标志 */
+#ifdef OPENUPS_HAS_SYSTEMD
     bool systemd_enabled;
     uint64_t watchdog_interval_ms;
+#endif
     uint64_t last_ping_time_ms;
     uint64_t start_time_ms;
 
@@ -34,7 +40,9 @@ typedef struct openups_context {
     logger_t logger;
     metrics_t metrics;
     icmp_pinger_t pinger;
+#ifdef OPENUPS_HAS_SYSTEMD
     systemd_notifier_t systemd;
+#endif
 } openups_ctx_t;
 
 [[nodiscard]] bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc,

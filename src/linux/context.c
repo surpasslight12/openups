@@ -59,12 +59,16 @@ static void setup_signal_handlers(openups_ctx_t* restrict ctx)
 /* watchdog 心跳回调（在 ICMP 等待期间定期发送） */
 static void watchdog_tick_callback(void* user_data)
 {
+#ifdef OPENUPS_HAS_SYSTEMD
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
     if (ctx == NULL || !ctx->config.enable_watchdog || !ctx->systemd_enabled) {
         return;
     }
 
     (void)systemd_notifier_watchdog(&ctx->systemd);
+#else
+    (void)user_data;
+#endif
 }
 
 /* 监控停止条件回调（ICMP 等待期间检查是否应中断） */
@@ -74,6 +78,7 @@ static bool monitor_should_stop(void* user_data)
     return ctx != NULL && ctx->stop_flag != 0;
 }
 
+#ifdef OPENUPS_HAS_SYSTEMD
 /* systemd 状态通知辅助函数 */
 static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restrict fmt, ...)
     __attribute__((format(printf, 2, 3)));
@@ -92,6 +97,7 @@ static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restr
 
     (void)systemd_notifier_status(&ctx->systemd, status_msg);
 }
+#endif /* OPENUPS_HAS_SYSTEMD */
 
 /* === 上下文初始化 === */
 
@@ -133,9 +139,11 @@ bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restrict arg
         return false;
     }
 
-    /* === systemd 集成初始化 === */
+    /* === 指标初始化 === */
     metrics_init(&ctx->metrics);
 
+#ifdef OPENUPS_HAS_SYSTEMD
+    /* === systemd 集成初始化 === */
     if (ctx->config.enable_systemd) {
         systemd_notifier_init(&ctx->systemd);
         ctx->systemd_enabled = systemd_notifier_is_enabled(&ctx->systemd);
@@ -154,6 +162,7 @@ bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restrict arg
     } else {
         systemd_notifier_destroy(&ctx->systemd);
     }
+#endif /* OPENUPS_HAS_SYSTEMD */
 
     return true;
 }
@@ -165,7 +174,9 @@ void openups_ctx_destroy(openups_ctx_t* restrict ctx)
     }
 
     icmp_pinger_destroy(&ctx->pinger);
+#ifdef OPENUPS_HAS_SYSTEMD
     systemd_notifier_destroy(&ctx->systemd);
+#endif
     logger_destroy(&ctx->logger);
 
     g_ctx = NULL;
@@ -239,8 +250,10 @@ void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
         return;
     }
 
+#ifdef OPENUPS_HAS_SYSTEMD
     const bool watchdog_enabled = ctx->systemd_enabled && ctx->config.enable_watchdog;
     const uint64_t watchdog_interval_ms = watchdog_enabled ? ctx->watchdog_interval_ms : 0;
+#endif
 
     uint64_t remaining_ms = 0;
     if (ckd_mul(&remaining_ms, (uint64_t)seconds, UINT64_C(1000))) {
@@ -254,9 +267,11 @@ void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
 
         /* 计算本次休眠时长（不超过 watchdog 间隔） */
         uint64_t chunk_ms = remaining_ms;
+#ifdef OPENUPS_HAS_SYSTEMD
         if (watchdog_enabled && watchdog_interval_ms > 0 && watchdog_interval_ms < chunk_ms) {
             chunk_ms = watchdog_interval_ms;
         }
+#endif
 
         /* 休眠 */
         struct timespec ts = {.tv_sec = (time_t)(chunk_ms / 1000ULL),
@@ -267,10 +282,12 @@ void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
             }
         }
 
+#ifdef OPENUPS_HAS_SYSTEMD
         /* 喂 watchdog */
         if (watchdog_enabled) {
             (void)systemd_notifier_watchdog(&ctx->systemd);
         }
+#endif
 
         /* 更新剩余时间 */
         if (chunk_ms >= remaining_ms) {
@@ -296,6 +313,7 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
     logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                  ctx->config.target, result->latency_ms);
 
+#ifdef OPENUPS_HAS_SYSTEMD
     /* systemd 状态通知 */
     if (ctx->systemd_enabled) {
         const metrics_t* metrics = &ctx->metrics;
@@ -305,6 +323,7 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
                               metrics->successful_pings, metrics->total_pings, success_rate,
                               result->latency_ms);
     }
+#endif
 }
 
 /* 处理 ping 失败 */
@@ -320,11 +339,13 @@ static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const 
     logger_warn(&ctx->logger, "Ping failed to %s: %s (consecutive failures: %d)",
                 ctx->config.target, result->error_msg, ctx->consecutive_fails);
 
+#ifdef OPENUPS_HAS_SYSTEMD
     /* systemd 状态通知 */
     if (ctx->systemd_enabled) {
         notify_systemd_status(ctx, "WARNING: %d consecutive failures, threshold is %d",
                               ctx->consecutive_fails, ctx->config.fail_threshold);
     }
+#endif
 }
 
 /* 触发关机 */
@@ -334,7 +355,11 @@ static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
         return false;
     }
 
+#ifdef OPENUPS_HAS_SYSTEMD
     const bool use_systemctl_poweroff = ctx->config.enable_systemd && ctx->systemd_enabled;
+#else
+    const bool use_systemctl_poweroff = false;
+#endif
     shutdown_trigger(&ctx->config, &ctx->logger, use_systemctl_poweroff);
 
     if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
@@ -402,12 +427,14 @@ int openups_ctx_run(openups_ctx_t* restrict ctx)
                 config->target, config->interval_sec, config->fail_threshold,
                 config->use_ipv6 ? "6" : "4");
 
+#ifdef OPENUPS_HAS_SYSTEMD
     /* 通知 systemd ready */
     if (ctx->systemd_enabled) {
         (void)systemd_notifier_ready(&ctx->systemd);
         notify_systemd_status(ctx, "Monitoring %s, checking every %ds, threshold %d failures",
                               config->target, config->interval_sec, config->fail_threshold);
     }
+#endif
 
     /* 主循环 */
     while (!ctx->stop_flag) {
@@ -421,9 +448,11 @@ int openups_ctx_run(openups_ctx_t* restrict ctx)
     /* 优雅关闭 */
     if (ctx->stop_flag) {
         logger_info(&ctx->logger, "Received shutdown signal, stopping gracefully...");
+#ifdef OPENUPS_HAS_SYSTEMD
         if (ctx->systemd_enabled) {
             (void)systemd_notifier_stopping(&ctx->systemd);
         }
+#endif
     }
 
     openups_ctx_print_stats(ctx);

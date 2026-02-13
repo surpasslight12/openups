@@ -3,30 +3,41 @@
 OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测网络可达性并在失败时执行关机策略。使用 C23 标准，零第三方依赖，深度集成 systemd。
 
 **本文档用于**: GitHub Copilot, Cursor AI, 以及其他 AI 编程助手
-**当前版本**: 1.3.0
+**当前版本**: 1.4.0
 
 ## 架构概览
 
-### 模块化设计（v1.3.0）
+### 四层平台分离架构（v1.4.0）
 ```
 src/
 ├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── context.c           # 统一上下文：配置+组件初始化+监控循环+信号处理
-├── config.c            # 配置管理：CLI + 环境变量 + 验证
-├── icmp.c              # 原生 ICMP 实现 (raw socket, IPv4/IPv6)
-├── base.c              # 基础设施：common + logger + metrics
-└── integrations.c      # 系统集成：systemd + shutdown
+├── common/             # Layer 0: 纯 C 标准库（无 OS 依赖）
+│   └── openups.h       #   版本常量、编译器优化提示宏
+├── posix/              # Layer 1: POSIX 通用
+│   ├── base.h / base.c #   通用工具 + 日志系统 + 指标统计
+│   └── config.h / config.c  # 配置管理：CLI + 环境变量 + 验证
+├── linux/              # Layer 2: Linux 特有
+│   ├── icmp.h / icmp.c #   原生 ICMP 实现 (raw socket, IPv4/IPv6)
+│   ├── shutdown.h / shutdown.c  # 关机触发：fork/execvp 执行
+│   └── context.h / context.c   # 统一上下文管理（核心编排器）
+└── systemd/            # Layer 3: systemd 集成（条件编译）
+    └── systemd.h / systemd.c   # sd_notify 协议通知、watchdog 心跳
 ```
 
-补充：逻辑模块边界仍保持（common/logger/metrics/systemd/shutdown 仅做物理合并），但头文件按模块拆分：`base.h`、`config.h`、`icmp.h`、`integrations.h`、`context.h`。所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
+所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
 
-**依赖关系**: base → config/icmp/integrations → context → main
+**依赖关系**: common → posix → linux → systemd（通过 `#ifdef OPENUPS_HAS_SYSTEMD` 条件编译）
+
+**构建选项**:
+- `make` — 默认构建（含 systemd 支持）
+- `make SYSTEMD=0` — 不含 systemd 支持（适用于 Alpine/OpenRC 等非 systemd 发行版）
 
 **关键特性**:
 - 零第三方依赖（仅 C 标准库和 Linux 系统调用）
-- 单一二进制 (~48 KB)，内存占用 < 5 MB
+- 单一二进制 (~55 KB)，内存占用 < 5 MB
 - 需要 `CAP_NET_RAW` 权限（ICMP raw socket）
 - 配置优先级：CLI 参数 > 环境变量 > 默认值
+- systemd 集成可通过编译时开关完全排除
 
 ## 编码规范
 
@@ -211,6 +222,9 @@ if (systemd.enabled) {
 # 完整编译（-O3 + LTO + native + 所有安全标志）
 make
 
+# 不含 systemd 支持
+make SYSTEMD=0
+
 # 调试版本
 make clean
 make CC=gcc CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
@@ -228,9 +242,9 @@ sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 3 --dry-run --log
 sudo setcap cap_net_raw+ep ./bin/openups
 ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run
 
-# 自动化测试套件（11 个测试用例）
+# 自动化测试套件（12 个测试用例）
 ./test.sh
-# 测试包括：编译检查、功能测试、输入验证、安全性测试、边界条件
+# 测试包括：编译检查（SYSTEMD=1/0）、功能测试、输入验证、安全性测试、边界条件
 ```
 
 ### 调试
@@ -251,7 +265,7 @@ journalctl -u openups -f
 ## 常见任务模式
 
 ### 添加新配置项
-1. 在 `config.h` 的 `config_t` 添加字段
+1. 在 `src/posix/config.h` 的 `config_t` 添加字段
 2. `config_init_default()` 设置默认值
 3. `config_load_from_env()` 添加环境变量 `OPENUPS_*`
 4. `config_load_from_cmdline()` 添加 `--xxx` 选项
@@ -260,13 +274,13 @@ journalctl -u openups -f
 7. 更新 README.md 配置表格
 
 ### 添加新日志级别或函数
-1. `base.h` 中 `log_level_t` 添加枚举值
-2. `base.c` 中 `log_level_to_string()` 添加字符串映射
+1. `src/posix/base.h` 中 `log_level_t` 添加枚举值
+2. `src/posix/base.c` 中 `log_level_to_string()` 添加字符串映射
 3. 在 `string_to_log_level()` 中添加解析逻辑
 4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
 
 ### 修改 ICMP 行为
-- 重点文件：`src/icmp.c`
+- 重点文件：`src/linux/icmp.c`
 - 关键函数：`icmp_pinger_ping()`, `calculate_checksum()`
 - 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
 
