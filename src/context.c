@@ -56,8 +56,8 @@ static void setup_signal_handlers(openups_ctx_t* restrict ctx)
 
 /* === 内部辅助函数 === */
 
-/* ICMP tick 回调（用于 watchdog 心跳） */
-static void icmp_tick_callback(void* user_data)
+/* watchdog 心跳回调（在 ICMP 等待期间定期发送） */
+static void watchdog_tick_callback(void* user_data)
 {
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
     if (ctx == NULL || !ctx->config.enable_watchdog || !ctx->systemd_enabled) {
@@ -67,8 +67,8 @@ static void icmp_tick_callback(void* user_data)
     (void)systemd_notifier_watchdog(&ctx->systemd);
 }
 
-/* ICMP should_stop 回调（检查停止标志） */
-static bool icmp_should_stop_callback(void* user_data)
+/* 监控停止条件回调（ICMP 等待期间检查是否应中断） */
+static bool monitor_should_stop(void* user_data)
 {
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
     return ctx != NULL && ctx->stop_flag != 0;
@@ -104,12 +104,6 @@ bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restrict arg
 
     /* 零初始化 */
     memset(ctx, 0, sizeof(*ctx));
-    ctx->stop_flag = 0;
-    ctx->print_stats_flag = 0;
-    ctx->consecutive_fails = 0;
-    ctx->systemd_enabled = false;
-    ctx->watchdog_interval_ms = 0;
-    ctx->last_ping_time_ms = 0;
     ctx->start_time_ms = get_monotonic_ms();
 
     /* === 配置加载（3 层优先级） === */
@@ -212,8 +206,8 @@ bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_result_t* restrict 
         ctx->last_ping_time_ms = get_monotonic_ms();
 
         *result = icmp_pinger_ping_ex(&ctx->pinger, config->target, config->timeout_ms,
-                                      config->payload_size, icmp_tick_callback, ctx,
-                                      icmp_should_stop_callback, ctx);
+                                      config->payload_size, watchdog_tick_callback, ctx,
+                                      monitor_should_stop, ctx);
 
         if (result->success) {
             return true;
@@ -254,7 +248,7 @@ void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
     }
 
     while (remaining_ms > 0) {
-        if (ctx->stop_flag) {
+        if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
             break;
         }
 
@@ -290,7 +284,7 @@ void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
 /* === 监控循环核心逻辑 === */
 
 /* 处理 ping 成功 */
-static void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
+static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
 {
     if (ctx == NULL || result == NULL) {
         return;
@@ -299,10 +293,8 @@ static void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t
     ctx->consecutive_fails = 0;
     metrics_record_success(&ctx->metrics, result->latency_ms);
 
-    if (ctx->logger.level >= LOG_LEVEL_DEBUG) {
-        logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
-                     ctx->config.target, result->latency_ms);
-    }
+    logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
+                 ctx->config.target, result->latency_ms);
 
     /* systemd 状态通知 */
     if (ctx->systemd_enabled) {
@@ -316,7 +308,7 @@ static void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t
 }
 
 /* 处理 ping 失败 */
-static void handle_ping_failure(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
+static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
 {
     if (ctx == NULL || result == NULL) {
         return;
@@ -336,7 +328,7 @@ static void handle_ping_failure(openups_ctx_t* restrict ctx, const ping_result_t
 }
 
 /* 触发关机 */
-static bool trigger_shutdown(openups_ctx_t* restrict ctx)
+static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL || ctx->consecutive_fails < ctx->config.fail_threshold) {
         return false;
@@ -355,20 +347,20 @@ static bool trigger_shutdown(openups_ctx_t* restrict ctx)
 }
 
 /* 执行单次监控迭代 */
-static bool run_iteration(openups_ctx_t* restrict ctx)
+static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
         return false;
     }
 
     /* 处理统计信息打印请求 */
-    if (ctx->print_stats_flag) {
+    if (OPENUPS_UNLIKELY(ctx->print_stats_flag)) {
         openups_ctx_print_stats(ctx);
         ctx->print_stats_flag = 0;
     }
 
     /* 检查停止标志 */
-    if (ctx->stop_flag) {
+    if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
         return true;
     }
 
@@ -376,12 +368,12 @@ static bool run_iteration(openups_ctx_t* restrict ctx)
     ping_result_t result;
     bool success = openups_ctx_ping_once(ctx, &result);
 
-    if (ctx->stop_flag) {
+    if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
         return true;
     }
 
     /* 处理结果 */
-    if (success) {
+    if (OPENUPS_LIKELY(success)) {
         handle_ping_success(ctx, &result);
         return false;
     }

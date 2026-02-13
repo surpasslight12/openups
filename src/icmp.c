@@ -366,8 +366,21 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
     }
 }
 
+/* 缓存 getpid() 结果（进程 PID 不会变化，避免重复系统调用） */
+static uint16_t get_cached_ident(void)
+{
+    static uint16_t cached_ident = 0;
+    if (OPENUPS_UNLIKELY(cached_ident == 0)) {
+        cached_ident = (uint16_t)(getpid() & 0xFFFF);
+        if (cached_ident == 0) {
+            cached_ident = 1;
+        }
+    }
+    return cached_ident;
+}
+
 /* IPv4 ping (ICMP Echo Request/Reply, RFC 792). */
-static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
+static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in* restrict dest_addr, int timeout_ms,
                                int payload_size, icmp_tick_fn tick, void* tick_user_data,
                                icmp_should_stop_fn should_stop, void* stop_user_data)
@@ -395,7 +408,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     memset(icmp_hdr, 0, sizeof(*icmp_hdr));
     icmp_hdr->type = ICMP_ECHO;
     icmp_hdr->code = 0;
-    uint16_t ident = (uint16_t)(getpid() & 0xFFFF);
+    uint16_t ident = get_cached_ident();
     uint16_t seq = next_sequence(pinger);
     icmp_hdr->un.echo.id = ident;
     icmp_hdr->un.echo.sequence = seq;
@@ -408,17 +421,18 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     struct timespec send_time;
     (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
 
-    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, 0,
+    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, MSG_NOSIGNAL,
                           (struct sockaddr*)dest_addr,
                           sizeof(*dest_addr));
-    if (sent < 0) {
+    if (OPENUPS_UNLIKELY(sent < 0)) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Failed to send packet: %s",
                  strerror(errno));
         return result;
     }
 
     /* 接收 ICMP Echo Reply (包含 IP 头和 ICMP 头) */
-    uint8_t recv_buf[4096];
+    uint8_t recv_buf[4096]
+        __attribute__((aligned(16)));  /* 对齐优化，改善结构体访问性能 */
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
@@ -507,7 +521,7 @@ static ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
 }
 
 /* IPv6 ping (ICMPv6 Echo Request/Reply, RFC 4443). */
-static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
+static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
                                struct sockaddr_in6* restrict dest_addr, int timeout_ms,
                                int payload_size, icmp_tick_fn tick, void* tick_user_data,
                                icmp_should_stop_fn should_stop, void* stop_user_data)
@@ -535,7 +549,7 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
     icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST; /* 类型: Echo Request = 128 */
     icmp6_hdr->icmp6_code = 0;                  /* 代码: 0 */
-    uint16_t ident = (uint16_t)(getpid() & 0xFFFF);
+    uint16_t ident = get_cached_ident();
     uint16_t seq = next_sequence(pinger);
     icmp6_hdr->icmp6_id = ident;
     icmp6_hdr->icmp6_seq = seq;
@@ -546,17 +560,18 @@ static ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     struct timespec send_time;
     (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
 
-    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, 0,
+    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, MSG_NOSIGNAL,
                           (struct sockaddr*)dest_addr,
                           sizeof(*dest_addr));
-    if (sent < 0) {
+    if (OPENUPS_UNLIKELY(sent < 0)) {
         snprintf(result.error_msg, sizeof(result.error_msg), "Failed to send packet: %s",
                  strerror(errno));
         return result;
     }
 
     /* 接收 ICMPv6 Echo Reply */
-    uint8_t recv_buf[4096];
+    uint8_t recv_buf[4096]
+        __attribute__((aligned(16)));  /* 对齐优化 */
     struct sockaddr_in6 recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 

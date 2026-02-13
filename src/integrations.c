@@ -17,16 +17,7 @@
  * systemd 通知器
  * ============================================================ */
 
-static uint64_t monotonic_ms(void)
-{
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
-    }
-    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
-}
-
-static bool build_notify_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
+static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
                               socklen_t* restrict addr_len)
 {
     if (socket_path == NULL || addr == NULL || addr_len == NULL) {
@@ -60,9 +51,9 @@ static bool build_notify_addr(const char* restrict socket_path, struct sockaddr_
 }
 
 /* 发送 systemd 通知消息（READY/STATUS/STOPPING/WATCHDOG）。 */
-static bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
+static OPENUPS_HOT bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
 {
-    if (notifier == NULL || message == NULL || !notifier->enabled) {
+    if (OPENUPS_UNLIKELY(notifier == NULL || message == NULL || !notifier->enabled)) {
         return false;
     }
 
@@ -111,7 +102,7 @@ void systemd_notifier_init(systemd_notifier_t* restrict notifier)
         return;
     }
 
-    if (!build_notify_addr(socket_path, &notifier->addr, &notifier->addr_len)) {
+    if (!build_systemd_addr(socket_path, &notifier->addr, &notifier->addr_len)) {
         close(notifier->sockfd);
         notifier->sockfd = -1;
         return;
@@ -172,7 +163,7 @@ bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* 
     }
 
     /* 降频：内容未变化且距离上次发送太近时跳过 */
-    uint64_t now_ms = monotonic_ms();
+    uint64_t now_ms = get_monotonic_ms();
     bool same = (strncmp(notifier->last_status, status, sizeof(notifier->last_status)) == 0);
     if (same && notifier->last_status_ms != 0 && now_ms - notifier->last_status_ms < 2000) {
         return true;
@@ -196,18 +187,18 @@ bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier)
     return send_notify(notifier, "STOPPING=1");
 }
 
-bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
+OPENUPS_HOT bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
 {
-    if (notifier == NULL || !notifier->enabled) {
+    if (OPENUPS_UNLIKELY(notifier == NULL || !notifier->enabled)) {
         return false;
     }
 
     /* 未设置 WatchdogSec 时 systemd 不会提供 WATCHDOG_USEC，此时应默认 no-op。 */
-    if (notifier->watchdog_usec == 0) {
+    if (OPENUPS_UNLIKELY(notifier->watchdog_usec == 0)) {
         return true;
     }
 
-    uint64_t now_ms = monotonic_ms();
+    uint64_t now_ms = get_monotonic_ms();
     uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 -> ms */
     if (interval_ms == 0) {
         interval_ms = 1;
@@ -241,9 +232,9 @@ uint64_t systemd_notifier_watchdog_interval_ms(const systemd_notifier_t* restric
  * shutdown 关机触发
  * ============================================================ */
 
-/* 构建命令参数数组（空白分隔，不支持引号） */
-static bool build_command_argv(const char* command, char* buffer, size_t buffer_size, char* argv[],
-                               size_t argv_size)
+/* 构建关机命令参数数组（空白分隔，不支持引号） */
+static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer_size,
+                                char* argv[], size_t argv_size)
 {
     if (command == NULL || buffer == NULL || argv == NULL || argv_size < 2) {
         return false;
@@ -314,8 +305,8 @@ static bool shutdown_select_command(const config_t* restrict config, bool use_sy
     return false;
 }
 
-static void shutdown_log_planned(logger_t* restrict logger, shutdown_mode_t mode,
-                                 int delay_minutes)
+static void log_shutdown_plan(logger_t* restrict logger, shutdown_mode_t mode,
+                              int delay_minutes)
 {
     if (logger == NULL) {
         return;
@@ -328,7 +319,7 @@ static void shutdown_log_planned(logger_t* restrict logger, shutdown_mode_t mode
     }
 }
 
-static bool shutdown_should_execute(const config_t* restrict config, logger_t* restrict logger)
+static OPENUPS_COLD bool shutdown_should_execute(const config_t* restrict config, logger_t* restrict logger)
 {
     if (config == NULL || logger == NULL) {
         return false;
@@ -348,7 +339,7 @@ static bool shutdown_should_execute(const config_t* restrict config, logger_t* r
     return true;
 }
 
-static bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
+static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
 {
     if (argv == NULL || argv[0] == NULL || logger == NULL) {
         return false;
@@ -448,13 +439,13 @@ void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemc
         return;
     }
 
-    if (!build_command_argv(command_buf, command_buf, sizeof(command_buf), argv,
-                            sizeof(argv) / sizeof(argv[0]))) {
+    if (!build_shutdown_argv(command_buf, command_buf, sizeof(command_buf), argv,
+                             sizeof(argv) / sizeof(argv[0]))) {
         logger_error(logger, "Failed to parse shutdown command: %s", command_buf);
         return;
     }
 
-    shutdown_log_planned(logger, config->shutdown_mode, config->delay_minutes);
+    log_shutdown_plan(logger, config->shutdown_mode, config->delay_minutes);
 
     (void)shutdown_execute_command(argv, logger);
 }

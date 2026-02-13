@@ -58,13 +58,24 @@ ProtectSystem=strict
 ProtectHome=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
 LockPersonality=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 MemoryDenyWriteExecute=true
 PrivateDevices=true
+PrivateUsers=false
+ProcSubset=pid
+SystemCallArchitectures=native
+SystemCallFilter=@system-service @network-io
+SystemCallFilter=~@privileged @resources @mount @swap @reboot
+UMask=0077
 
 # 资源限制
 MemoryMax=50M

@@ -146,6 +146,64 @@ else
     echo "  ⚠️ 发现 $errors 个需要关注的问题"
 fi
 
+# 二进制体积检查
+echo ""
+echo "二进制体积分析..."
+binary_size=$(stat -c %s bin/openups 2>/dev/null || stat -f %z bin/openups 2>/dev/null)
+if [ -n "$binary_size" ]; then
+    if [ "$binary_size" -lt 524288 ]; then  # < 512 KB
+        echo "✓ 二进制体积: $(echo "$binary_size" | awk '{printf "%.1f KB", $1/1024}')"
+    else
+        echo "⚠️ 二进制体积偏大: $(echo "$binary_size" | awk '{printf "%.1f KB", $1/1024}')"
+    fi
+fi
+
+# 安全加固检查
+echo ""
+echo "安全加固检查..."
+sec_errors=0
+if command -v readelf > /dev/null 2>&1; then
+    # 检查 Full RELRO
+    if readelf -l bin/openups 2>/dev/null | grep -q "GNU_RELRO"; then
+        echo "  ✓ RELRO: enabled"
+    else
+        echo "  ❌ RELRO: not found"
+        ((sec_errors++))
+    fi
+    # 检查 PIE
+    if readelf -h bin/openups 2>/dev/null | grep -q "DYN"; then
+        echo "  ✓ PIE: enabled"
+    else
+        echo "  ❌ PIE: not found"
+        ((sec_errors++))
+    fi
+    # 检查 Stack Canary
+    if readelf -s bin/openups 2>/dev/null | grep -q "__stack_chk_fail"; then
+        echo "  ✓ Stack Canary: enabled"
+    else
+        echo "  ❌ Stack Canary: not found"
+        ((sec_errors++))
+    fi
+    # 检查 NX (No Execute Stack)
+    if readelf -l bin/openups 2>/dev/null | grep "GNU_STACK" | grep -qv "RWE"; then
+        echo "  ✓ NX Stack: enabled"
+    else
+        echo "  ❌ NX Stack: not found"
+        ((sec_errors++))
+    fi
+    # 检查 FORTIFY_SOURCE
+    if readelf -s bin/openups 2>/dev/null | grep -q "__.*_chk"; then
+        echo "  ✓ FORTIFY_SOURCE: enabled"
+    else
+        echo "  ⚠️ FORTIFY_SOURCE: not detected (may be inlined by LTO)"
+    fi
+fi
+if [ $sec_errors -eq 0 ]; then
+    echo "  ✓ 安全加固完整"
+else
+    echo "  ⚠️ $sec_errors 个安全检查未通过"
+fi
+
 echo
 echo "========================================"
 echo "✓ 所有测试通过！"

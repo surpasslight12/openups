@@ -54,7 +54,7 @@ static inline bool openups_ckd_mul_u64(uint64_t* result, uint64_t a, uint64_t b)
 [[nodiscard]] bool get_env_bool(const char* restrict name, bool default_value);
 [[nodiscard]] int get_env_int(const char* restrict name, int default_value);
 
-[[nodiscard]] bool is_safe_path(const char* restrict path);
+[[nodiscard]] OPENUPS_PURE bool is_safe_path(const char* restrict path);
 
 /* ===== logger ===== */
 
@@ -74,17 +74,17 @@ typedef struct {
 void logger_init(logger_t* restrict logger, log_level_t level, bool enable_timestamp);
 void logger_destroy(logger_t* restrict logger);
 
-void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_HOT void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
     __attribute__((format(printf, 2, 3)));
-void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_HOT void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
     __attribute__((format(printf, 2, 3)));
 void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
     __attribute__((format(printf, 2, 3)));
-void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_COLD void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
     __attribute__((format(printf, 2, 3)));
 
-[[nodiscard]] const char* log_level_to_string(log_level_t level);
-[[nodiscard]] log_level_t string_to_log_level(const char* restrict str);
+[[nodiscard]] OPENUPS_CONST const char* log_level_to_string(log_level_t level);
+[[nodiscard]] OPENUPS_PURE log_level_t string_to_log_level(const char* restrict str);
 
 /* ===== metrics ===== */
 
@@ -92,18 +92,18 @@ typedef struct {
     uint64_t total_pings;
     uint64_t successful_pings;
     uint64_t failed_pings;
+    double total_latency;
     double min_latency;
     double max_latency;
-    double total_latency;
     uint64_t start_time_ms;
 } metrics_t;
 
 void metrics_init(metrics_t* metrics);
-void metrics_record_success(metrics_t* metrics, double latency_ms);
-void metrics_record_failure(metrics_t* metrics);
+OPENUPS_HOT void metrics_record_success(metrics_t* metrics, double latency_ms);
+OPENUPS_HOT void metrics_record_failure(metrics_t* metrics);
 
-[[nodiscard]] double metrics_success_rate(const metrics_t* metrics);
-[[nodiscard]] double metrics_avg_latency(const metrics_t* metrics);
+[[nodiscard]] OPENUPS_PURE double metrics_success_rate(const metrics_t* metrics);
+[[nodiscard]] OPENUPS_PURE double metrics_avg_latency(const metrics_t* metrics);
 [[nodiscard]] uint64_t metrics_uptime_seconds(const metrics_t* metrics);
 
 #endif /* BASE_H */

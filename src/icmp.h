@@ -12,6 +12,8 @@
 
 #include <sys/socket.h>
 
+#include "openups.h"
+
 /* === Ping 结果结构 === */
 
 typedef struct {
@@ -42,10 +44,10 @@ typedef bool (*icmp_should_stop_fn)(void* user_data);
                                     char* restrict error_msg, size_t error_size);
 void icmp_pinger_destroy(icmp_pinger_t* restrict pinger);
 
-[[nodiscard]] ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger,
+[[nodiscard]] OPENUPS_HOT ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger,
                                              const char* restrict target, int timeout_ms,
                                              int payload_size);
-[[nodiscard]] ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
+[[nodiscard]] OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
                                                 const char* restrict target, int timeout_ms,
                                                 int payload_size, icmp_tick_fn tick,
                                                 void* tick_user_data,

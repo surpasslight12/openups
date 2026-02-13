@@ -16,7 +16,7 @@
  */
 static bool parse_bool_arg(const char* arg, bool* out_value)
 {
-    if (out_value == NULL) {
+    if (OPENUPS_UNLIKELY(out_value == NULL)) {
         return false;
     }
     if (arg == NULL) {
@@ -130,7 +130,6 @@ void config_load_from_env(config_t* restrict config)
 
     config->delay_minutes = get_env_int("OPENUPS_DELAY_MINUTES", config->delay_minutes);
     config->dry_run = get_env_bool("OPENUPS_DRY_RUN", config->dry_run);
-
 
     /* 行为配置 */
     value = getenv("OPENUPS_LOG_LEVEL");

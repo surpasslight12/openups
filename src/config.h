@@ -44,13 +44,13 @@ void config_load_from_env(config_t* restrict config);
                                             char** restrict argv);
 [[nodiscard]] bool config_validate(const config_t* restrict config, char* restrict error_msg,
                                    size_t error_size);
-void config_print(const config_t* restrict config);
-void config_print_usage(void);
-void config_print_version(void);
+OPENUPS_COLD void config_print(const config_t* restrict config);
+OPENUPS_COLD void config_print_usage(void);
+OPENUPS_COLD void config_print_version(void);
 
-[[nodiscard]] const char* shutdown_mode_to_string(shutdown_mode_t mode);
-[[nodiscard]] shutdown_mode_t string_to_shutdown_mode(const char* restrict str);
+[[nodiscard]] OPENUPS_CONST const char* shutdown_mode_to_string(shutdown_mode_t mode);
+[[nodiscard]] OPENUPS_PURE shutdown_mode_t string_to_shutdown_mode(const char* restrict str);
 [[nodiscard]] bool shutdown_mode_parse(const char* restrict str,
-                                       shutdown_mode_t* restrict out_mode);
+                                      shutdown_mode_t* restrict out_mode);
 
 #endif /* CONFIG_H */

@@ -9,7 +9,6 @@
 #include <string.h>
 #include <strings.h>
 #include <time.h>
-#include <sys/time.h>
 
 /* ============================================================
  * common 通用工具函数
@@ -21,17 +20,19 @@ static_assert(sizeof(time_t) >= 4, "time_t must be at least 4 bytes");
 
 uint64_t get_timestamp_ms(void)
 {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-
-    uint64_t seconds_ms = 0;
-    if (ckd_mul(&seconds_ms, (uint64_t)tv.tv_sec, UINT64_C(1000))) {
+    struct timespec ts;
+    if (OPENUPS_UNLIKELY(clock_gettime(CLOCK_REALTIME, &ts) != 0)) {
         return UINT64_MAX;
     }
 
-    uint64_t usec_ms = (uint64_t)tv.tv_usec / 1000;
+    uint64_t seconds_ms = 0;
+    if (OPENUPS_UNLIKELY(ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, UINT64_C(1000)))) {
+        return UINT64_MAX;
+    }
+
+    uint64_t nsec_ms = (uint64_t)ts.tv_nsec / UINT64_C(1000000);
     uint64_t timestamp = 0;
-    if (ckd_add(&timestamp, seconds_ms, usec_ms)) {
+    if (OPENUPS_UNLIKELY(ckd_add(&timestamp, seconds_ms, nsec_ms))) {
         return UINT64_MAX;
     }
 
@@ -41,18 +42,18 @@ uint64_t get_timestamp_ms(void)
 uint64_t get_monotonic_ms(void)
 {
     struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    if (OPENUPS_UNLIKELY(clock_gettime(CLOCK_MONOTONIC, &ts) != 0)) {
         return UINT64_MAX;
     }
 
     uint64_t seconds_ms = 0;
-    if (ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, UINT64_C(1000))) {
+    if (OPENUPS_UNLIKELY(ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, UINT64_C(1000)))) {
         return UINT64_MAX;
     }
 
     uint64_t nsec_ms = (uint64_t)ts.tv_nsec / UINT64_C(1000000);
     uint64_t timestamp = 0;
-    if (ckd_add(&timestamp, seconds_ms, nsec_ms)) {
+    if (OPENUPS_UNLIKELY(ckd_add(&timestamp, seconds_ms, nsec_ms))) {
         return UINT64_MAX;
     }
 
@@ -61,23 +62,25 @@ uint64_t get_monotonic_ms(void)
 
 char* get_timestamp_str(char* restrict buffer, size_t size)
 {
-    if (buffer == NULL || size == 0) {
+    if (OPENUPS_UNLIKELY(buffer == NULL || size == 0)) {
         return NULL;
     }
 
-    time_t now = time(NULL);
-    struct tm tm_info;
-    if (localtime_r(&now, &tm_info) == NULL) {
+    struct timespec ts;
+    if (OPENUPS_UNLIKELY(clock_gettime(CLOCK_REALTIME, &ts) != 0)) {
         buffer[0] = '\0';
         return buffer;
     }
 
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
+    struct tm tm_info;
+    if (OPENUPS_UNLIKELY(localtime_r(&ts.tv_sec, &tm_info) == NULL)) {
+        buffer[0] = '\0';
+        return buffer;
+    }
 
     snprintf(buffer, size, "%04d-%02d-%02d %02d:%02d:%02d.%03ld", tm_info.tm_year + 1900,
              tm_info.tm_mon + 1, tm_info.tm_mday, tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec,
-             tv.tv_usec / 1000);
+             ts.tv_nsec / 1000000);
 
     return buffer;
 }
@@ -127,23 +130,31 @@ int get_env_int(const char* restrict name, int default_value)
     return (int)result;
 }
 
-/* 检验路径是否安全 (防止路径遍历和命令注入) */
+/* 检验路径是否安全 (防止路径遍历和命令注入)
+ * 使用 256 字节查找表实现 O(1) 危险字符检测
+ */
 bool is_safe_path(const char* restrict path)
 {
-    if (path == NULL || *path == '\0') {
+    if (OPENUPS_UNLIKELY(path == NULL || *path == '\0')) {
         return false;
     }
 
-    /* 检查危险字符 */
-    static const char dangerous[] = ";|&$`<>\"'(){}[]!\\*?";
+    /* 静态查找表：避免每次调用 strchr 遍历危险字符串 */
+    static const bool dangerous[256] = {
+        [';'] = true, ['|'] = true, ['&'] = true, ['$'] = true,  ['`'] = true,
+        ['<'] = true, ['>'] = true, ['"'] = true, ['\''] = true, ['('] = true,
+        [')'] = true, ['{'] = true, ['}'] = true, ['['] = true,  [']'] = true,
+        ['!'] = true, ['\\'] = true, ['*'] = true, ['?'] = true,
+    };
+
     for (const char* p = path; *p != '\0'; ++p) {
-        if (strchr(dangerous, *p) != NULL) {
+        if (OPENUPS_UNLIKELY(dangerous[(unsigned char)*p])) {
             return false;
         }
     }
 
     /* 检查路径遍历 */
-    if (strstr(path, "..") != NULL) {
+    if (OPENUPS_UNLIKELY(strstr(path, "..") != NULL)) {
         return false;
     }
 
@@ -173,17 +184,12 @@ void logger_destroy(logger_t* restrict logger)
 
 static void log_message(logger_t* restrict logger, log_level_t level, const char* restrict msg)
 {
-    if (logger == NULL || msg == NULL) {
+    if (OPENUPS_UNLIKELY(logger == NULL || msg == NULL)) {
         return;
     }
 
-    /* SILENT 级别不输出任何日志 */
-    if (logger->level == LOG_LEVEL_SILENT) {
-        return;
-    }
-
-    /* 检查日志级别 */
-    if (level > logger->level) {
+    /* SILENT 级别不输出任何日志；级别不足也跳过 */
+    if (OPENUPS_UNLIKELY(logger->level == LOG_LEVEL_SILENT || level > logger->level)) {
         return;
     }
 
@@ -204,13 +210,13 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
     }
 }
 
-void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_HOT void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
 {
-    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG) {
+    if (OPENUPS_LIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG)) {
         return;
     }
 
-    char buffer[2048];
+    char buffer[1024];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, args);
@@ -219,13 +225,13 @@ void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
     log_message(logger, LOG_LEVEL_DEBUG, buffer);
 }
 
-void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_HOT void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
 {
     if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_INFO) {
         return;
     }
 
-    char buffer[2048];
+    char buffer[1024];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, args);
@@ -240,7 +246,7 @@ void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
         return;
     }
 
-    char buffer[2048];
+    char buffer[1024];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, args);
@@ -249,13 +255,13 @@ void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
     log_message(logger, LOG_LEVEL_WARN, buffer);
 }
 
-void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
+OPENUPS_COLD void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
 {
-    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_ERROR) {
+    if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_ERROR)) {
         return;
     }
 
-    char buffer[2048];
+    char buffer[1024];
     va_list args;
     va_start(args, fmt);
     vsnprintf(buffer, sizeof(buffer), fmt, args);
@@ -318,15 +324,15 @@ void metrics_init(metrics_t* metrics)
     metrics->total_pings = 0;
     metrics->successful_pings = 0;
     metrics->failed_pings = 0;
+    metrics->total_latency = 0.0;
     metrics->min_latency = -1.0;
     metrics->max_latency = -1.0;
-    metrics->total_latency = 0.0;
     metrics->start_time_ms = get_monotonic_ms();
 }
 
-void metrics_record_success(metrics_t* metrics, double latency_ms)
+OPENUPS_HOT void metrics_record_success(metrics_t* metrics, double latency_ms)
 {
-    if (metrics == NULL) {
+    if (OPENUPS_UNLIKELY(metrics == NULL)) {
         return;
     }
 
@@ -334,18 +340,18 @@ void metrics_record_success(metrics_t* metrics, double latency_ms)
     metrics->successful_pings++;
     metrics->total_latency += latency_ms;
 
-    if (metrics->min_latency < 0.0 || latency_ms < metrics->min_latency) {
+    if (OPENUPS_UNLIKELY(metrics->min_latency < 0.0) || latency_ms < metrics->min_latency) {
         metrics->min_latency = latency_ms;
     }
 
-    if (metrics->max_latency < 0.0 || latency_ms > metrics->max_latency) {
+    if (OPENUPS_UNLIKELY(metrics->max_latency < 0.0) || latency_ms > metrics->max_latency) {
         metrics->max_latency = latency_ms;
     }
 }
 
-void metrics_record_failure(metrics_t* metrics)
+OPENUPS_HOT void metrics_record_failure(metrics_t* metrics)
 {
-    if (metrics == NULL) {
+    if (OPENUPS_UNLIKELY(metrics == NULL)) {
         return;
     }
 
