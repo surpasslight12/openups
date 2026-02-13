@@ -1,6 +1,6 @@
 # OpenUPS 技术文档
 
-**C 标准**: C23 (C2x)
+**C 标准**: ISO C23 (`-std=c23`)
 
 本文档整合了架构设计和开发指南，为开发者提供完整的技术参考。
 
@@ -213,7 +213,7 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 **日志格式**：`[TIMESTAMP] [LEVEL] natural language message`
 
 **示例**：
-- `[YYYY-MM-DD HH:MM:SS.mmm] [INFO] Starting OpenUPS monitor: target=127.0.0.1 interval=1s threshold=3 ipv6=false`
+- `[YYYY-MM-DD HH:MM:SS.mmm] [INFO] Starting OpenUPS monitor for target 127.0.0.1, checking every 1 seconds, shutdown after 3 consecutive failures (IPv4)`
 - `[YYYY-MM-DD HH:MM:SS.mmm] [DEBUG] Ping successful to 127.0.0.1, latency: 0.01ms`
 
 **依赖**：common
@@ -526,17 +526,19 @@ logger_info(&logger, "target=%s interval=%d", target, interval);
 ### 编译优化标志
 
 ```makefile
-CFLAGS = -O3 -std=c2x -flto -march=native -mtune=native
+CFLAGS = -O3 -std=c23 -flto=auto -march=native -mtune=native
          -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=3
+         -ffunction-sections -fdata-sections -fno-plt
 
-LDFLAGS = -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto
+LDFLAGS = -Wl,-z,relro,-z,now -Wl,-z,noexecstack -pie -flto=auto
+          -Wl,--gc-sections -Wl,--as-needed -Wl,-O2
 ```
 
 ### 运行时性能
 
 - **CPU 占用**: < 1%（主循环 99% 时间在 sleep）
 - **内存占用**: < 5 MB
-- **二进制大小**: 43 KB
+- **二进制大小**: ~56 KB（strip 后约 ~51 KB）
 - **启动时间**: < 10ms
 
 ### 内存使用
@@ -727,9 +729,9 @@ for (int attempt = 0; attempt <= max_retries; attempt++) {
 ### Q2: LOG_ONLY 模式的行为？
 **A**: 达到阈值时记录日志，重置计数器，继续监控
 ```c
-if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-    trigger_shutdown(monitor);
-    monitor->consecutive_fails = 0;  // 重置继续监控
+if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
+    trigger_shutdown(ctx);
+    ctx->consecutive_fails = 0;  // 重置继续监控
 }
 ```
 
@@ -740,7 +742,7 @@ if (monitor->config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
 gcc --version
 
 # 检查 C23 支持
-gcc -std=c2x -E -dM - < /dev/null | grep __STDC_VERSION__
+gcc -std=c23 -E -dM - < /dev/null | grep __STDC_VERSION__
 ```
 
 ### Q4: 如何调试 ICMP 权限问题？
@@ -762,8 +764,8 @@ getcap ./bin/openups
 const char* watchdog_str = getenv("WATCHDOG_USEC");
 notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
 
-// 每秒发送心跳（在 sleep_with_stop 循环中）
-systemd_notifier_watchdog(&monitor->systemd);
+// 在可中断休眠循环中发送心跳
+systemd_notifier_watchdog(&ctx->systemd);
 ```
 
 ### Q6: 为什么需要 EINTR 重试？

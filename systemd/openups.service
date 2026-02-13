@@ -46,12 +46,11 @@ Environment="OPENUPS_DRY_RUN=true"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"
 Environment="OPENUPS_SYSTEMD=true"
-Environment="OPENUPS_WATCHDOG=true"
+Environment="OPENUPS_WATCHDOG=false"
 
 # Security
 User=root
 CapabilityBoundingSet=CAP_NET_RAW
-AmbientCapabilities=CAP_NET_RAW
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

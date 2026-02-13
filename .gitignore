@@ -31,3 +31,4 @@ core
 # 测试和日志
 *.log
 test_output/
+graylogs/

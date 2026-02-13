@@ -280,11 +280,10 @@ Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"  # 避免双重时间戳（推荐）
 Environment="OPENUPS_DRY_RUN=false"
-Environment="OPENUPS_WATCHDOG=true"
+Environment="OPENUPS_WATCHDOG=false"  # 启用前需同时配置 WatchdogSec
 
 # 安全限制
 CapabilityBoundingSet=CAP_NET_RAW
-AmbientCapabilities=CAP_NET_RAW
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -143,6 +143,8 @@ Environment="OPENUPS_TIMESTAMP=false"
 ; 权限说明（默认 unit）：
 ; - service 以 root 运行，但 CapabilityBoundingSet 仅保留 CAP_NET_RAW
 ; - 关机通过 systemctl/shutdown 完成，不需要 CAP_SYS_BOOT
+; - 仓库默认 unit 使用 OPENUPS_DRY_RUN=true（安全默认值）
+; - 如需 systemd watchdog，请同时设置 WatchdogSec=30 并启用 OPENUPS_WATCHDOG=true
 ```
 
 应用并启动：
@@ -257,6 +259,16 @@ kill -USR1 $(pidof openups)
 
 ```bash
 ./test.sh
+```
+
+灰度演练脚本：
+
+```bash
+# 进程级灰度演练（不依赖 systemd 生命周期）
+./gray_validate.sh
+
+# systemd 灰度演练（临时 drop-in 覆盖，结束后自动回滚）
+./gray_validate_systemd.sh
 ```
 
 ## 📄 许可证
