@@ -30,10 +30,7 @@ CFLAGS ?= -O3 -std=c23 -Wall -Wextra -Wpedantic \
 # 自动生成头文件依赖（避免增量构建遗漏头文件变化，导致 -flto 下结构体布局不一致）
 CFLAGS += -MMD -MP
 
-# 头文件搜索路径（四层架构）
-CFLAGS += -Isrc/common -Isrc/posix -Isrc/linux -Isrc/systemd
-
-# 条件编译：systemd 支持
+# 条件编译：systemd 支持（保留变量兼容性）
 ifeq ($(SYSTEMD),1)
 CFLAGS += -DOPENUPS_HAS_SYSTEMD
 endif
@@ -62,23 +59,8 @@ FORMAT_SRCS := $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/*.h \
                $(SRC_DIR)/linux/*.c $(SRC_DIR)/linux/*.h \
                $(SRC_DIR)/systemd/*.c $(SRC_DIR)/systemd/*.h)
 
-# 源文件（按四层架构组织）
-# Layer 0: 入口
+# 源文件（单文件架构）
 SRCS := $(SRC_DIR)/main.c
-
-# Layer 1: POSIX 通用
-SRCS += $(SRC_DIR)/posix/base.c \
-        $(SRC_DIR)/posix/config.c
-
-# Layer 2: Linux 特有
-SRCS += $(SRC_DIR)/linux/icmp.c \
-        $(SRC_DIR)/linux/shutdown.c \
-        $(SRC_DIR)/linux/context.c
-
-# Layer 3: systemd 集成（条件编译）
-ifeq ($(SYSTEMD),1)
-SRCS += $(SRC_DIR)/systemd/systemd.c
-endif
 
 # 对象文件：保持子目录结构
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
