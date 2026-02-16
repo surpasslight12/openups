@@ -253,7 +253,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     LOG_DIR="${ROOT_DIR}/graylogs/${RUN_TS}"
     PHASE1_LOG="${LOG_DIR}/phase1_dry_run_true.log"
     PHASE2_LOG="${LOG_DIR}/phase2_dry_run_false_log_only.log"
-    GRAY_SUMMARY="${LOG_DIR}/summary.txt"
+    PROC_SUMMARY="${LOG_DIR}/summary.txt"
 
     mkdir -p "${LOG_DIR}"
 
@@ -280,7 +280,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         set -e
 
         if [[ ${exit_code} -ne 0 && ${exit_code} -ne 124 ]]; then
-            echo "[ERROR] ${phase_name} failed, exit_code=${exit_code}" | tee -a "${GRAY_SUMMARY}"
+            echo "[ERROR] ${phase_name} failed, exit_code=${exit_code}" | tee -a "${PROC_SUMMARY}"
             tail -n 50 "${out_log}" || true
             exit ${exit_code}
         fi
@@ -339,10 +339,10 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         else
             echo "Result: CHECK_REQUIRED"
         fi
-    } | tee "${GRAY_SUMMARY}"
+    } | tee "${PROC_SUMMARY}"
 
     echo
-    echo "[INFO] 进程级灰度验证完成，摘要: ${GRAY_SUMMARY}"
+    echo "[INFO] 进程级灰度验证完成，摘要: ${PROC_SUMMARY}"
 fi
 
 # ============================================================
