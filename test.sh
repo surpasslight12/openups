@@ -84,6 +84,14 @@ echo "--- 基本功能 ---"
 run_test "帮助信息 (--help)" ./bin/openups --help
 run_test "版本信息 (--version)" ./bin/openups --version
 
+# ---- systemd 服务配置 ----
+echo ""
+echo "--- systemd 服务配置 ---"
+run_test "openups.service 启动前延迟 120 秒" \
+    grep -Eq '^ExecStartPre=/usr/bin/sleep 120$' "${ROOT_DIR}/systemd/openups.service"
+run_test "openups.service 启动超时覆盖启动延迟" \
+    grep -Eq '^TimeoutStartSec=180$' "${ROOT_DIR}/systemd/openups.service"
+
 # ---- 参数解析 ----
 echo ""
 echo "--- 参数解析 ---"

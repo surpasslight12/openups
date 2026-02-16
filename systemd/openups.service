@@ -14,10 +14,11 @@ Type=notify
 NotifyAccess=main
 
 ExecStart=/usr/local/bin/openups
+ExecStartPre=/usr/bin/sleep 120
 
 # Timeout configurations
 # Maximum time to wait for service startup
-TimeoutStartSec=60
+TimeoutStartSec=180
 # Maximum time for graceful shutdown
 TimeoutStopSec=10
 
