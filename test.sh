@@ -1,8 +1,27 @@
 #!/bin/bash
 # OpenUPS 自动化测试脚本
 # 验证编译、参数解析、配置验证、安全性和代码质量
+#
+# 用法：
+#   ./test.sh              # 运行基础测试（编译、参数、安全）
+#   ./test.sh --gray       # 追加进程级灰度验证（需要 root 或 CAP_NET_RAW）
+#   ./test.sh --gray-systemd  # 追加 systemd 灰度验证（需要 systemd + root）
+#   ./test.sh --all        # 运行全部测试（基础 + 灰度 + systemd 灰度）
 
 set -e  # 遇到错误立即退出
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_PATH="${ROOT_DIR}/bin/openups"
+
+RUN_GRAY=0
+RUN_GRAY_SYSTEMD=0
+for arg in "$@"; do
+    case "${arg}" in
+        --gray)          RUN_GRAY=1 ;;
+        --gray-systemd)  RUN_GRAY_SYSTEMD=1 ;;
+        --all)           RUN_GRAY=1; RUN_GRAY_SYSTEMD=1 ;;
+    esac
+done
 
 echo "========================================"
 echo "OpenUPS 自动化测试"
@@ -206,9 +225,289 @@ fi
 
 echo
 echo "========================================"
-echo "✓ 所有测试通过！"
+echo "✓ 基础测试通过！"
 echo "========================================"
 echo
 ls -lh bin/openups
-echo "更多使用示例请查看 README.md"
+
+# ============================================================
+# 灰度验证：进程级（需要 root 或 CAP_NET_RAW）
+# ============================================================
+if [[ "${RUN_GRAY}" -eq 1 ]]; then
+    echo
+    echo "========================================"
+    echo "灰度验证（进程级）"
+    echo "========================================"
+    echo
+
+    TARGET_FAIL="${TARGET_FAIL:-203.0.113.1}"
+    INTERVAL_SEC="${INTERVAL_SEC:-1}"
+    THRESHOLD="${THRESHOLD:-2}"
+    TIMEOUT_MS="${TIMEOUT_MS:-700}"
+    RETRIES="${RETRIES:-0}"
+
+    PHASE1_SEC="${PHASE1_SEC:-12}"
+    PHASE2_SEC="${PHASE2_SEC:-14}"
+
+    RUN_TS="$(date +%Y%m%d_%H%M%S)"
+    LOG_DIR="${ROOT_DIR}/graylogs/${RUN_TS}"
+    PHASE1_LOG="${LOG_DIR}/phase1_dry_run_true.log"
+    PHASE2_LOG="${LOG_DIR}/phase2_dry_run_false_log_only.log"
+    PROC_SUMMARY="${LOG_DIR}/summary.txt"
+
+    mkdir -p "${LOG_DIR}"
+
+    if [[ ! -x "${BIN_PATH}" ]]; then
+        echo "[ERROR] Binary not found or not executable: ${BIN_PATH}" >&2
+        exit 1
+    fi
+
+    SUDO=""
+    if [[ "${EUID}" -ne 0 ]]; then
+        SUDO="sudo"
+    fi
+
+    run_phase() {
+        local phase_name="$1"
+        local duration_sec="$2"
+        local out_log="$3"
+        shift 3
+
+        echo "[INFO] ${phase_name} (timeout ${duration_sec}s)"
+        set +e
+        ${SUDO} timeout "${duration_sec}s" "${BIN_PATH}" "$@" >"${out_log}" 2>&1
+        local exit_code=$?
+        set -e
+
+        if [[ ${exit_code} -ne 0 && ${exit_code} -ne 124 ]]; then
+            echo "[ERROR] ${phase_name} failed, exit_code=${exit_code}" | tee -a "${PROC_SUMMARY}"
+            tail -n 50 "${out_log}" || true
+            exit ${exit_code}
+        fi
+
+        echo "[INFO] ${phase_name} finished (exit_code=${exit_code})"
+    }
+
+    count_lines() {
+        local pattern="$1"
+        local file="$2"
+        grep -cE "${pattern}" "${file}" 2>/dev/null || true
+    }
+
+    echo "== Phase 1: dry-run=true + immediate（验证触发路径，不执行关机） =="
+    run_phase "Phase 1" "${PHASE1_SEC}" "${PHASE1_LOG}" \
+        --target "${TARGET_FAIL}" \
+        --interval "${INTERVAL_SEC}" \
+        --threshold "${THRESHOLD}" \
+        --timeout "${TIMEOUT_MS}" \
+        --retries "${RETRIES}" \
+        --shutdown-mode immediate \
+        --dry-run=true \
+        --log-level debug
+
+    echo "== Phase 2: dry-run=false + log-only（验证非 dry-run 下安全分支） =="
+    run_phase "Phase 2" "${PHASE2_SEC}" "${PHASE2_LOG}" \
+        --target "${TARGET_FAIL}" \
+        --interval "${INTERVAL_SEC}" \
+        --threshold "${THRESHOLD}" \
+        --timeout "${TIMEOUT_MS}" \
+        --retries "${RETRIES}" \
+        --shutdown-mode log-only \
+        --dry-run=false \
+        --log-level debug
+
+    phase1_trigger_count="$(count_lines "Would trigger shutdown|Shutdown triggered" "${PHASE1_LOG}")"
+    phase2_log_only_count="$(count_lines "LOG-ONLY mode|mode is log-only" "${PHASE2_LOG}")"
+    phase2_fail_count="$(count_lines "Ping failed" "${PHASE2_LOG}")"
+
+    {
+        echo "OpenUPS 灰度验证摘要"
+        echo "Run timestamp: ${RUN_TS}"
+        echo "Binary: ${BIN_PATH}"
+        echo
+        echo "[Phase 1] dry-run=true + immediate"
+        echo "  Trigger-related lines: ${phase1_trigger_count}"
+        echo "  Log file: ${PHASE1_LOG}"
+        echo
+        echo "[Phase 2] dry-run=false + log-only"
+        echo "  LOG-ONLY lines: ${phase2_log_only_count}"
+        echo "  Ping failed lines: ${phase2_fail_count}"
+        echo "  Log file: ${PHASE2_LOG}"
+        echo
+        if [[ "${phase1_trigger_count}" -ge 1 && "${phase2_log_only_count}" -ge 1 ]]; then
+            echo "Result: PASS"
+        else
+            echo "Result: CHECK_REQUIRED"
+        fi
+    } | tee "${PROC_SUMMARY}"
+
+    echo
+    echo "[INFO] 进程级灰度验证完成，摘要: ${PROC_SUMMARY}"
+fi
+
+# ============================================================
+# 灰度验证：systemd 级（需要 systemd + root）
+# ============================================================
+if [[ "${RUN_GRAY_SYSTEMD}" -eq 1 ]]; then
+    echo
+    echo "========================================"
+    echo "灰度验证（systemd 级）"
+    echo "========================================"
+    echo
+
+    SERVICE_NAME="${SERVICE_NAME:-openups.service}"
+
+    TARGET_FAIL="${TARGET_FAIL:-203.0.113.1}"
+    INTERVAL_SEC="${INTERVAL_SEC:-1}"
+    THRESHOLD="${THRESHOLD:-2}"
+    TIMEOUT_MS="${TIMEOUT_MS:-700}"
+    RETRIES="${RETRIES:-0}"
+    PAYLOAD_SIZE="${PAYLOAD_SIZE:-56}"
+
+    SD_PHASE1_SEC="${SD_PHASE1_SEC:-10}"
+    SD_PHASE2_SEC="${SD_PHASE2_SEC:-14}"
+
+    RUN_TS="$(date +%Y%m%d_%H%M%S)"
+    SD_LOG_DIR="${ROOT_DIR}/graylogs/systemd_${RUN_TS}"
+    SD_PHASE1_LOG="${SD_LOG_DIR}/phase1_service_dry_run_true.log"
+    SD_PHASE2_LOG="${SD_LOG_DIR}/phase2_service_log_only.log"
+    SD_SUMMARY="${SD_LOG_DIR}/summary.txt"
+
+    mkdir -p "${SD_LOG_DIR}"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        echo "[ERROR] systemctl not found" >&2
+        exit 1
+    fi
+
+    SUDO=""
+    if [[ "${EUID}" -ne 0 ]]; then
+        SUDO="sudo"
+    fi
+
+    if ! ${SUDO} systemctl cat "${SERVICE_NAME}" >/dev/null 2>&1; then
+        echo "[ERROR] Service not found: ${SERVICE_NAME}" >&2
+        echo "[HINT] Install/enable service first, e.g. sudo cp systemd/openups.service /etc/systemd/system/" >&2
+        exit 1
+    fi
+
+    DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.d"
+    DROPIN_FILE="${DROPIN_DIR}/99-gray-validate.conf"
+
+    WAS_ACTIVE=0
+    if ${SUDO} systemctl is-active --quiet "${SERVICE_NAME}"; then
+        WAS_ACTIVE=1
+    fi
+
+    cleanup_systemd() {
+        set +e
+        echo "[INFO] Rolling back temporary drop-in..."
+        ${SUDO} rm -f "${DROPIN_FILE}"
+        ${SUDO} rmdir "${DROPIN_DIR}" 2>/dev/null || true
+        ${SUDO} systemctl daemon-reload
+
+        if [[ "${WAS_ACTIVE}" -eq 1 ]]; then
+            ${SUDO} systemctl restart "${SERVICE_NAME}" >/dev/null 2>&1 || true
+        else
+            ${SUDO} systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+        fi
+    }
+    trap cleanup_systemd EXIT
+
+    write_dropin() {
+        local shutdown_mode="$1"
+        local dry_run="$2"
+        local log_level="$3"
+
+        ${SUDO} mkdir -p "${DROPIN_DIR}"
+        cat <<DROPIN_EOF | ${SUDO} tee "${DROPIN_FILE}" >/dev/null
+[Service]
+Environment="OPENUPS_TARGET=${TARGET_FAIL}"
+Environment="OPENUPS_INTERVAL=${INTERVAL_SEC}"
+Environment="OPENUPS_THRESHOLD=${THRESHOLD}"
+Environment="OPENUPS_TIMEOUT=${TIMEOUT_MS}"
+Environment="OPENUPS_RETRIES=${RETRIES}"
+Environment="OPENUPS_PAYLOAD_SIZE=${PAYLOAD_SIZE}"
+Environment="OPENUPS_SHUTDOWN_MODE=${shutdown_mode}"
+Environment="OPENUPS_DRY_RUN=${dry_run}"
+Environment="OPENUPS_LOG_LEVEL=${log_level}"
+Environment="OPENUPS_SYSTEMD=true"
+Environment="OPENUPS_WATCHDOG=false"
+Environment="OPENUPS_TIMESTAMP=false"
+DROPIN_EOF
+    }
+
+    capture_phase() {
+        local phase_name="$1"
+        local shutdown_mode="$2"
+        local dry_run="$3"
+        local log_level="$4"
+        local duration_sec="$5"
+        local out_log="$6"
+
+        echo "[INFO] ${phase_name}: mode=${shutdown_mode}, dry_run=${dry_run}, duration=${duration_sec}s"
+
+        write_dropin "${shutdown_mode}" "${dry_run}" "${log_level}"
+        ${SUDO} systemctl daemon-reload
+
+        local start_ts
+        start_ts="$(date --iso-8601=seconds)"
+
+        ${SUDO} systemctl restart "${SERVICE_NAME}"
+        sleep "${duration_sec}"
+
+        ${SUDO} journalctl -u "${SERVICE_NAME}" --since "${start_ts}" --no-pager >"${out_log}" || true
+
+        local state
+        state="$( ${SUDO} systemctl is-active "${SERVICE_NAME}" || true )"
+        echo "[INFO] ${phase_name} service state: ${state}" | tee -a "${SD_SUMMARY}"
+    }
+
+    sd_count_lines() {
+        local pattern="$1"
+        local file="$2"
+        grep -cE "${pattern}" "${file}" 2>/dev/null || true
+    }
+
+    echo "Service: ${SERVICE_NAME}"
+    echo "日志目录: ${SD_LOG_DIR}"
+    echo
+
+    capture_phase "Phase 1" "immediate" "true" "debug" "${SD_PHASE1_SEC}" "${SD_PHASE1_LOG}"
+    capture_phase "Phase 2" "log-only" "false" "debug" "${SD_PHASE2_SEC}" "${SD_PHASE2_LOG}"
+
+    sd_p1_trigger="$(sd_count_lines "Would trigger shutdown|Shutdown triggered, exiting monitor loop" "${SD_PHASE1_LOG}")"
+    sd_p2_log_only="$(sd_count_lines "mode is log-only|LOG-ONLY mode" "${SD_PHASE2_LOG}")"
+    sd_p2_fail="$(sd_count_lines "Ping failed" "${SD_PHASE2_LOG}")"
+
+    {
+        echo "OpenUPS systemd 灰度验证摘要"
+        echo "Run timestamp: ${RUN_TS}"
+        echo "Service: ${SERVICE_NAME}"
+        echo
+        echo "[Phase 1] immediate + dry-run=true"
+        echo "  Trigger-related lines: ${sd_p1_trigger}"
+        echo "  Log file: ${SD_PHASE1_LOG}"
+        echo
+        echo "[Phase 2] log-only + dry-run=false"
+        echo "  LOG-ONLY lines: ${sd_p2_log_only}"
+        echo "  Ping failed lines: ${sd_p2_fail}"
+        echo "  Log file: ${SD_PHASE2_LOG}"
+        echo
+        if [[ "${sd_p1_trigger}" -ge 1 && "${sd_p2_log_only}" -ge 1 ]]; then
+            echo "Result: PASS"
+        else
+            echo "Result: CHECK_REQUIRED"
+        fi
+    } | tee "${SD_SUMMARY}"
+
+    echo
+    echo "[INFO] systemd 灰度验证完成，摘要: ${SD_SUMMARY}"
+fi
+
 echo
+echo "========================================"
+echo "✓ 所有测试通过！"
+echo "========================================"
+echo
+echo "更多使用示例请查看 README.md"

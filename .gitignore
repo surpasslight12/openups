@@ -5,7 +5,12 @@ bin/
 *.o
 *.a
 *.so
-*.dylib
+
+# 编译器生成
+*.d
+*.gch
+*.pch
+*.su
 
 # 编辑器和 IDE
 .vscode/
@@ -16,20 +21,13 @@ bin/
 .DS_Store
 
 # 调试文件
-*.dSYM/
-*.su
-*.idb
-*.pdb
 vgcore.*
 core
-
-# 编译器生成
-*.d
-*.gch
-*.pch
 
 # 测试和日志
 *.log
 test_output/
 graylogs/
+
+# 工具
 _codeql_detected_source_root

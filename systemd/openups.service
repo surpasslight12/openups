@@ -11,6 +11,7 @@ StartLimitBurst=3
 [Service]
 # Service type: notify (program communicates readiness via sd_notify protocol)
 Type=notify
+NotifyAccess=main
 
 # Optional delay before starting (e.g., waiting for network stack initialization)
 Environment="OPENUPS_START_DELAY_SEC=0"
