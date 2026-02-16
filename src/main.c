@@ -1335,10 +1335,10 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
 
     uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
                        (uint64_t)send_time.tv_nsec / 1000000ULL;
-    uint64_t deadline_ms_val = send_ms + (uint64_t)timeout_ms;
+    uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
 
     while (1) {
-        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms_val, tick, tick_user_data,
+        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms, tick, tick_user_data,
                                               should_stop, stop_user_data);
         if (wait_rc == -2) {
             snprintf(result.error_msg, sizeof(result.error_msg), "Stopped");
@@ -1442,14 +1442,14 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     }
     fill_payload_pattern(pinger, sizeof(struct icmp6_hdr), (size_t)payload_size);
 
-    struct icmp6_hdr* icmp6_hdr_pkt = (struct icmp6_hdr*)pinger->send_buf;
-    memset(icmp6_hdr_pkt, 0, sizeof(*icmp6_hdr_pkt));
-    icmp6_hdr_pkt->icmp6_type = ICMP6_ECHO_REQUEST; /* 类型: Echo Request = 128 */
-    icmp6_hdr_pkt->icmp6_code = 0;                  /* 代码: 0 */
+    struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)pinger->send_buf;
+    memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
+    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST; /* 类型: Echo Request = 128 */
+    icmp6_hdr->icmp6_code = 0;                  /* 代码: 0 */
     uint16_t ident = get_cached_ident();
     uint16_t seq = next_sequence(pinger);
-    icmp6_hdr_pkt->icmp6_id = ident;
-    icmp6_hdr_pkt->icmp6_seq = seq;
+    icmp6_hdr->icmp6_id = ident;
+    icmp6_hdr->icmp6_seq = seq;
 
     /* IPv6 checksum 由内核处理（细节见 TECHNICAL.md）。 */
 
@@ -1474,10 +1474,10 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
 
     uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
                        (uint64_t)send_time.tv_nsec / 1000000ULL;
-    uint64_t deadline_ms_val = send_ms + (uint64_t)timeout_ms;
+    uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
 
     while (1) {
-        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms_val, tick, tick_user_data,
+        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms, tick, tick_user_data,
                                               should_stop, stop_user_data);
         if (wait_rc == -2) {
             snprintf(result.error_msg, sizeof(result.error_msg), "Stopped");
