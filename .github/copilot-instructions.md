@@ -3,41 +3,35 @@
 OpenUPS 是一个高性能的 Linux 网络监控工具，通过 ICMP ping 检测网络可达性并在失败时执行关机策略。使用 C23 标准，零第三方依赖，深度集成 systemd。
 
 **本文档用于**: GitHub Copilot, Cursor AI, 以及其他 AI 编程助手
-**当前版本**: 1.4.0
+**当前版本**: 1.0.0
 
 ## 架构概览
 
-### 四层平台分离架构（v1.4.0）
+### 单文件架构（v1.0.0）
 ```
 src/
-├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── common/             # Layer 0: 纯 C 标准库（无 OS 依赖）
-│   └── openups.h       #   版本常量、编译器优化提示宏
-├── posix/              # Layer 1: POSIX 通用
-│   ├── base.h / base.c #   通用工具 + 日志系统 + 指标统计
-│   └── config.h / config.c  # 配置管理：CLI + 环境变量 + 验证
-├── linux/              # Layer 2: Linux 特有
-│   ├── icmp.h / icmp.c #   原生 ICMP 实现 (raw socket, IPv4/IPv6)
-│   ├── shutdown.h / shutdown.c  # 关机触发：fork/execvp 执行
-│   └── context.h / context.c   # 统一上下文管理（核心编排器）
-└── systemd/            # Layer 3: systemd 集成（条件编译）
-    └── systemd.h / systemd.c   # sd_notify 协议通知、watchdog 心跳
+└── main.c              # 单文件程序（包含全部功能模块）
 ```
 
-所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
-
-**依赖关系**: common → posix → linux → systemd（通过 `#ifdef OPENUPS_HAS_SYSTEMD` 条件编译）
+所有模块代码整合在单一源文件中，按逻辑分区组织：
+- **通用工具**：时间戳、环境变量读取、路径安全检查
+- **日志系统**：5 级日志（SILENT/ERROR/WARN/INFO/DEBUG）
+- **指标统计**：ping 成功率、延迟、运行时长
+- **配置管理**：CLI 参数、环境变量、验证
+- **ICMP 实现**：原生 raw socket（IPv4/IPv6）
+- **关机触发**：fork/execvp 执行
+- **systemd 集成**：sd_notify 协议、watchdog 心跳
+- **上下文管理**：统一上下文、信号处理、监控循环
 
 **构建选项**:
-- `make` — 默认构建（含 systemd 支持）
-- `make SYSTEMD=0` — 不含 systemd 支持（适用于 Alpine/OpenRC 等非 systemd 发行版）
+- `make` 或 `make CC=gcc-14` — 默认构建（内置 systemd 支持）
 
 **关键特性**:
 - 零第三方依赖（仅 C 标准库和 Linux 系统调用）
 - 单一二进制 (~55 KB)，内存占用 < 5 MB
 - 需要 `CAP_NET_RAW` 权限（ICMP raw socket）
 - 配置优先级：CLI 参数 > 环境变量 > 默认值
-- systemd 集成可通过编译时开关完全排除
+- systemd 集成内置（无条件编译开关）
 
 ## 编码规范
 
@@ -221,13 +215,12 @@ if (systemd.enabled) {
 ```bash
 # 完整编译（-O3 + LTO + native + 所有安全标志）
 make
-
-# 不含 systemd 支持
-make SYSTEMD=0
+# 或指定 gcc-14
+make CC=gcc-14
 
 # 调试版本
 make clean
-make CC=gcc CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
+make CC=gcc-14 CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
 
 # 安装到系统
 sudo make install  # → /usr/local/bin/openups + setcap cap_net_raw+ep
@@ -242,9 +235,15 @@ sudo ./bin/openups --target 127.0.0.1 --interval 1 --threshold 3 --dry-run --log
 sudo setcap cap_net_raw+ep ./bin/openups
 ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run
 
-# 自动化测试套件（12 个测试用例）
-./test.sh
-# 测试包括：编译检查（SYSTEMD=1/0）、功能测试、输入验证、安全性测试、边界条件
+# 自动化测试套件
+CC=gcc-14 ./test.sh
+# 测试包括：编译检查、功能测试、输入验证、安全性测试、边界条件
+
+# 灰度验证（需要 root 或 CAP_NET_RAW）
+sudo CC=gcc-14 ./test.sh --gray
+
+# 全部测试
+sudo CC=gcc-14 ./test.sh --all
 ```
 
 ### 调试
@@ -265,7 +264,7 @@ journalctl -u openups -f
 ## 常见任务模式
 
 ### 添加新配置项
-1. 在 `src/posix/config.h` 的 `config_t` 添加字段
+1. 在 `src/main.c` 的 `config_t` 添加字段
 2. `config_init_default()` 设置默认值
 3. `config_load_from_env()` 添加环境变量 `OPENUPS_*`
 4. `config_load_from_cmdline()` 添加 `--xxx` 选项
@@ -274,13 +273,13 @@ journalctl -u openups -f
 7. 更新 README.md 配置表格
 
 ### 添加新日志级别或函数
-1. `src/posix/base.h` 中 `log_level_t` 添加枚举值
-2. `src/posix/base.c` 中 `log_level_to_string()` 添加字符串映射
+1. `src/main.c` 中 `log_level_t` 添加枚举值
+2. `log_level_to_string()` 添加字符串映射
 3. 在 `string_to_log_level()` 中添加解析逻辑
 4. 添加 `logger_xxx()` 函数（使用 `__attribute__((format(printf, 2, 3)))`）
 
 ### 修改 ICMP 行为
-- 重点文件：`src/linux/icmp.c`
+- 重点文件：`src/main.c`（ICMP 相关代码区域）
 - 关键函数：`icmp_pinger_ping()`, `calculate_checksum()`
 - 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
 
@@ -332,5 +331,4 @@ MemoryMax=50M
 
 修改代码后必须同步更新：
 - `README.md` - 功能和配置表格
-- `TECHNICAL.md` - 架构变更和技术细节
 - `.github/copilot-instructions.md` - AI 上下文（如有重大变更）
