@@ -85,22 +85,18 @@ typedef struct openups_context {
     volatile sig_atomic_t print_stats_flag; /* offset 4 */
     int consecutive_fails;                  /* offset 8：失败计数 */
 
+    /* === systemd 集成（内置）=== */
+    bool systemd_enabled;         /* systemd 是否启用 */
+    uint64_t watchdog_interval_ms; /* watchdog 心跳间隔 */
+    uint64_t last_ping_time_ms;  /* 上次 ping 时间（避免重复 clock_gettime） */
+    uint64_t start_time_ms;      /* 启动时间（用于 uptime 计算） */
+
     /* === 核心组件（值类型，避免指针跳转）=== */
     config_t config;           /* 配置（栈上，内存连续） */
     logger_t logger;           /* 日志器 */
-    icmp_pinger_t pinger;      /* ICMP ping 器 */
     metrics_t metrics;         /* 统计指标 */
-
-#ifdef OPENUPS_HAS_SYSTEMD
-    /* === systemd 集成（条件编译）=== */
-    bool systemd_enabled;         /* systemd 是否启用 */
-    uint64_t watchdog_interval_ms; /* watchdog 心跳间隔 */
-    systemd_notifier_t systemd;    /* systemd 通知器 */
-#endif
-
-    /* === 性能优化缓存 === */
-    uint64_t last_ping_time_ms;  /* 上次 ping 时间（避免重复 clock_gettime） */
-    uint64_t start_time_ms;      /* 启动时间（用于 uptime 计算） */
+    icmp_pinger_t pinger;      /* ICMP ping 器 */
+    systemd_notifier_t systemd; /* systemd 通知器 */
 } openups_ctx_t;
 ```
 
@@ -172,7 +168,7 @@ while (!ctx->stop_flag) {
 
 ## 模块详解
 
-### 1. common/logger/metrics 模块
+### 1. 通用工具 / 日志 / 指标模块
 
 **职责**：通用工具函数
 

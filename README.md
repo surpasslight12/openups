@@ -249,14 +249,17 @@ kill -USR1 $(pidof openups)
 ./test.sh
 ```
 
-灰度演练脚本：
+灰度验证（可选，需要 root 或 CAP_NET_RAW）：
 
 ```bash
-# 进程级灰度演练（不依赖 systemd 生命周期）
-./gray_validate.sh
+# 进程级灰度验证
+./test.sh --gray
 
-# systemd 灰度演练（临时 drop-in 覆盖，结束后自动回滚）
-./gray_validate_systemd.sh
+# systemd 灰度验证（需要 systemd + root）
+./test.sh --gray-systemd
+
+# 运行全部测试（基础 + 灰度 + systemd 灰度）
+./test.sh --all
 ```
 
 ## 📄 许可证
