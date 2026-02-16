@@ -1,7 +1,3 @@
-/* 必须在包含任何头文件之前定义 BSD 宏 */
-#define __USE_BSD
-#define __FAVOR_BSD
-
 /* ============================================================
  * Standard library includes (deduplicated)
  * ============================================================ */
@@ -42,9 +38,6 @@
  * ============================================================ */
 #define OPENUPS_VERSION "1.4.0"
 #define OPENUPS_PROGRAM_NAME "openups"
-
-#define VERSION OPENUPS_VERSION
-#define PROGRAM_NAME OPENUPS_PROGRAM_NAME
 
 /* ============================================================
  * Compiler hint macros
@@ -873,7 +866,7 @@ OPENUPS_COLD static void config_print(const config_t* restrict config)
 
 OPENUPS_COLD static void config_print_usage(void)
 {
-    printf("Usage: %s [options]\n\n", PROGRAM_NAME);
+    printf("Usage: %s [options]\n\n", OPENUPS_PROGRAM_NAME);
     printf("Network Options:\n");
     printf("  -t, --target <ip>           Target IP literal to monitor (DNS disabled, default: 1.1.1.1)\n");
     printf("  -i, --interval <sec>        Ping interval in seconds (default: 10)\n");
@@ -912,18 +905,18 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("\n");
     printf("Examples:\n");
     printf("  # Basic monitoring with dry-run\n");
-    printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", PROGRAM_NAME);
+    printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", OPENUPS_PROGRAM_NAME);
     printf("  # Production mode (actual shutdown)\n");
-    printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=false\n\n", PROGRAM_NAME);
+    printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=false\n\n", OPENUPS_PROGRAM_NAME);
     printf("  # Debug mode without timestamp (for systemd)\n");
-    printf("  %s -t 8.8.8.8 -L debug --timestamp=false\n\n", PROGRAM_NAME);
+    printf("  %s -t 8.8.8.8 -L debug --timestamp=false\n\n", OPENUPS_PROGRAM_NAME);
     printf("  # Short options (values must connect directly, no space)\n");
-    printf("  %s -t 8.8.8.8 -i5 -n3 -dfalse -Tfalse -Ldebug\n\n", PROGRAM_NAME);
+    printf("  %s -t 8.8.8.8 -i5 -n3 -dfalse -Tfalse -Ldebug\n\n", OPENUPS_PROGRAM_NAME);
 }
 
 OPENUPS_COLD static void config_print_version(void)
 {
-    printf("%s version %s\n", PROGRAM_NAME, VERSION);
+    printf("%s version %s\n", OPENUPS_PROGRAM_NAME, OPENUPS_VERSION);
     printf("OpenUPS network monitor\n");
 }
 /* ============================================================
