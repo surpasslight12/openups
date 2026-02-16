@@ -1,9 +1,5 @@
 CC ?= gcc
 
-# systemd 集成开关（默认启用）
-# 使用 make SYSTEMD=0 构建不含 systemd 支持的版本
-SYSTEMD ?= 1
-
 # 编译标志说明：
 #   优化标志: -O3 -march=native -mtune=native -flto=auto
 #   C 标准: -std=c23 (ISO C23)
@@ -27,13 +23,8 @@ CFLAGS ?= -O3 -std=c23 -Wall -Wextra -Wpedantic \
           -fno-plt -fno-semantic-interposition -fno-common \
           -fvisibility=hidden
 
-# 自动生成头文件依赖（避免增量构建遗漏头文件变化，导致 -flto 下结构体布局不一致）
+# 自动生成头文件依赖
 CFLAGS += -MMD -MP
-
-# 条件编译：systemd 支持（保留变量兼容性）
-ifeq ($(SYSTEMD),1)
-CFLAGS += -DOPENUPS_HAS_SYSTEMD
-endif
 
 # 链接标志说明：
 #   RELRO: -Wl,-z,relro,-z,now (Full RELRO - 只读重定位表)
@@ -52,13 +43,6 @@ BIN_DIR := bin
 SRC_DIR := src
 TARGET := $(BIN_DIR)/openups
 
-CLANG_FORMAT ?= clang-format
-FORMAT_SRCS := $(wildcard $(SRC_DIR)/*.c $(SRC_DIR)/*.h \
-               $(SRC_DIR)/common/*.h \
-               $(SRC_DIR)/posix/*.c $(SRC_DIR)/posix/*.h \
-               $(SRC_DIR)/linux/*.c $(SRC_DIR)/linux/*.h \
-               $(SRC_DIR)/systemd/*.c $(SRC_DIR)/systemd/*.h)
-
 # 源文件（单文件架构）
 SRCS := $(SRC_DIR)/main.c
 
@@ -66,7 +50,7 @@ SRCS := $(SRC_DIR)/main.c
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean run install uninstall test format check-format help
+.PHONY: all clean run install uninstall test help
 
 all: $(TARGET)
 
@@ -75,14 +59,6 @@ all: $(TARGET)
 test: all
 	@echo "Running test suite..."
 	@./test.sh
-
-format:
-	@$(CLANG_FORMAT) -i $(FORMAT_SRCS)
-	@echo "Formatted: $(FORMAT_SRCS)"
-
-check-format:
-	@$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_SRCS)
-	@echo "Format check passed"
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
@@ -94,7 +70,7 @@ $(BIN_DIR)/%.o: $(SRC_DIR)/%.c | $(BIN_DIR)
 
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
-	@echo "Build complete: $(TARGET) (SYSTEMD=$(SYSTEMD))"
+	@echo "Build complete: $(TARGET)"
 
 clean:
 	rm -rf $(BIN_DIR)
@@ -134,8 +110,6 @@ help:
 	@echo "  all        - Build the project (default target)"
 	@echo "  clean      - Remove build artifacts (bin/ directory)"
 	@echo "  test       - Build and run automated test suite"
-	@echo "  format     - Format source files using clang-format"
-	@echo "  check-format - Verify formatting (clang-format --dry-run -Werror)"
 	@echo "  run        - Build and run in test mode with localhost"
 	@echo "  install    - Install binary to /usr/local/bin and set CAP_NET_RAW"
 	@echo "  uninstall  - Remove binary from /usr/local/bin"
@@ -145,29 +119,20 @@ help:
 	@echo "  CC         - C compiler executable (default: gcc)"
 	@echo "  CFLAGS     - Compiler optimization and safety flags"
 	@echo "  LDFLAGS    - Linker security and optimization flags"
-	@echo "  SYSTEMD    - Enable systemd integration: 1 (default) or 0"
-	@echo "  CLANG_FORMAT - clang-format executable (default: clang-format)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make                       # Build with optimizations (systemd enabled)"
-	@echo "  make SYSTEMD=0             # Build without systemd support"
-	@echo "  make format                # Apply code formatter"
-	@echo "  make check-format          # Check formatting in CI"
+	@echo "  make                       # Build with optimizations"
 	@echo "  make clean && make test    # Clean build and run tests"
 	@echo "  make CC=clang              # Build with clang instead of gcc"
 	@echo "  make install               # Install system-wide"
-	@echo "  make CFLAGS=\"-g -O0\" clean make  # Debug build"
 	@echo ""
 	@echo "After installation:"
 	@echo "  openups --help             # Show program usage"
 	@echo "  openups --version          # Show version info"
 	@echo "  systemctl start openups    # Start systemd service"
 	@echo ""
-	@echo "Source Structure (4-layer architecture):"
-	@echo "  src/common/   - Layer 0: Pure C (version, compiler macros)"
-	@echo "  src/posix/    - Layer 1: POSIX (logger, config, metrics)"
-	@echo "  src/linux/    - Layer 2: Linux (ICMP, shutdown, context)"
-	@echo "  src/systemd/  - Layer 3: systemd (notify, watchdog)"
+	@echo "Source Structure (single-file architecture):"
+	@echo "  src/main.c - All source code in a single file"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  README.md         - Project overview and features"

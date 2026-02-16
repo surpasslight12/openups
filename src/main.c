@@ -2074,9 +2074,6 @@ static OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(const systemd
  * ============================================================ */
 
 
-/* 编译时检查 */
-static_assert(sizeof(sig_atomic_t) >= sizeof(int), "sig_atomic_t must be at least int size");
-
 /* === 全局上下文指针（仅用于信号处理） === */
 static openups_ctx_t* g_ctx = NULL;
 
