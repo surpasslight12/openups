@@ -56,35 +56,24 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 延迟测量与 uptime 统计使用单调时钟，避免系统时间调整（NTP/手动改时间）造成负数延迟或运行时长跳变。
 ## 架构设计
 
-### 模块结构（v1.4.0 - 2026-02-13）
+### 模块结构（v1.4.0 - 单文件架构）
 
 ```
 src/
-├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── common/             # Layer 0: 纯 C 标准库（无 OS 依赖）
-│   └── openups.h       #   版本常量、编译器优化提示宏
-├── posix/              # Layer 1: POSIX 通用（clock_gettime, getopt_long 等）
-│   ├── base.h / base.c #   通用工具 + 日志系统 + 指标统计
-│   └── config.h / config.c  # 配置管理：CLI + 环境变量 + 验证
-├── linux/              # Layer 2: Linux 特有
-│   ├── icmp.h / icmp.c #   原生 ICMP 实现 (raw socket, IPv4/IPv6)
-│   ├── shutdown.h / shutdown.c  # 关机触发：fork/execvp 执行
-│   └── context.h / context.c   # 统一上下文管理（核心编排器）
-└── systemd/            # Layer 3: systemd 集成（条件编译）
-    └── systemd.h / systemd.c   # sd_notify 协议通知、watchdog 心跳
+└── main.c              # 单文件程序（包含全部功能模块）
 ```
 
-所有头文件使用 Doxygen 风格文档注释（`@file`, `@brief`）。
+所有模块代码整合在单一源文件中，按逻辑分区组织：
+- **通用工具**：时间戳、环境变量读取、路径安全检查
+- **日志系统**：5 级日志（SILENT/ERROR/WARN/INFO/DEBUG）
+- **指标统计**：ping 成功率、延迟、运行时长
+- **配置管理**：CLI 参数、环境变量、验证
+- **ICMP 实现**：原生 raw socket（IPv4/IPv6）
+- **关机触发**：fork/execvp 执行
+- **systemd 集成**：sd_notify 协议、watchdog 心跳
+- **上下文管理**：统一上下文、信号处理、监控循环
 
-**依赖关系**: common → posix → linux → systemd（systemd 层通过 `#ifdef OPENUPS_HAS_SYSTEMD` 条件编译）
-
-**构建选项**: `make SYSTEMD=0` 可构建不含 systemd 支持的版本（适用于 Alpine/OpenRC 等非 systemd Linux 发行版）
-
-**关键变更（v1.3.0 → v1.4.0）**：
-- ✅ 四层平台分离架构（Generic → POSIX → Linux → systemd）
-- ✅ systemd 条件编译（`OPENUPS_HAS_SYSTEMD` 宏）
-- ✅ integrations.c 拆分为 shutdown.c + systemd.c
-- ✅ 子目录化源码组织
+**构建**：`make`（单文件编译，内置 systemd 支持）
 
 ### 统一上下文架构（openups_ctx_t）
 
@@ -121,16 +110,13 @@ typedef struct openups_context {
 3. **热数据优先**：信号标志和失败计数放在结构体前部（64 字节内）
 4. **初始化集中**：`openups_ctx_init()` 自动处理所有组件初始化
 
-### 依赖关系图（重构后）
+### 依赖关系（单文件内部模块顺序）
 
 ```
-common/ → posix/ → linux/ → systemd/ (条件编译)
-openups.h → base.h → config.h → icmp.h / shutdown.h → context.h → main.c
-                                                  ↑
-                                          systemd.h (ifdef)
+通用工具 → 日志 → 指标 → 配置 → ICMP → 关机 → systemd → 上下文 → main()
 ```
 
-### 数据流（重构后）
+### 数据流
 
 #### 启动流程
 ```
@@ -177,7 +163,7 @@ while (!ctx->stop_flag) {
 
 补充说明：关机命令通过 `fork()` + `execvp` 执行，不经过 shell。
 补充说明：关机流程拆分为“是否执行/命令选择/执行”三段，便于测试和替换。
-补充说明：当前重构版将监控循环与关机触发整合在 `context.c` 中；如需替换关机策略，
+补充说明：当前版本将监控循环与关机触发整合在 `src/main.c` 中；如需替换关机策略，
 建议通过扩展 `shutdown_mode_t` 或在 `shutdown_trigger()` 内实现策略分派。
 补充说明：关机执行等待超时使用单调时钟，避免系统时间跳变影响。
 ```
@@ -186,7 +172,7 @@ while (!ctx->stop_flag) {
 
 ## 模块详解
 
-### 1. common/logger/metrics 模块（base.c；声明见 base.h）
+### 1. common/logger/metrics 模块
 
 **职责**：通用工具函数
 
@@ -233,7 +219,7 @@ void logger_info(logger_t* logger, const char* fmt, ...)
 
 ---
 
-### 2. config 模块（config.c；声明见 config.h）
+### 2. config 模块
 
 **职责**：配置解析和验证
 
@@ -261,7 +247,7 @@ bool config_validate(const config_t* config, char* error_msg, size_t error_size)
 
 ---
 
-### 3. icmp 模块（icmp.c；声明见 icmp.h）
+### 3. icmp 模块
 
 **职责**：原生 ICMP ping 实现
 
@@ -291,7 +277,7 @@ ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, const char* target,
 
 ---
 
-### 4. systemd/shutdown 模块（systemd/systemd.c + linux/shutdown.c）
+### 4. systemd/shutdown 模块
 
 **职责**：systemd 集成
 
@@ -325,7 +311,7 @@ bool systemd_notifier_watchdog(systemd_notifier_t* notifier);
 
 ---
 
-### 5. context 模块（context.c；声明见 context.h）
+### 5. context 模块
 
 **职责**：统一上下文管理（配置加载 + 组件初始化 + 监控循环 + 信号处理）
 
@@ -358,7 +344,7 @@ while (!ctx->stop_flag) {
 
 ---
 
-### 6. main 模块 (`main.c`)
+### 6. main 入口
 
 **职责**：程序入口
 
@@ -487,7 +473,7 @@ sprintf(buffer, ...);     // 不安全
 
 #### 路径验证
 ```c
-// base.c
+// src/main.c
 bool is_safe_path(const char* path) {
     return !(strstr(path, "..") || strstr(path, "//") ||
              strchr(path, ';') || strchr(path, '|') ||
@@ -784,7 +770,7 @@ systemd_notifier_watchdog(&ctx->systemd);
 ### Q6: 为什么需要 EINTR 重试？
 **A**: 系统调用可能被信号中断（如 SIGWINCH）
 ```c
-// systemd.c 中的正确实现
+// src/main.c 中的正确实现
 ssize_t sent;
 do {
     sent = sendto(sockfd, message, len, 0, addr, addrlen);
@@ -793,12 +779,12 @@ do {
 
 ### Q7: 如何添加新的配置项？
 ```
-1. config.h: 添加字段到 config_t
-2. config.c: config_init_default() 设置默认值
-3. config.c: config_load_from_env() 添加 OPENUPS_* 环境变量
-4. config.c: config_load_from_cmdline() 添加 --xxx 参数
-5. config.c: config_validate() 添加验证逻辑
-6. config.c: config_print_usage() 更新帮助信息
+1. src/main.c: 添加字段到 config_t
+2. src/main.c: config_init_default() 设置默认值
+3. src/main.c: config_load_from_env() 添加 OPENUPS_* 环境变量
+4. src/main.c: config_load_from_cmdline() 添加 --xxx 参数
+5. src/main.c: config_validate() 添加验证逻辑
+6. src/main.c: config_print_usage() 更新帮助信息
 7. README.md: 更新配置表格
 ```
 
@@ -808,7 +794,7 @@ do {
 
 ### 添加新的配置项
 
-1. 在 `config.h` 的 `config_t` 结构体添加字段
+1. 在 `src/main.c` 的 `config_t` 结构体添加字段
 2. 在 `config_init_default()` 设置默认值
 3. 在 `config_load_from_env()` 添加环境变量读取
 4. 在 `config_load_from_cmdline()` 添加 CLI 解析

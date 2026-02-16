@@ -27,31 +27,9 @@ make clean && make
 
 ## 提交代码
 
-## 代码风格与格式化
-
-本项目使用仓库内的 [.clang-format](.clang-format) 作为唯一格式基线，并配合
-[.editorconfig](.editorconfig) 统一换行、缩进等基础规则。
-
-### 安装 clang-format
-
-```bash
-# Ubuntu/Debian
-sudo apt install clang-format
-```
-
-### 格式化命令
-
-```bash
-make format
-make check-format
-```
-
-建议在提交前执行一次 `make format`，确保 diff 聚焦在逻辑变更而不是格式差异。
-
 ### 开发流程
 ```bash
 git checkout -b feature/your-feature
-make format
 make clean && make && ./test.sh
 git commit -m "feat: description"
 git push origin feature/your-feature
