@@ -4,7 +4,7 @@
 [![C23](https://img.shields.io/badge/C-23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![systemd](https://img.shields.io/badge/systemd-integrated-green.svg)](https://systemd.io/)
 [![Security](https://img.shields.io/badge/security-10%2F10-brightgreen.svg)](#-安全特性)
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](src/main.c)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](src/main.c)
 
 **OpenUPS** 是一个**轻量级、高性能、高安全**的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
 
@@ -31,7 +31,7 @@
 - **指标统计**：实时监控成功率、延迟、运行时长
 - **dry-run 模式**：默认启用，防止误操作
 
-## 🏗️ 架构（v1.4.0）
+## 🏗️ 架构（v1.0.0）
 
 ```
 src/
