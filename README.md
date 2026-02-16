@@ -4,7 +4,7 @@
 [![C23](https://img.shields.io/badge/C-23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![systemd](https://img.shields.io/badge/systemd-integrated-green.svg)](https://systemd.io/)
 [![Security](https://img.shields.io/badge/security-10%2F10-brightgreen.svg)](#-安全特性)
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](src/common/openups.h)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](src/main.c)
 
 **OpenUPS** 是一个**轻量级、高性能、高安全**的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
 
@@ -21,7 +21,7 @@
 - **极致性能**：-O3 + LTO + CPU 原生优化
 - **统一上下文架构**：单参数传递，减少函数调用开销
 - **CPU 缓存友好**：热路径数据优化布局
-- **超小体积**：约 48 KB 二进制文件
+- **超小体积**：约 55 KB 二进制文件
 - **低资源占用**：< 5 MB 内存，< 1% CPU
 - **ICMP 热路径优化**：payload 预填充与缓冲区复用，降低每次 ping 的写入量
 
@@ -34,37 +34,19 @@
 - **指标统计**：实时监控成功率、延迟、运行时长
 - **dry-run 模式**：默认启用，防止误操作
 
-## 🏗️ 架构（v1.4.0 - 2026-02-13）
+## 🏗️ 架构（v1.4.0）
 
 ```
 src/
-├── main.c              # CLI 入口（初始化上下文并运行主循环）
-├── common/             # Layer 0: 纯 C 标准库（无 OS 依赖）
-│   └── openups.h       #   版本常量、编译器优化提示宏
-├── posix/              # Layer 1: POSIX 通用
-│   ├── base.h / base.c #   通用工具 + 日志系统 + 指标统计
-│   └── config.h / config.c  # 配置管理：CLI + 环境变量 + 验证
-├── linux/              # Layer 2: Linux 特有
-│   ├── icmp.h / icmp.c #   原生 ICMP 实现 (raw socket, IPv4/IPv6)
-│   ├── shutdown.h / shutdown.c  # 关机触发：fork/execvp 执行
-│   └── context.h / context.c   # 统一上下文管理（核心编排器）
-└── systemd/            # Layer 3: systemd 集成（条件编译）
-    └── systemd.h / systemd.c   # sd_notify 协议通知、watchdog 心跳
+└── main.c              # 单文件程序（包含全部功能）
 ```
 
 **设计原则**：
-- ✅ 四层平台分离架构（common → posix → linux → systemd）
+- ✅ 单文件架构，简化构建和部署
 - ✅ 统一上下文架构（`openups_ctx_t`）
-- ✅ 条件编译（`#ifdef OPENUPS_HAS_SYSTEMD`），支持 `make SYSTEMD=0`
+- ✅ 内置 systemd 集成（`sd_notify`、watchdog）
 - ✅ 零第三方依赖（仅 C 标准库和 Linux 系统调用）
 - ✅ 单一二进制文件，易于部署
-- ✅ Doxygen 风格文档注释
-
-**重构改进（v1.3.0 → v1.4.0）**：
-- 四层平台分离架构（common/posix/linux/systemd）
-- integrations.c 拆分为 shutdown.c + systemd.c
-- systemd 集成通过 `#ifdef OPENUPS_HAS_SYSTEMD` 条件编译
-- 支持 `make SYSTEMD=0` 构建不含 systemd 的版本
 
 更多架构与实现细节见 [TECHNICAL.md](TECHNICAL.md)。
 
@@ -87,11 +69,8 @@ sudo yum groupinstall "Development Tools"
 ### 编译
 
 ```bash
-# 使用 Makefile（默认启用 systemd 支持）
+# 使用 Makefile
 make
-
-# 不含 systemd 支持（适用于 Alpine/OpenRC 等）
-make SYSTEMD=0
 
 # 编译完成后，二进制文件位于 bin/openups
 ```

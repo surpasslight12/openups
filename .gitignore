@@ -32,3 +32,4 @@ core
 *.log
 test_output/
 graylogs/
+_codeql_detected_source_root
