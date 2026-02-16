@@ -52,7 +52,7 @@ src/
 - ✅ 单文件架构，简化构建和部署
 - ✅ 统一上下文架构（`openups_ctx_t`）
 - ✅ 零第三方依赖（仅 C 标准库和 Linux 系统调用）
-- ✅ 内置 systemd 集成（可通过 `make SYSTEMD=0` 排除）
+- ✅ 内置 systemd 集成（`sd_notify`、watchdog）
 
 补充：当前版本仅提供可执行程序，不对外提供稳定的 C 库 API。
 
@@ -152,9 +152,6 @@ sudo yum groupinstall "Development Tools"
 ```bash
 # 使用 Makefile
 make
-
-# 不含 systemd 支持
-make SYSTEMD=0
 
 # 编译完成后，二进制文件位于 bin/openups
 ```
@@ -521,9 +518,6 @@ logger_info(&logger, "target=%s interval=%d", target, interval);
 ```bash
 # 清理编译
 make clean && make
-
-# 不含 systemd
-make SYSTEMD=0
 
 # 调试版本
 make clean && make CC=gcc CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
