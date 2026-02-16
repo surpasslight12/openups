@@ -13,14 +13,11 @@ StartLimitBurst=3
 Type=notify
 NotifyAccess=main
 
-# Optional delay before starting (e.g., waiting for network stack initialization)
-Environment="OPENUPS_START_DELAY_SEC=0"
-ExecStartPre=/usr/bin/sleep ${OPENUPS_START_DELAY_SEC}
 ExecStart=/usr/local/bin/openups
 
 # Timeout configurations
-# Maximum time to wait for service startup (includes OPENUPS_START_DELAY_SEC)
-TimeoutStartSec=360
+# Maximum time to wait for service startup
+TimeoutStartSec=60
 # Maximum time for graceful shutdown
 TimeoutStopSec=10
 
@@ -32,10 +29,6 @@ RestartSec=10
 
 # Optional: enable systemd watchdog
 # WatchdogSec=30
-
-# Logging
-StandardOutput=journal
-StandardError=journal
 
 # Environment
 EnvironmentFile=-/etc/default/openups
@@ -67,11 +60,9 @@ LockPersonality=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
 RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 MemoryDenyWriteExecute=true
 PrivateDevices=true
-PrivateUsers=false
-ProcSubset=pid
 SystemCallArchitectures=native
 SystemCallFilter=@system-service @network-io
 SystemCallFilter=~@privileged @resources @mount @swap @reboot

@@ -225,6 +225,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
 
     PHASE1_SEC="${PHASE1_SEC:-12}"
     PHASE2_SEC="${PHASE2_SEC:-14}"
+    SIGNAL_TEST_SEC="${SIGNAL_TEST_SEC:-3}"
 
     RUN_TS="$(date +%Y%m%d_%H%M%S)"
     LOG_DIR="${ROOT_DIR}/graylogs/${RUN_TS}"
@@ -293,6 +294,101 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --dry-run=false \
         --log-level debug
 
+    # ---- 连续运行测试 ----
+    echo ""
+    echo "== Phase 3: 连续运行测试（信号处理 + 优雅关闭） =="
+
+    PHASE3_LOG="${LOG_DIR}/phase3_continuous_run.log"
+    PHASE4_LOG="${LOG_DIR}/phase4_sigusr1_stats.log"
+    PHASE5_LOG="${LOG_DIR}/phase5_log_only_continuous.log"
+
+    # Phase 3: SIGTERM 优雅关闭测试
+    echo "[INFO] Phase 3: 连续运行 + SIGTERM 优雅关闭"
+    set +e
+    ${SUDO} "${BIN_PATH}" \
+        --target 127.0.0.1 \
+        --interval 1 \
+        --threshold 10 \
+        --dry-run=true \
+        --log-level debug >"${PHASE3_LOG}" 2>&1 &
+    PHASE3_PID=$!
+    sleep "${SIGNAL_TEST_SEC}"
+    ${SUDO} kill -15 "${PHASE3_PID}" 2>/dev/null || true
+    wait "${PHASE3_PID}" 2>/dev/null
+    PHASE3_EXIT=$?
+    set -e
+
+    phase3_ping_count="$(count_lines "Ping successful" "${PHASE3_LOG}")"
+    phase3_graceful="$(count_lines "stopping gracefully|monitor stopped" "${PHASE3_LOG}")"
+
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    if [[ "${phase3_ping_count}" -ge 2 && "${phase3_graceful}" -ge 1 ]]; then
+        echo "  ✓ Phase 3: 连续运行 + SIGTERM 优雅关闭 (${phase3_ping_count} pings, graceful shutdown)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ Phase 3: 连续运行测试失败 (pings=${phase3_ping_count}, graceful=${phase3_graceful})"
+        tail -n 20 "${PHASE3_LOG}" || true
+        exit 1
+    fi
+
+    # Phase 4: SIGUSR1 统计信息测试
+    echo "[INFO] Phase 4: SIGUSR1 统计信息输出"
+    set +e
+    ${SUDO} "${BIN_PATH}" \
+        --target 127.0.0.1 \
+        --interval 1 \
+        --threshold 10 \
+        --dry-run=true \
+        --log-level debug >"${PHASE4_LOG}" 2>&1 &
+    PHASE4_PID=$!
+    sleep "${SIGNAL_TEST_SEC}"
+    ${SUDO} kill -10 "${PHASE4_PID}" 2>/dev/null || true
+    sleep 1
+    ${SUDO} kill -15 "${PHASE4_PID}" 2>/dev/null || true
+    wait "${PHASE4_PID}" 2>/dev/null
+    set -e
+
+    phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
+
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    if [[ "${phase4_stats}" -ge 2 ]]; then
+        echo "  ✓ Phase 4: SIGUSR1 统计信息输出 (${phase4_stats} statistics lines)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ Phase 4: SIGUSR1 统计信息测试失败 (stats=${phase4_stats})"
+        tail -n 20 "${PHASE4_LOG}" || true
+        exit 1
+    fi
+
+    # Phase 5: log-only 模式连续运行（不退出）
+    echo "[INFO] Phase 5: log-only 模式连续运行验证"
+    PHASE5_DURATION=8
+    set +e
+    ${SUDO} timeout "${PHASE5_DURATION}s" "${BIN_PATH}" \
+        --target "${TARGET_FAIL}" \
+        --interval 1 \
+        --threshold 2 \
+        --timeout "${TIMEOUT_MS}" \
+        --retries "${RETRIES}" \
+        --shutdown-mode log-only \
+        --dry-run=false \
+        --log-level debug >"${PHASE5_LOG}" 2>&1
+    PHASE5_EXIT=$?
+    set -e
+
+    phase5_log_only="$(count_lines "LOG-ONLY mode" "${PHASE5_LOG}")"
+
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    # exit code 124 = timeout killed it (expected: program kept running)
+    if [[ "${PHASE5_EXIT}" -eq 124 && "${phase5_log_only}" -ge 2 ]]; then
+        echo "  ✓ Phase 5: log-only 模式连续运行 (${phase5_log_only} log-only triggers, kept running)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ Phase 5: log-only 连续运行测试失败 (exit=${PHASE5_EXIT}, log_only=${phase5_log_only})"
+        tail -n 20 "${PHASE5_LOG}" || true
+        exit 1
+    fi
+
     phase1_trigger_count="$(count_lines "Would trigger shutdown|Shutdown triggered" "${PHASE1_LOG}")"
     phase2_log_only_count="$(count_lines "LOG-ONLY mode|mode is log-only" "${PHASE2_LOG}")"
     phase2_fail_count="$(count_lines "Ping failed" "${PHASE2_LOG}")"
@@ -311,7 +407,23 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         echo "  Ping failed lines: ${phase2_fail_count}"
         echo "  Log file: ${PHASE2_LOG}"
         echo
-        if [[ "${phase1_trigger_count}" -ge 1 && "${phase2_log_only_count}" -ge 1 ]]; then
+        echo "[Phase 3] 连续运行 + SIGTERM"
+        echo "  Ping count: ${phase3_ping_count}"
+        echo "  Graceful shutdown: ${phase3_graceful}"
+        echo "  Log file: ${PHASE3_LOG}"
+        echo
+        echo "[Phase 4] SIGUSR1 统计信息"
+        echo "  Statistics lines: ${phase4_stats}"
+        echo "  Log file: ${PHASE4_LOG}"
+        echo
+        echo "[Phase 5] log-only 连续运行"
+        echo "  LOG-ONLY triggers: ${phase5_log_only}"
+        echo "  Exit code: ${PHASE5_EXIT} (expected: 124)"
+        echo "  Log file: ${PHASE5_LOG}"
+        echo
+        if [[ "${phase1_trigger_count}" -ge 1 && "${phase2_log_only_count}" -ge 1 && \
+              "${phase3_ping_count}" -ge 2 && "${phase4_stats}" -ge 2 && \
+              "${phase5_log_only}" -ge 2 ]]; then
             echo "Result: PASS"
         else
             echo "Result: CHECK_REQUIRED"
