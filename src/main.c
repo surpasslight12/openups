@@ -1444,7 +1444,7 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     icmp6_hdr->icmp6_id = ident;
     icmp6_hdr->icmp6_seq = seq;
 
-    /* IPv6 checksum 由内核处理（细节见 TECHNICAL.md）。 */
+    /* IPv6 checksum 由内核处理（细节见 README.md）。 */
 
     /* 发送 ICMPv6 Echo Request */
     struct timespec send_time;

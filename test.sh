@@ -23,194 +23,171 @@ for arg in "$@"; do
     esac
 done
 
+# 测试计数器
+TESTS_PASSED=0
+TESTS_TOTAL=0
+
+# 通用测试函数：run_test <测试名> <命令...>
+# 成功时打印 ✓，失败时打印 ❌ 并退出
+run_test() {
+    local name="$1"
+    shift
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    echo "[${TESTS_TOTAL}] ${name}..."
+    if "$@" > /dev/null 2>&1; then
+        echo "  ✓ ${name}"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ ${name}"
+        exit 1
+    fi
+}
+
+# 验证命令输出包含预期模式
+# expect_output_match <描述> <模式(ERE)> <命令...>
+expect_output_match() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    echo "[${TESTS_TOTAL}] ${name}..."
+    if "$@" 2>&1 | grep -Eq "${pattern}"; then
+        echo "  ✓ ${name}"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ ${name}"
+        exit 1
+    fi
+}
+
 echo "========================================"
 echo "OpenUPS 自动化测试"
 echo "========================================"
 echo
 
-# 编译检查
-echo "[1/11] 编译检查..."
+# ---- 编译检查 ----
+echo "--- 编译 ---"
+TESTS_TOTAL=$((TESTS_TOTAL + 1))
+echo "[${TESTS_TOTAL}] 编译检查（无警告无错误）..."
 make clean > /dev/null 2>&1
 if make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
-    echo "❌ 编译有警告或错误"
+    echo "  ❌ 编译有警告或错误"
     make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
     exit 1
 fi
-echo "✓ 编译成功，无警告"
+echo "  ✓ 编译成功，无警告"
+TESTS_PASSED=$((TESTS_PASSED + 1))
 
-# 帮助信息
-echo "[2/11] 测试帮助信息..."
-if ! ./bin/openups --help > /dev/null 2>&1; then
-    echo "❌ 帮助信息失败"
-    exit 1
-fi
-echo "✓ 帮助信息正常"
-
-# 版本信息
-echo "[3/11] 测试版本信息..."
-if ! ./bin/openups --version > /dev/null 2>&1; then
-    echo "❌ 版本信息失败"
-    exit 1
-fi
-echo "✓ 版本信息正常"
-
-# 参数验证测试
-echo "[4/11] 测试布尔参数 --dry-run..."
-if ! ./bin/openups --help --dry-run=true > /dev/null 2>&1; then
-    echo "❌ --dry-run=true 参数解析失败"
-    exit 1
-fi
-if ! ./bin/openups --help --dry-run=false > /dev/null 2>&1; then
-    echo "❌ --dry-run=false 参数解析失败"
-    exit 1
-fi
-# 测试短选项
-if ! ./bin/openups --help -dfalse > /dev/null 2>&1; then
-    echo "❌ 短选项 -dfalse 解析失败"
-    exit 1
-fi
-echo "✓ 布尔参数和短选项解析正常"
-
-echo "[5/11] 测试环境变量优先级..."
-# 环境变量设置
-if ! OPENUPS_TARGET=127.0.0.1 OPENUPS_INTERVAL=5 OPENUPS_THRESHOLD=3 ./bin/openups --help > /dev/null 2>&1; then
-    echo "❌ 环境变量设置失败"
-    exit 1
-fi
-# 测试 CLI 优先级高于环境变量
-if ! OPENUPS_TARGET=127.0.0.1 ./bin/openups --target 8.8.8.8 --help > /dev/null 2>&1; then
-    echo "❌ CLI 参数优先级测试失败"
-    exit 1
-fi
-echo "✓ 环境变量和优先级处理正常"
-
-# 错误处理测试
-echo "[6/11] 测试空目标地址..."
-if ./bin/openups --target "" 2>&1 | grep -q "Target host cannot be empty"; then
-    echo "✓ 空目标地址被拒绝"
-else
-    echo "❌ 空目标地址检查失败"
-    exit 1
-fi
-
-# 负数间隔
-echo "[7/11] 测试负数间隔..."
-if ./bin/openups --target 127.0.0.1 --interval -1 2>&1 | \
-   grep -Eq "Interval must be positive|Invalid value for --interval"; then
-    echo "✓ 负数间隔被拒绝"
-else
-    echo "❌ 负数间隔检查失败"
-    exit 1
-fi
-
-# 零阈值
-echo "[8/11] 测试零阈值..."
-if ./bin/openups --target 127.0.0.1 --threshold 0 2>&1 | \
-   grep -Eq "Failure threshold must be positive|Invalid value for --threshold"; then
-    echo "✓ 零阈值被拒绝"
-else
-    echo "❌ 零阈值检查失败"
-    exit 1
-fi
-
-# 零超时
-echo "[9/11] 测试零超时..."
-if ./bin/openups --target 127.0.0.1 --timeout 0 2>&1 | \
-   grep -Eq "Timeout must be positive|Invalid value for --timeout"; then
-    echo "✓ 零超时被拒绝"
-else
-    echo "❌ 零超时检查失败"
-    exit 1
-fi
-
-# 注入式 target（OpenUPS 禁用 DNS，且 target 必须为 IP 字面量）
-echo "[10/11] 测试 target 注入防护..."
-if ./bin/openups --target "1.1.1.1;rm -rf /" 2>&1 | grep -Eq "Target must be a valid|DNS is disabled"; then
-    echo "✓ 注入式 target 被拒绝"
-else
-    echo "❌ target 注入防护失败"
-    exit 1
-fi
-
-# 超大包大小
-echo "[11/11] 测试超大包大小..."
-if ./bin/openups --target 127.0.0.1 --payload-size 99999 2>&1 | \
-    grep -Eq "Payload size must be between|Invalid value for --payload-size"; then
-    echo "✓ 超大包大小被拒绝"
-else
-    echo "❌ 包大小检查失败"
-    exit 1
-fi
-
-# 代码质量检查
+# ---- 基本功能 ----
 echo ""
-echo "代码质量检查..."
-errors=0
+echo "--- 基本功能 ---"
+run_test "帮助信息 (--help)" ./bin/openups --help
+run_test "版本信息 (--version)" ./bin/openups --version
 
-# 检查是否有不安全的函数
-if grep -rE "(strcpy|strcat|sprintf)\(" src/ 2>/dev/null | grep -v "//" > /dev/null; then
-    echo "  ❌ 发现不安全的字符串函数"
-    ((errors++))
+# ---- 参数解析 ----
+echo ""
+echo "--- 参数解析 ---"
+run_test "布尔参数 --dry-run=true" ./bin/openups --help --dry-run=true
+run_test "布尔参数 --dry-run=false" ./bin/openups --help --dry-run=false
+run_test "短选项 -dfalse" ./bin/openups --help -dfalse
+run_test "环境变量配置" env OPENUPS_TARGET=127.0.0.1 OPENUPS_INTERVAL=5 OPENUPS_THRESHOLD=3 ./bin/openups --help
+run_test "CLI 优先级高于环境变量" env OPENUPS_TARGET=127.0.0.1 ./bin/openups --target 8.8.8.8 --help
+
+# ---- 输入验证 ----
+echo ""
+echo "--- 输入验证 ---"
+expect_output_match "空目标地址被拒绝" \
+    "Target host cannot be empty" \
+    ./bin/openups --target ""
+
+expect_output_match "负数间隔被拒绝" \
+    "Interval must be positive|Invalid value for --interval" \
+    ./bin/openups --target 127.0.0.1 --interval -1
+
+expect_output_match "零阈值被拒绝" \
+    "Failure threshold must be positive|Invalid value for --threshold" \
+    ./bin/openups --target 127.0.0.1 --threshold 0
+
+expect_output_match "零超时被拒绝" \
+    "Timeout must be positive|Invalid value for --timeout" \
+    ./bin/openups --target 127.0.0.1 --timeout 0
+
+expect_output_match "注入式 target 被拒绝" \
+    "Target must be a valid|DNS is disabled" \
+    ./bin/openups --target "1.1.1.1;rm -rf /"
+
+expect_output_match "超大包大小被拒绝" \
+    "Payload size must be between|Invalid value for --payload-size" \
+    ./bin/openups --target 127.0.0.1 --payload-size 99999
+
+# ---- 代码质量检查 ----
+echo ""
+echo "--- 代码质量 ---"
+quality_errors=0
+
+# 检查不安全的字符串函数
+if grep -rnE '\b(strcpy|strcat|sprintf)\s*\(' src/ 2>/dev/null > /dev/null; then
+    echo "  ❌ 发现不安全的字符串函数（strcpy/strcat/sprintf）"
+    quality_errors=$((quality_errors + 1))
 fi
 
-# 检查是否有 syslog 遗留代码
-if grep -ri "syslog" src/ 2>/dev/null | grep -v "^Binary"; then
+# 检查 syslog 遗留代码
+if grep -rn 'syslog' src/ 2>/dev/null > /dev/null; then
     echo "  ⚠️ 发现 syslog 遗留代码"
-    ((errors++))
+    quality_errors=$((quality_errors + 1))
 fi
 
-if [ $errors -eq 0 ]; then
-    echo "✓ 代码质量良好"
-else
-    echo "  ⚠️ 发现 $errors 个需要关注的问题"
+if [ $quality_errors -eq 0 ]; then
+    echo "  ✓ 代码质量良好（无不安全函数，无 syslog 遗留）"
 fi
 
-# 二进制体积检查
+# ---- 二进制体积 ----
 echo ""
-echo "二进制体积分析..."
+echo "--- 二进制体积 ---"
 binary_size=$(stat -c %s bin/openups 2>/dev/null || stat -f %z bin/openups 2>/dev/null)
 if [ -n "$binary_size" ]; then
+    size_kb=$(echo "$binary_size" | awk '{printf "%.1f", $1/1024}')
     if [ "$binary_size" -lt 524288 ]; then  # < 512 KB
-        echo "✓ 二进制体积: $(echo "$binary_size" | awk '{printf "%.1f KB", $1/1024}')"
+        echo "  ✓ 二进制体积: ${size_kb} KB"
     else
-        echo "⚠️ 二进制体积偏大: $(echo "$binary_size" | awk '{printf "%.1f KB", $1/1024}')"
+        echo "  ⚠️ 二进制体积偏大: ${size_kb} KB"
     fi
 fi
 
-# 安全加固检查
+# ---- 安全加固 ----
 echo ""
-echo "安全加固检查..."
+echo "--- 安全加固 ---"
 sec_errors=0
 if command -v readelf > /dev/null 2>&1; then
-    # 检查 Full RELRO
+    # RELRO
     if readelf -l bin/openups 2>/dev/null | grep -q "GNU_RELRO"; then
         echo "  ✓ RELRO: enabled"
     else
         echo "  ❌ RELRO: not found"
-        ((sec_errors++))
+        sec_errors=$((sec_errors + 1))
     fi
-    # 检查 PIE
+    # PIE
     if readelf -h bin/openups 2>/dev/null | grep -q "DYN"; then
         echo "  ✓ PIE: enabled"
     else
         echo "  ❌ PIE: not found"
-        ((sec_errors++))
+        sec_errors=$((sec_errors + 1))
     fi
-    # 检查 Stack Canary
+    # Stack Canary
     if readelf -s bin/openups 2>/dev/null | grep -q "__stack_chk_fail"; then
         echo "  ✓ Stack Canary: enabled"
     else
         echo "  ❌ Stack Canary: not found"
-        ((sec_errors++))
+        sec_errors=$((sec_errors + 1))
     fi
-    # 检查 NX (No Execute Stack)
+    # NX Stack
     if readelf -l bin/openups 2>/dev/null | grep "GNU_STACK" | grep -qv "RWE"; then
         echo "  ✓ NX Stack: enabled"
     else
         echo "  ❌ NX Stack: not found"
-        ((sec_errors++))
+        sec_errors=$((sec_errors + 1))
     fi
-    # 检查 FORTIFY_SOURCE
+    # FORTIFY_SOURCE
     if readelf -s bin/openups 2>/dev/null | grep -q "__.*_chk"; then
         echo "  ✓ FORTIFY_SOURCE: enabled"
     else
@@ -225,7 +202,7 @@ fi
 
 echo
 echo "========================================"
-echo "✓ 基础测试通过！"
+echo "✓ 基础测试通过！(${TESTS_PASSED}/${TESTS_TOTAL})"
 echo "========================================"
 echo
 ls -lh bin/openups

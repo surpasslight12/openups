@@ -135,6 +135,4 @@ help:
 	@echo "  src/main.c - All source code in a single file"
 	@echo ""
 	@echo "Documentation:"
-	@echo "  README.md         - Project overview and features"
-	@echo "  TECHNICAL.md      - Architecture and development guide"
-	@echo "  CONTRIBUTING.md   - Contribution guidelines"
+	@echo "  README.md         - Project overview, technical details, and development guide"
