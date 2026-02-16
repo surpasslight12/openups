@@ -225,6 +225,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
 
     PHASE1_SEC="${PHASE1_SEC:-12}"
     PHASE2_SEC="${PHASE2_SEC:-14}"
+    SIGNAL_TEST_SEC="${SIGNAL_TEST_SEC:-3}"
 
     RUN_TS="$(date +%Y%m%d_%H%M%S)"
     LOG_DIR="${ROOT_DIR}/graylogs/${RUN_TS}"
@@ -311,7 +312,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --dry-run=true \
         --log-level debug >"${PHASE3_LOG}" 2>&1 &
     PHASE3_PID=$!
-    sleep 3
+    sleep "${SIGNAL_TEST_SEC}"
     ${SUDO} kill -15 "${PHASE3_PID}" 2>/dev/null || true
     wait "${PHASE3_PID}" 2>/dev/null
     PHASE3_EXIT=$?
@@ -340,7 +341,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --dry-run=true \
         --log-level debug >"${PHASE4_LOG}" 2>&1 &
     PHASE4_PID=$!
-    sleep 3
+    sleep "${SIGNAL_TEST_SEC}"
     ${SUDO} kill -10 "${PHASE4_PID}" 2>/dev/null || true
     sleep 1
     ${SUDO} kill -15 "${PHASE4_PID}" 2>/dev/null || true
