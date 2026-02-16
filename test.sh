@@ -125,14 +125,14 @@ echo ""
 echo "--- 代码质量 ---"
 quality_errors=0
 
-# 检查不安全的字符串函数（排除注释）
-if grep -rnE '\b(strcpy|strcat|sprintf)\s*\(' src/ 2>/dev/null | grep -v '^\s*//' | grep -v '// .*\b(strcpy|strcat|sprintf)' > /dev/null; then
+# 检查不安全的字符串函数
+if grep -rnE '\b(strcpy|strcat|sprintf)\s*\(' src/ 2>/dev/null > /dev/null; then
     echo "  ❌ 发现不安全的字符串函数（strcpy/strcat/sprintf）"
     quality_errors=$((quality_errors + 1))
 fi
 
 # 检查 syslog 遗留代码
-if grep -rnl 'syslog' src/ 2>/dev/null | grep -v "^Binary" > /dev/null; then
+if grep -rn 'syslog' src/ 2>/dev/null > /dev/null; then
     echo "  ⚠️ 发现 syslog 遗留代码"
     quality_errors=$((quality_errors + 1))
 fi
