@@ -1,8 +1,9 @@
 /* ============================================================
- * Standard library includes (deduplicated)
+ * Includes
  * ============================================================ */
+
+/* --- System / POSIX --- */
 #include <arpa/inet.h>
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -16,224 +17,186 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdckdint.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#ifdef _WIN32
-#error "This program currently targets Linux."
-#endif
-
 /* ============================================================
- * Version / name defines
+ * Version / program name
  * ============================================================ */
-#define OPENUPS_VERSION "1.0.0"
+
+#define OPENUPS_VERSION      "1.0.0"
 #define OPENUPS_PROGRAM_NAME "openups"
 
 /* ============================================================
- * Compiler hint macros
+ * Compiler hint macros  (GCC 14+ / Clang 15+ required)
  * ============================================================ */
-#if defined(__GNUC__) || defined(__clang__)
-#define OPENUPS_LIKELY(x) __builtin_expect(!!(x), 1)
+
+#define OPENUPS_LIKELY(x)   __builtin_expect(!!(x), 1)
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define OPENUPS_HOT __attribute__((hot))
-#define OPENUPS_COLD __attribute__((cold))
-#define OPENUPS_PURE __attribute__((pure))
-#define OPENUPS_CONST __attribute__((const))
-#define OPENUPS_FLATTEN __attribute__((flatten))
-#else
-#define OPENUPS_LIKELY(x) (x)
-#define OPENUPS_UNLIKELY(x) (x)
-#define OPENUPS_HOT
-#define OPENUPS_COLD
-#define OPENUPS_PURE
-#define OPENUPS_CONST
-#define OPENUPS_FLATTEN
-#endif
-
-/* ============================================================
- * C23 checked arithmetic fallback
- * ============================================================ */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
-#include <stdckdint.h>
-#else
-static inline bool openups_ckd_add_u64(uint64_t* result, uint64_t a, uint64_t b)
-{
-    if (b > UINT64_MAX - a) {
-        return true;
-    }
-    *result = a + b;
-    return false;
-}
-
-static inline bool openups_ckd_mul_u64(uint64_t* result, uint64_t a, uint64_t b)
-{
-    if (a != 0 && b > UINT64_MAX / a) {
-        return true;
-    }
-    *result = a * b;
-    return false;
-}
-
-#define ckd_add(result, a, b) openups_ckd_add_u64((result), (uint64_t)(a), (uint64_t)(b))
-#define ckd_mul(result, a, b) openups_ckd_mul_u64((result), (uint64_t)(a), (uint64_t)(b))
-#endif
-
-/* ============================================================
- * AVX2 feature detection
- * ============================================================ */
-#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__i386__))
-#include <immintrin.h>
-#define OPENUPS_CAN_USE_CPU_SUPPORTS 1
-#else
-#define OPENUPS_CAN_USE_CPU_SUPPORTS 0
-#endif
+#define OPENUPS_HOT         __attribute__((hot))
+#define OPENUPS_COLD        __attribute__((cold))
+#define OPENUPS_PURE        __attribute__((pure))
+#define OPENUPS_CONST       __attribute__((const))
 
 /* ============================================================
  * Type definitions
  * ============================================================ */
 
-/* --- log_level_t --- */
+/* --- Log level --- */
 typedef enum {
-    LOG_LEVEL_SILENT = -1,
+    LOG_LEVEL_SILENT = -1,  /* completely silent, suitable for systemd */
     LOG_LEVEL_ERROR = 0,
     LOG_LEVEL_WARN = 1,
-    LOG_LEVEL_INFO = 2,
-    LOG_LEVEL_DEBUG = 3
+    LOG_LEVEL_INFO = 2,     /* default */
+    LOG_LEVEL_DEBUG = 3     /* verbose: prints per-ping latency */
 } log_level_t;
 
-/* --- logger_t --- */
+/* --- Logger --- */
 typedef struct {
     log_level_t level;
     bool enable_timestamp;
 } logger_t;
 
-/* --- metrics_t --- */
+/* --- Metrics --- */
 typedef struct {
     uint64_t total_pings;
     uint64_t successful_pings;
     uint64_t failed_pings;
-    double total_latency;
-    double min_latency;
-    double max_latency;
+    double   total_latency;
+    double   min_latency;    /* -1.0 sentinel: not yet recorded */
+    double   max_latency;    /* -1.0 sentinel: not yet recorded */
     uint64_t start_time_ms;
 } metrics_t;
 
-/* --- shutdown_mode_t --- */
+/* --- Shutdown mode --- */
 typedef enum {
     SHUTDOWN_MODE_IMMEDIATE,
     SHUTDOWN_MODE_DELAYED,
     SHUTDOWN_MODE_LOG_ONLY
 } shutdown_mode_t;
 
-/* --- config_t --- */
+/* --- Configuration --- */
 typedef struct {
+    /* Network */
     char target[256];
-    int interval_sec;
-    int fail_threshold;
-    int timeout_ms;
-    int payload_size;
-    int max_retries;
+    int  interval_sec;
+    int  fail_threshold;
+    int  timeout_ms;
+    int  payload_size;
+    int  max_retries;
     bool use_ipv6;
 
+    /* Shutdown */
     shutdown_mode_t shutdown_mode;
-    int delay_minutes;
+    int  delay_minutes;
     bool dry_run;
 
-    bool enable_timestamp;
+    /* Logging */
+    bool        enable_timestamp;
     log_level_t log_level;
 
+    /* Integration */
     bool enable_systemd;
     bool enable_watchdog;
 } config_t;
 
-/* --- ping_result_t --- */
+/* --- Ping result --- */
 typedef struct {
-    bool success;
+    bool   success;
     double latency_ms;
-    char error_msg[256];
+    char   error_msg[256];
 } ping_result_t;
 
-/* --- icmp_pinger_t --- */
+/* --- ICMP pinger --- */
 typedef struct {
-    bool use_ipv6;
-    int sockfd;
+    bool     use_ipv6;
+    int      sockfd;
     uint16_t sequence;
+
+    /* Send buffer (heap-allocated, reused across pings) */
     uint8_t* send_buf;
-    size_t send_buf_capacity;
-    size_t payload_filled_size;
-    bool cached_target_valid;
-    char cached_target[256];
+    size_t   send_buf_capacity;
+    size_t   payload_filled_size;
+
+    /* Resolved address cache */
+    bool                    cached_target_valid;
+    char                    cached_target[256];
     struct sockaddr_storage cached_addr;
-    socklen_t cached_addr_len;
+    socklen_t               cached_addr_len;
 } icmp_pinger_t;
 
+/* Callbacks used by icmp_pinger_ping_ex */
 typedef void (*icmp_tick_fn)(void* user_data);
 typedef bool (*icmp_should_stop_fn)(void* user_data);
 
-/* --- systemd_notifier_t --- */
+/* --- systemd notifier --- */
 typedef struct {
-    bool enabled;
-    int sockfd;
+    bool     enabled;
+    int      sockfd;
     uint64_t watchdog_usec;
-    struct sockaddr_un addr;
-    socklen_t addr_len;
     uint64_t last_watchdog_ms;
     uint64_t last_status_ms;
-    char last_status[256];
+    char     last_status[256];
 } systemd_notifier_t;
 
-/* --- openups_ctx_t --- */
+/* --- Monitor context (top-level object) --- */
 typedef struct openups_context {
     volatile sig_atomic_t stop_flag;
     volatile sig_atomic_t print_stats_flag;
-    int consecutive_fails;
+    int  consecutive_fails;
 
-    bool systemd_enabled;
+    bool     systemd_enabled;
     uint64_t watchdog_interval_ms;
-    uint64_t last_ping_time_ms;
-    uint64_t start_time_ms;
 
-    config_t config;
-    logger_t logger;
-    metrics_t metrics;
-    icmp_pinger_t pinger;
+    config_t           config;
+    logger_t           logger;
+    metrics_t          metrics;
+    icmp_pinger_t      pinger;
     systemd_notifier_t systemd;
 } openups_ctx_t;
 
 /* ============================================================
  * Forward declarations
  * ============================================================ */
+
+/* --- Utility --- */
+static uint64_t get_monotonic_ms(void);
+static OPENUPS_PURE bool is_safe_path(const char* restrict path);
+
+/* --- Logger --- */
 static OPENUPS_CONST const char* log_level_to_string(log_level_t level);
 static OPENUPS_PURE log_level_t string_to_log_level(const char* restrict str);
+
+/* --- Config --- */
 static OPENUPS_CONST const char* shutdown_mode_to_string(shutdown_mode_t mode);
 static bool shutdown_mode_parse(const char* restrict str, shutdown_mode_t* restrict out_mode);
-static OPENUPS_PURE bool is_safe_path(const char* restrict path);
-static uint64_t get_monotonic_ms(void);
 static OPENUPS_COLD void config_print_usage(void);
 static OPENUPS_COLD void config_print_version(void);
 
 /* ============================================================
  * Compile-time assertions
  * ============================================================ */
-static_assert(sizeof(uint64_t) == 8, "uint64_t must be 8 bytes");
-static_assert(sizeof(time_t) >= 4, "time_t must be at least 4 bytes");
-static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
-static_assert(sizeof(struct icmp6_hdr) >= 8, "icmp6_hdr must be at least 8 bytes");
-static_assert(sizeof(sig_atomic_t) >= sizeof(int), "sig_atomic_t must be at least int size");
+
+static_assert(sizeof(uint64_t) == 8,                 "uint64_t must be 8 bytes");
+static_assert(sizeof(time_t) >= 4,                   "time_t must be at least 4 bytes");
+static_assert(sizeof(struct icmphdr) >= 8,           "icmphdr must be at least 8 bytes");
+static_assert(sizeof(struct icmp6_hdr) >= 8,         "icmp6_hdr must be at least 8 bytes");
+static_assert(sizeof(sig_atomic_t) >= sizeof(int),   "sig_atomic_t must be at least int size");
+
 /* ============================================================
- * Base utility functions
+ * Utility functions
  * ============================================================ */
 
+/* Monotonic clock in milliseconds; returns UINT64_MAX on overflow or error. */
 static uint64_t get_monotonic_ms(void)
 {
     struct timespec ts;
@@ -252,6 +215,7 @@ static uint64_t get_monotonic_ms(void)
     return timestamp;
 }
 
+/* Format current wall-clock time into buffer as "YYYY-MM-DD HH:MM:SS.mmm". */
 static char* get_timestamp_str(char* restrict buffer, size_t size)
 {
     if (OPENUPS_UNLIKELY(buffer == NULL || size == 0)) {
@@ -273,6 +237,7 @@ static char* get_timestamp_str(char* restrict buffer, size_t size)
     return buffer;
 }
 
+/* Read an environment variable as bool; recognises "true"/"false" (case-insensitive). */
 static bool get_env_bool(const char* restrict name, bool default_value)
 {
     if (name == NULL) {
@@ -291,6 +256,7 @@ static bool get_env_bool(const char* restrict name, bool default_value)
     return default_value;
 }
 
+/* Read an environment variable as a decimal integer. */
 static int get_env_int(const char* restrict name, int default_value)
 {
     if (name == NULL) {
@@ -309,6 +275,7 @@ static int get_env_int(const char* restrict name, int default_value)
     return (int)result;
 }
 
+/* Reject path strings that contain shell-special characters or ".." traversal. */
 static OPENUPS_PURE bool is_safe_path(const char* restrict path)
 {
     if (OPENUPS_UNLIKELY(path == NULL || *path == '\0')) {
@@ -330,10 +297,12 @@ static OPENUPS_PURE bool is_safe_path(const char* restrict path)
     }
     return true;
 }
+
 /* ============================================================
  * Logger functions
  * ============================================================ */
 
+/* Initialise logger with the given level and timestamp preference. */
 static void logger_init(logger_t* restrict logger, log_level_t level, bool enable_timestamp)
 {
     if (logger == NULL) {
@@ -343,14 +312,7 @@ static void logger_init(logger_t* restrict logger, log_level_t level, bool enabl
     logger->enable_timestamp = enable_timestamp;
 }
 
-static void logger_destroy(logger_t* restrict logger)
-{
-    if (logger == NULL) {
-        return;
-    }
-    /* 当前 logger 不持有动态资源（预留给未来扩展，如日志文件句柄）。 */
-}
-
+/* Map log_level_t to its canonical string name. */
 static OPENUPS_CONST const char* log_level_to_string(log_level_t level)
 {
     switch (level) {
@@ -363,6 +325,7 @@ static OPENUPS_CONST const char* log_level_to_string(log_level_t level)
     }
 }
 
+/* Parse a log-level string (case-insensitive); returns LOG_LEVEL_INFO on unknown input. */
 static OPENUPS_PURE log_level_t string_to_log_level(const char* restrict str)
 {
     if (str == NULL) {
@@ -378,6 +341,7 @@ static OPENUPS_PURE log_level_t string_to_log_level(const char* restrict str)
     return LOG_LEVEL_INFO;
 }
 
+/* Internal: format msg and write to stderr with optional timestamp prefix. */
 static void log_message(logger_t* restrict logger, log_level_t level, const char* restrict msg)
 {
     if (OPENUPS_UNLIKELY(logger == NULL || msg == NULL)) {
@@ -400,9 +364,9 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
     }
 }
 
-OPENUPS_HOT static void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
-    __attribute__((format(printf, 2, 3)));
-OPENUPS_HOT static void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
+/* Log at DEBUG level (only when log_level >= DEBUG). */
+[[gnu::format(printf, 2, 3)]] OPENUPS_HOT
+static void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
 {
     if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG)) {
         return;
@@ -415,9 +379,9 @@ OPENUPS_HOT static void logger_debug(logger_t* restrict logger, const char* rest
     log_message(logger, LOG_LEVEL_DEBUG, buffer);
 }
 
-OPENUPS_HOT static void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
-    __attribute__((format(printf, 2, 3)));
-OPENUPS_HOT static void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
+/* Log at INFO level. */
+[[gnu::format(printf, 2, 3)]] OPENUPS_HOT
+static void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
 {
     if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_INFO) {
         return;
@@ -430,8 +394,8 @@ OPENUPS_HOT static void logger_info(logger_t* restrict logger, const char* restr
     log_message(logger, LOG_LEVEL_INFO, buffer);
 }
 
-static void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+/* Log at WARN level. */
+[[gnu::format(printf, 2, 3)]]
 static void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
 {
     if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_WARN) {
@@ -445,9 +409,9 @@ static void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...
     log_message(logger, LOG_LEVEL_WARN, buffer);
 }
 
-OPENUPS_COLD static void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
-    __attribute__((format(printf, 2, 3)));
-OPENUPS_COLD static void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
+/* Log at ERROR level (always shown unless SILENT). */
+[[gnu::format(printf, 2, 3)]] OPENUPS_COLD
+static void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
 {
     if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_ERROR)) {
         return;
@@ -459,10 +423,12 @@ OPENUPS_COLD static void logger_error(logger_t* restrict logger, const char* res
     va_end(args);
     log_message(logger, LOG_LEVEL_ERROR, buffer);
 }
+
 /* ============================================================
  * Metrics functions
  * ============================================================ */
 
+/* Initialise metrics; min/max latency use -1.0 as "not yet recorded" sentinel. */
 static void metrics_init(metrics_t* metrics)
 {
     if (metrics == NULL) {
@@ -472,11 +438,12 @@ static void metrics_init(metrics_t* metrics)
     metrics->successful_pings = 0;
     metrics->failed_pings = 0;
     metrics->total_latency = 0.0;
-    metrics->min_latency = -1.0;  /* 哨兵值：-1.0 表示「尚未记录」，延迟不可能为负 */
-    metrics->max_latency = -1.0;  /* 哨兵值：-1.0 表示「尚未记录」 */
+    metrics->min_latency = -1.0;  /* -1.0 sentinel: not yet recorded */
+    metrics->max_latency = -1.0;
     metrics->start_time_ms = get_monotonic_ms();
 }
 
+/* Record a successful ping and update latency statistics. */
 OPENUPS_HOT static void metrics_record_success(metrics_t* metrics, double latency_ms)
 {
     if (OPENUPS_UNLIKELY(metrics == NULL)) {
@@ -493,6 +460,7 @@ OPENUPS_HOT static void metrics_record_success(metrics_t* metrics, double latenc
     }
 }
 
+/* Record a failed ping. */
 OPENUPS_HOT static void metrics_record_failure(metrics_t* metrics)
 {
     if (OPENUPS_UNLIKELY(metrics == NULL)) {
@@ -502,6 +470,7 @@ OPENUPS_HOT static void metrics_record_failure(metrics_t* metrics)
     metrics->failed_pings++;
 }
 
+/* Return success rate as a percentage [0.0, 100.0]. */
 static OPENUPS_PURE double metrics_success_rate(const metrics_t* metrics)
 {
     if (metrics == NULL || metrics->total_pings == 0) {
@@ -510,6 +479,7 @@ static OPENUPS_PURE double metrics_success_rate(const metrics_t* metrics)
     return (double)metrics->successful_pings / (double)metrics->total_pings * 100.0;
 }
 
+/* Return average latency of successful pings in milliseconds. */
 static OPENUPS_PURE double metrics_avg_latency(const metrics_t* metrics)
 {
     if (metrics == NULL || metrics->successful_pings == 0) {
@@ -518,6 +488,7 @@ static OPENUPS_PURE double metrics_avg_latency(const metrics_t* metrics)
     return metrics->total_latency / (double)metrics->successful_pings;
 }
 
+/* Return elapsed seconds since metrics_init was called. */
 static uint64_t metrics_uptime_seconds(const metrics_t* metrics)
 {
     if (metrics == NULL) {
@@ -530,10 +501,14 @@ static uint64_t metrics_uptime_seconds(const metrics_t* metrics)
     }
     return (now_ms - metrics->start_time_ms) / 1000ULL;
 }
+
 /* ============================================================
  * Config functions
  * ============================================================ */
 
+/* --- Argument parsers --- */
+
+/* Parse optional boolean CLI argument; NULL arg means flag was given without value (→ true). */
 static bool parse_bool_arg(const char* arg, bool* out_value)
 {
     if (OPENUPS_UNLIKELY(out_value == NULL)) {
@@ -554,6 +529,7 @@ static bool parse_bool_arg(const char* arg, bool* out_value)
     return false;
 }
 
+/* Parse a decimal integer CLI argument, validate range, and print error on failure. */
 static bool parse_int_arg(const char* arg, int* out_value, int min_value, int max_value,
                           const char* restrict name)
 {
@@ -576,6 +552,7 @@ static bool parse_int_arg(const char* arg, int* out_value, int min_value, int ma
     return true;
 }
 
+/* Return true if target is a valid IPv4/IPv6 literal (DNS is disabled). */
 static bool is_valid_ip_literal(const char* restrict target, bool use_ipv6)
 {
     if (target == NULL || target[0] == '\0') {
@@ -606,6 +583,9 @@ static bool shutdown_mode_parse(const char* restrict str, shutdown_mode_t* restr
     return false;
 }
 
+/* --- Config lifecycle --- */
+
+/* Fill config with built-in defaults (dry_run=true for safety). */
 static void config_init_default(config_t* restrict config)
 {
     if (config == NULL) {
@@ -627,6 +607,7 @@ static void config_init_default(config_t* restrict config)
     config->enable_watchdog = true;
 }
 
+/* Override defaults with values from OPENUPS_* environment variables. */
 static void config_load_from_env(config_t* restrict config)
 {
     if (config == NULL) {
@@ -634,7 +615,7 @@ static void config_load_from_env(config_t* restrict config)
     }
     const char* value;
     value = getenv("OPENUPS_TARGET");
-    if (value) {
+    if (value != NULL) {
         snprintf(config->target, sizeof(config->target), "%s", value);
     }
     config->interval_sec = get_env_int("OPENUPS_INTERVAL", config->interval_sec);
@@ -661,6 +642,7 @@ static void config_load_from_env(config_t* restrict config)
     config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
 }
 
+/* Parse command-line arguments (highest priority); returns false on parse error. */
 static bool config_load_from_cmdline(config_t* restrict config, int argc, char** restrict argv)
 {
     if (config == NULL || argv == NULL) {
@@ -762,6 +744,7 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
     return true;
 }
 
+/* Validate the fully-merged config; writes a human-readable error into error_msg on failure. */
 static bool config_validate(const config_t* restrict config, char* restrict error_msg, size_t error_size)
 {
     if (config == NULL || error_msg == NULL || error_size == 0) {
@@ -810,6 +793,7 @@ static bool config_validate(const config_t* restrict config, char* restrict erro
     return true;
 }
 
+/* Print config summary (used at DEBUG log level on startup). */
 OPENUPS_COLD static void config_print(const config_t* restrict config)
 {
     if (config == NULL) {
@@ -886,107 +870,34 @@ OPENUPS_COLD static void config_print_version(void)
     printf("%s version %s\n", OPENUPS_PROGRAM_NAME, OPENUPS_VERSION);
     printf("OpenUPS network monitor\n");
 }
+
 /* ============================================================
  * ICMP functions
  * ============================================================ */
 
-/* ICMP 校验和（IPv4 需要；IPv6 由内核处理）。 */
-static uint16_t calculate_checksum_scalar(const void* data, size_t len)
+/* --- Internal helpers --- */
+
+/* Compute the standard ones-complement ICMP checksum (IPv4 only; IPv6 is done by the kernel). */
+static uint16_t calculate_checksum(const void* data, size_t len)
 {
     const uint16_t* buf = (const uint16_t*)data;
     uint32_t sum = 0;
 
-    /* 累加 16-bit words */
     for (size_t i = 0; i < len / 2; i++) {
         sum += buf[i];
     }
-
-    /* 奇数字节：按原字节值直接累加。 */
     if (len % 2) {
         sum += ((const uint8_t*)data)[len - 1];
     }
-
-    /* 处理进位 */
     while (sum >> 16) {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-
-    return ~sum;
-}
-
-#if OPENUPS_CAN_USE_CPU_SUPPORTS
-__attribute__((target("avx2")))
-static uint16_t calculate_checksum_avx2(const void* data, size_t len)
-{
-    const uint8_t* bytes = (const uint8_t*)data;
-    uint32_t sum = 0;
-
-    /* Process 32-byte blocks (16 x uint16_t). */
-    size_t i = 0;
-
-    const __m256i mask00ff = _mm256_set1_epi16(0x00FF);
-    const __m256i ones = _mm256_set1_epi16(1);
-    __m256i acc32 = _mm256_setzero_si256();
-
-    size_t vec_len = len & ~(size_t)31;
-    for (; i < vec_len; i += 32) {
-        __m256i v = _mm256_loadu_si256((const __m256i*)(const void*)(bytes + i));
-
-        /* Interpret as 16-bit little-endian words:
-         * word = even_byte + (odd_byte << 8)
-         */
-        __m256i even16 = _mm256_and_si256(v, mask00ff);
-        __m256i odd16 = _mm256_and_si256(_mm256_srli_epi16(v, 8), mask00ff);
-
-        /* Pairwise sum into 32-bit lanes. */
-        __m256i even32 = _mm256_madd_epi16(even16, ones);
-        __m256i odd32 = _mm256_madd_epi16(odd16, ones);
-        __m256i words32 = _mm256_add_epi32(even32, _mm256_slli_epi32(odd32, 8));
-
-        acc32 = _mm256_add_epi32(acc32, words32);
-    }
-
-    /* Horizontal sum of 8 x u32 lanes. */
-    __m128i lo = _mm256_castsi256_si128(acc32);
-    __m128i hi = _mm256_extracti128_si256(acc32, 1);
-    __m128i s = _mm_add_epi32(lo, hi);
-    s = _mm_hadd_epi32(s, s);
-    s = _mm_hadd_epi32(s, s);
-    sum += (uint32_t)_mm_cvtsi128_si32(s);
-
-    /* Tail: process remaining 16-bit words scalar. */
-    size_t tail_start = vec_len;
-    const uint16_t* tail16 = (const uint16_t*)(const void*)(bytes + tail_start);
-    size_t tail_words = (len - tail_start) / 2;
-    for (size_t w = 0; w < tail_words; w++) {
-        sum += tail16[w];
-    }
-
-    /* Odd byte: added as-is (not shifted). */
-    if (len % 2) {
-        sum += bytes[len - 1];
-    }
-
-    while (sum >> 16) {
-        sum = (sum & 0xFFFFU) + (sum >> 16);
-    }
-
     return (uint16_t)(~sum);
 }
-#endif
 
-static uint16_t calculate_checksum(const void* data, size_t len)
-{
-#if OPENUPS_CAN_USE_CPU_SUPPORTS
-    /* GCC/Clang on x86: safe runtime dispatch. */
-    if (__builtin_cpu_supports("avx2")) {
-        return calculate_checksum_avx2(data, len);
-    }
-#endif
-    return calculate_checksum_scalar(data, len);
-}
+/* --- Pinger lifecycle --- */
 
-/* 初始化 ICMP pinger（需要 CAP_NET_RAW 权限） */
+/* Initialise ICMP pinger and open raw socket (requires CAP_NET_RAW). */
 static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
                              char* restrict error_msg, size_t error_size)
 {
@@ -1005,22 +916,18 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
     pinger->cached_addr_len = 0;
 
-    /* 创建 raw socket */
+    /* Create raw socket */
     int family = use_ipv6 ? AF_INET6 : AF_INET;
     int protocol = use_ipv6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
 
-    int sock_type = SOCK_RAW;
-#ifdef SOCK_CLOEXEC
-    sock_type |= SOCK_CLOEXEC;
-#endif
-    pinger->sockfd = socket(family, sock_type, protocol);
+    pinger->sockfd = socket(family, SOCK_RAW | SOCK_CLOEXEC, protocol);
     if (pinger->sockfd < 0) {
         snprintf(error_msg, error_size, "Failed to create socket: %s (require root or CAP_NET_RAW)",
                  strerror(errno));
         return false;
     }
 
-    /* IPv6: checksum 由内核处理；尽力设置 IPV6_CHECKSUM（不支持时继续运行）。 */
+    /* IPv6: checksum is handled by the kernel; set IPV6_CHECKSUM best-effort (continue on EINVAL/ENOPROTOOPT) */
     if (use_ipv6) {
         int offset = (int)offsetof(struct icmp6_hdr, icmp6_cksum);
         if (setsockopt(pinger->sockfd, IPPROTO_IPV6, IPV6_CHECKSUM, &offset,
@@ -1035,7 +942,7 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
         }
     }
 
-    /* 非阻塞：避免极端情况下 recvfrom 意外阻塞，配合 poll + EAGAIN 逻辑 */
+    /* Non-blocking: prevents recvfrom from blocking unexpectedly; paired with poll + EAGAIN logic */
     int flags = fcntl(pinger->sockfd, F_GETFL, 0);
     if (flags >= 0) {
         (void)fcntl(pinger->sockfd, F_SETFL, flags | O_NONBLOCK);
@@ -1044,7 +951,7 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     return true;
 }
 
-/* 销毁 ICMP pinger 并关闭 raw socket */
+/* Close raw socket and free the send buffer. */
 static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
 {
     if (pinger == NULL) {
@@ -1067,9 +974,9 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
     pinger->cached_addr_len = 0;
 }
 
-/* 解析目标地址 (IPv4 或 IPv6)
- * 约定: 仅支持 IP 字面量，不做 DNS 解析
- */
+/* --- Packet helpers --- */
+
+/* Resolve target IP literal into a sockaddr (no DNS); caching is handled by the caller. */
 static bool resolve_target(const char* restrict target, bool use_ipv6,
                            struct sockaddr_storage* restrict addr, socklen_t* restrict addr_len,
                            char* restrict error_msg, size_t error_size)
@@ -1102,6 +1009,7 @@ static bool resolve_target(const char* restrict target, bool use_ipv6,
     return true;
 }
 
+/* Grow the pinger send buffer to at least `need` bytes; resets payload fill state on realloc. */
 static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
                                char* restrict error_msg, size_t error_size)
 {
@@ -1113,7 +1021,6 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
         return true;
     }
 
-    uint8_t* old_buf = pinger->send_buf;
     uint8_t* new_buf = (uint8_t*)realloc(pinger->send_buf, need);
     if (new_buf == NULL) {
         snprintf(error_msg, error_size, "Memory allocation failed");
@@ -1122,12 +1029,12 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
 
     pinger->send_buf = new_buf;
     pinger->send_buf_capacity = need;
-    if (new_buf != old_buf) {
-        pinger->payload_filled_size = 0;
-    }
+    /* realloc may move the buffer; reset payload fill state */
+    pinger->payload_filled_size = 0;
     return true;
 }
 
+/* Write a repeating 0x00..0xFF byte pattern into the payload region; skips if already filled. */
 static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_size,
                                  size_t payload_size)
 {
@@ -1151,13 +1058,14 @@ static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_s
     pinger->payload_filled_size = payload_size;
 }
 
+/* Increment and return the next sequence number; skips 0. */
 static uint16_t next_sequence(icmp_pinger_t* restrict pinger)
 {
     if (pinger == NULL) {
         return 1;
     }
 
-    /* 0 作为序列号可用但不常见；这里避免长期停留在 0。 */
+    /* Skip sequence number 0 */
     pinger->sequence = (uint16_t)(pinger->sequence + 1);
     if (pinger->sequence == 0) {
         pinger->sequence = 1;
@@ -1165,6 +1073,9 @@ static uint16_t next_sequence(icmp_pinger_t* restrict pinger)
     return pinger->sequence;
 }
 
+/* Poll fd until readable, deadline passes, or should_stop fires.
+ * Fires tick callback periodically (every ~1 s) while waiting.
+ * Returns 0 on readable, -1 on timeout/error (errno set), -2 on stop request. */
 static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn tick,
                                    void* tick_user_data, icmp_should_stop_fn should_stop,
                                    void* stop_user_data)
@@ -1188,7 +1099,7 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
             return -1;
         }
 
-        /* 默认每 1 秒 tick 一次，避免过于频繁 */
+        /* Default: tick at most once per second to avoid excessive callbacks */
         if (tick != NULL && (last_tick_ms == 0 || now_ms - last_tick_ms >= 1000)) {
             tick(tick_user_data);
             last_tick_ms = now_ms;
@@ -1206,14 +1117,11 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
 
         int rc = poll(&pfd, 1, timeout_ms);
         if (rc > 0) {
-            if ((pfd.revents & POLLIN) != 0) {
-                return 0;
-            }
-            /* 其它事件（如错误）也让上层去 recvfrom 触发 errno */
+            /* fd is readable (POLLIN) or has an error event; let recvfrom sort it out */
             return 0;
         }
         if (rc == 0) {
-            continue;
+            continue; /* poll timeout slice elapsed — recheck deadline */
         }
 
         if (errno == EINTR) {
@@ -1223,7 +1131,9 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
     }
 }
 
-/* 缓存 getpid() 结果（进程 PID 不会变化，避免重复系统调用） */
+/* --- Ping implementation --- */
+
+/* Return the ICMP identifier derived from getpid(); cached to avoid repeated syscalls. */
 static uint16_t get_cached_ident(void)
 {
     static uint16_t cached_ident = 0;
@@ -1254,7 +1164,7 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
         return result;
     }
 
-    /* 构建 ICMP Echo Request 数据包（复用缓冲区） */
+    /* Build ICMP Echo Request packet (reuse buffer) */
     size_t packet_len = sizeof(struct icmphdr) + (size_t)payload_size;
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
@@ -1270,11 +1180,10 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     icmp_hdr->un.echo.id = ident;
     icmp_hdr->un.echo.sequence = seq;
 
-    /* 计算校验和：先清零，再计算。 */
+    /* Compute checksum */
     icmp_hdr->checksum = 0;
     icmp_hdr->checksum = calculate_checksum(pinger->send_buf, packet_len);
 
-    /* 发送 ICMP Echo Request */
     struct timespec send_time;
     (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
 
@@ -1287,9 +1196,8 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
         return result;
     }
 
-    /* 接收 ICMP Echo Reply (包含 IP 头和 ICMP 头) */
-    uint8_t recv_buf[4096]
-        __attribute__((aligned(16)));  /* 对齐优化，改善结构体访问性能 */
+    /* Receive ICMP Echo Reply (includes IPv4 header) */
+    uint8_t recv_buf[4096] __attribute__((aligned(16)));
     struct sockaddr_in recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
@@ -1330,12 +1238,12 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
             return result;
         }
 
-        /* 快速过滤：只接受来自目标的回包 */
+        /* Fast filter: only accept replies from the target address */
         if (recv_addr.sin_addr.s_addr != dest_addr->sin_addr.s_addr) {
             continue;
         }
 
-        /* 解析 IP 头和 ICMP 头 (IP 头长度可变) */
+        /* Parse IPv4 header (variable length) and ICMP header */
         if (received < (ssize_t)sizeof(struct ip)) {
             continue;
         }
@@ -1395,7 +1303,7 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
         return result;
     }
 
-    /* 构造 ICMPv6 Echo Request 数据包（复用缓冲区） */
+    /* Build ICMPv6 Echo Request packet (reuse buffer) */
     size_t packet_len = sizeof(struct icmp6_hdr) + (size_t)payload_size;
     if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
         return result;
@@ -1404,16 +1312,13 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
 
     struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)pinger->send_buf;
     memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
-    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST; /* 类型: Echo Request = 128 */
-    icmp6_hdr->icmp6_code = 0;                  /* 代码: 0 */
+    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST;
+    icmp6_hdr->icmp6_code = 0;
     uint16_t ident = get_cached_ident();
     uint16_t seq = next_sequence(pinger);
     icmp6_hdr->icmp6_id = ident;
     icmp6_hdr->icmp6_seq = seq;
 
-    /* IPv6 checksum 由内核处理（细节见 README.md）。 */
-
-    /* 发送 ICMPv6 Echo Request */
     struct timespec send_time;
     (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
 
@@ -1426,9 +1331,8 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
         return result;
     }
 
-    /* 接收 ICMPv6 Echo Reply */
-    uint8_t recv_buf[4096]
-        __attribute__((aligned(16)));  /* 对齐优化 */
+    /* Receive ICMPv6 Echo Reply */
+    uint8_t recv_buf[4096] __attribute__((aligned(16)));
     struct sockaddr_in6 recv_addr;
     socklen_t recv_addr_len = sizeof(recv_addr);
 
@@ -1469,7 +1373,7 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
             return result;
         }
 
-        /* 过滤源地址 */
+        /* Filter by source address */
         if (memcmp(&recv_addr.sin6_addr, &dest_addr->sin6_addr, sizeof(struct in6_addr)) != 0) {
             continue;
         }
@@ -1501,14 +1405,7 @@ static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
     }
 }
 
-/* Forward declaration for icmp_pinger_ping_ex */
-static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
-                                                const char* restrict target, int timeout_ms,
-                                                int payload_size, icmp_tick_fn tick,
-                                                void* tick_user_data,
-                                                icmp_should_stop_fn should_stop,
-                                                void* stop_user_data);
-
+/* Resolve target (with per-pinger cache) and dispatch to IPv4 or IPv6 implementation. */
 static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
                                   const char* restrict target,
                                   int timeout_ms, int payload_size, icmp_tick_fn tick,
@@ -1539,7 +1436,7 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
         return result;
     }
 
-    /* 解析目标地址（带缓存） */
+    /* Resolve target address (with cache) */
     const struct sockaddr_storage* addr_ptr = NULL;
     socklen_t addr_len = 0;
 
@@ -1554,7 +1451,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
             return result;
         }
 
-        /* 尽量缓存（target 来自 config/CLI，正常长度 < 256） */
         (void)snprintf(pinger->cached_target, sizeof(pinger->cached_target), "%s", target);
         pinger->cached_addr = addr;
         pinger->cached_addr_len = addr_len;
@@ -1562,7 +1458,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
         addr_ptr = &pinger->cached_addr;
     }
 
-    (void)addr_len;
     if (pinger->use_ipv6) {
         return ping_ipv6(pinger, (struct sockaddr_in6*)(void*)addr_ptr, timeout_ms, payload_size,
                          tick, tick_user_data, should_stop, stop_user_data);
@@ -1575,7 +1470,9 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
  * Shutdown functions
  * ============================================================ */
 
-/* 构建关机命令参数数组（空白分隔，不支持引号） */
+/* --- Command building --- */
+
+/* Split command string into an argv array for execvp (no shell); rejects unsafe characters. */
 static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer_size,
                                 char* argv[], size_t argv_size)
 {
@@ -1588,7 +1485,7 @@ static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer
         return false;
     }
 
-    /* 严格拒绝引号/反引号与控制字符。 */
+    /* Reject quotes, backticks and control characters */
     if (strchr(command, '"') != NULL || strchr(command, '\'') != NULL ||
         strchr(command, '`') != NULL) {
         return false;
@@ -1624,6 +1521,7 @@ static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer
     return true;
 }
 
+/* Build the shutdown command string into command_buf based on configured mode. */
 static bool shutdown_select_command(const config_t* restrict config, bool use_systemctl_poweroff,
                                     char* restrict command_buf, size_t command_size)
 {
@@ -1648,6 +1546,9 @@ static bool shutdown_select_command(const config_t* restrict config, bool use_sy
     return false;
 }
 
+/* --- Execution --- */
+
+/* Emit a log warning describing the imminent shutdown action. */
 static void log_shutdown_plan(logger_t* restrict logger, shutdown_mode_t mode,
                               int delay_minutes)
 {
@@ -1662,6 +1563,7 @@ static void log_shutdown_plan(logger_t* restrict logger, shutdown_mode_t mode,
     }
 }
 
+/* Return true if the shutdown command should actually be executed (not dry-run / log-only). */
 static OPENUPS_COLD bool shutdown_should_execute(const config_t* restrict config, logger_t* restrict logger)
 {
     if (config == NULL || logger == NULL) {
@@ -1682,13 +1584,14 @@ static OPENUPS_COLD bool shutdown_should_execute(const config_t* restrict config
     return true;
 }
 
+/* Fork and execvp the shutdown command; poll-wait up to 5 seconds for the child to exit. */
 static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restrict logger)
 {
     if (argv == NULL || argv[0] == NULL || logger == NULL) {
         return false;
     }
 
-    /* 使用 fork/execvp 执行（不经过 shell）。 */
+    /* fork/execvp — no shell involved */
     pid_t child_pid = fork();
     if (child_pid < 0) {
         logger_error(logger, "fork() failed: %s", strerror(errno));
@@ -1696,14 +1599,12 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
     }
 
     if (child_pid == 0) {
-        /* 将 stdout/stdin 重定向到 /dev/null，避免关机命令输出干扰父进程 tty。
-         * 注意：open() 返回的 fd 可能恰好等于 STDOUT_FILENO（如 fd 0/1 已关闭），
-         * 须在 dup2 后才关闭临时 fd，且要防止关掉已重定向好的目标 fd。 */
+        /* Redirect stdin/stdout to /dev/null */
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             (void)dup2(devnull, STDIN_FILENO);
             (void)dup2(devnull, STDOUT_FILENO);
-            /* 仅当 devnull 不是我们刚 dup2 进去的那两个 fd 时才关闭 */
+            /* Only close devnull if it was not dup2'd into stdin or stdout */
             if (devnull != STDIN_FILENO && devnull != STDOUT_FILENO) {
                 close(devnull);
             }
@@ -1715,14 +1616,9 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
         _exit(127);
     }
 
-    /* 父进程：等待子进程完成（5 秒超时）。 */
+    /* Parent process: poll-wait up to 50 × 100ms = 5 seconds */
     int status = 0;
-    uint64_t start_ms = get_monotonic_ms();
-    bool use_monotonic = start_ms != UINT64_MAX;
-    if (!use_monotonic) {
-        start_ms = (uint64_t)time(NULL) * UINT64_C(1000);
-    }
-    while (1) {
+    for (int poll_count = 0; poll_count < 50; poll_count++) {
         pid_t result = waitpid(child_pid, &status, WNOHANG);
         if (result == child_pid) {
             if (WIFEXITED(status)) {
@@ -1748,26 +1644,17 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
             return false;
         }
 
-        uint64_t now_ms = use_monotonic ? get_monotonic_ms()
-                                        : (uint64_t)time(NULL) * UINT64_C(1000);
-        if (now_ms == UINT64_MAX) {
-            now_ms = (uint64_t)time(NULL) * UINT64_C(1000);
-            use_monotonic = false;
-        }
-
-        if (now_ms - start_ms > UINT64_C(5000)) {
-            logger_warn(logger, "Shutdown command timeout, killing process");
-            kill(child_pid, SIGKILL);
-            (void)waitpid(child_pid, &status, 0);
-            return false;
-        }
-
-        /* 轮询间隔：100ms，使用 nanosleep 保持与其他休眠风格一致 */
         struct timespec poll_ts = {.tv_sec = 0, .tv_nsec = 100000000L};
         (void)nanosleep(&poll_ts, NULL);
     }
+
+    logger_warn(logger, "Shutdown command timeout, killing process");
+    kill(child_pid, SIGKILL);
+    (void)waitpid(child_pid, &status, 0);
+    return false;
 }
 
+/* Orchestrate the full shutdown sequence: guard checks → command selection → execution. */
 static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logger, bool use_systemctl_poweroff)
 {
     if (config == NULL || logger == NULL) {
@@ -1791,8 +1678,7 @@ static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logg
         return;
     }
 
-    /* 使用独立缓冲区供 build_shutdown_argv 原地分词，保留 command_buf 用于错误日志。
-     * 注意：不能将同一指针同时作为 command 和 buffer 传入（违反 restrict 约定）。 */
+    /* Separate buffer for build_shutdown_argv in-place tokenisation (cannot reuse command_buf: violates restrict) */
     char argv_buf[512];
     if (!build_shutdown_argv(command_buf, argv_buf, sizeof(argv_buf), argv,
                              sizeof(argv) / sizeof(argv[0]))) {
@@ -1809,6 +1695,9 @@ static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logg
  * Systemd functions
  * ============================================================ */
 
+/* --- socket address helpers --- */
+
+/* Populate a sockaddr_un from NOTIFY_SOCKET path, handling abstract namespace (@-prefix). */
 static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
                               socklen_t* restrict addr_len)
 {
@@ -1819,7 +1708,7 @@ static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr
     memset(addr, 0, sizeof(*addr));
     addr->sun_family = AF_UNIX;
 
-    /* 处理抽象命名空间（@ 前缀） */
+    /* Abstract namespace socket (@ prefix) */
     if (socket_path[0] == '@') {
         size_t name_len = strlen(socket_path + 1);
         if (name_len == 0 || name_len > sizeof(addr->sun_path) - 1) {
@@ -1842,27 +1731,23 @@ static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr
     return true;
 }
 
-/* 发送 systemd 通知消息（READY/STATUS/STOPPING/WATCHDOG）。 */
+/* --- Notifier operations --- */
+
+/* Send a sd_notify datagram; skips silently if notifier is disabled. */
 static OPENUPS_HOT bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
 {
     if (OPENUPS_UNLIKELY(notifier == NULL || message == NULL || !notifier->enabled)) {
         return false;
     }
 
-    int flags = 0;
-#ifdef MSG_NOSIGNAL
-    flags |= MSG_NOSIGNAL;
-#endif
-
-    /* 重试发送直到成功或遇到非 EINTR 错误 */
     ssize_t sent;
     do {
-        sent = send(notifier->sockfd, message, strlen(message), flags);
+        sent = send(notifier->sockfd, message, strlen(message), MSG_NOSIGNAL);
     } while (sent < 0 && errno == EINTR);
-
     return sent >= 0;
 }
 
+/* Init notifier from NOTIFY_SOCKET / WATCHDOG_USEC env vars; no-op if not under systemd. */
 static void systemd_notifier_init(systemd_notifier_t* restrict notifier)
 {
     if (notifier == NULL) {
@@ -1872,29 +1757,25 @@ static void systemd_notifier_init(systemd_notifier_t* restrict notifier)
     notifier->enabled = false;
     notifier->sockfd = -1;
     notifier->watchdog_usec = 0;
-    memset(&notifier->addr, 0, sizeof(notifier->addr));
-    notifier->addr_len = 0;
     notifier->last_watchdog_ms = 0;
     notifier->last_status_ms = 0;
     notifier->last_status[0] = '\0';
 
-    /* 非 systemd 管理时通常不会设置 NOTIFY_SOCKET。 */
+    /* NOTIFY_SOCKET is unset when not running under systemd */
     const char* socket_path = getenv("NOTIFY_SOCKET");
     if (socket_path == NULL) {
         return;
     }
 
-    /* systemd 通知使用 AF_UNIX/SOCK_DGRAM。 */
-    int socket_type = SOCK_DGRAM;
-#ifdef SOCK_CLOEXEC
-    socket_type |= SOCK_CLOEXEC;
-#endif
-    notifier->sockfd = socket(AF_UNIX, socket_type, 0);
+    /* systemd notifications use AF_UNIX/SOCK_DGRAM */
+    notifier->sockfd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (notifier->sockfd < 0) {
         return;
     }
 
-    if (!build_systemd_addr(socket_path, &notifier->addr, &notifier->addr_len)) {
+    struct sockaddr_un addr;
+    socklen_t addr_len;
+    if (!build_systemd_addr(socket_path, &addr, &addr_len)) {
         close(notifier->sockfd);
         notifier->sockfd = -1;
         return;
@@ -1902,7 +1783,7 @@ static void systemd_notifier_init(systemd_notifier_t* restrict notifier)
 
     int rc;
     do {
-        rc = connect(notifier->sockfd, (const struct sockaddr*)&notifier->addr, notifier->addr_len);
+        rc = connect(notifier->sockfd, (const struct sockaddr*)&addr, addr_len);
     } while (rc < 0 && errno == EINTR);
     if (rc < 0) {
         close(notifier->sockfd);
@@ -1912,13 +1793,19 @@ static void systemd_notifier_init(systemd_notifier_t* restrict notifier)
 
     notifier->enabled = true;
 
-    /* watchdog 超时时间（微秒）；用于计算心跳间隔。 */
+    /* WATCHDOG_USEC is set by systemd in microseconds; keep 0 (disabled) if absent or invalid */
     const char* watchdog_str = getenv("WATCHDOG_USEC");
     if (watchdog_str != NULL) {
-        notifier->watchdog_usec = strtoull(watchdog_str, NULL, 10);
+        errno = 0;
+        char* endptr = NULL;
+        unsigned long long val = strtoull(watchdog_str, &endptr, 10);
+        if (errno == 0 && endptr != watchdog_str && *endptr == '\0') {
+            notifier->watchdog_usec = (uint64_t)val;
+        }
     }
 }
 
+/* Close the UNIX socket used for sd_notify. */
 static void systemd_notifier_destroy(systemd_notifier_t* restrict notifier)
 {
     if (notifier == NULL) {
@@ -1931,40 +1818,36 @@ static void systemd_notifier_destroy(systemd_notifier_t* restrict notifier)
     }
 
     notifier->enabled = false;
-    memset(&notifier->addr, 0, sizeof(notifier->addr));
-    notifier->addr_len = 0;
 }
 
-/* 检查 systemd 通知器是否已启用 */
+/* Return true if the notifier successfully connected to NOTIFY_SOCKET. */
 static OPENUPS_PURE bool systemd_notifier_is_enabled(const systemd_notifier_t* restrict notifier)
 {
     return notifier != NULL && notifier->enabled;
 }
 
-/* 通知 systemd 程序已就绪 (启动完成) */
+/* Send READY=1 to signal successful startup. */
 static bool systemd_notifier_ready(systemd_notifier_t* restrict notifier)
 {
     return send_notify(notifier, "READY=1");
 }
 
-/* 更新程序状态信息到 systemd */
+/* Send STATUS=<status> to systemd; rate-limited to avoid redundant updates. */
 static OPENUPS_HOT bool systemd_notifier_status(systemd_notifier_t* restrict notifier, const char* restrict status)
 {
     if (notifier == NULL || !notifier->enabled || status == NULL) {
         return false;
     }
 
-    /* 降频：内容未变化且距离上次发送太近时跳过 */
+    /* Rate-limit: skip if content is unchanged and fewer than 2 seconds have elapsed */
     uint64_t now_ms = get_monotonic_ms();
     bool same = (strncmp(notifier->last_status, status, sizeof(notifier->last_status)) == 0);
     if (same && notifier->last_status_ms != 0 && now_ms - notifier->last_status_ms < 2000) {
         return true;
     }
 
-    /* systemd 约定：STATUS=... */
     char message[256];
     snprintf(message, sizeof(message), "STATUS=%s", status);
-
     bool ok = send_notify(notifier, message);
     if (ok) {
         snprintf(notifier->last_status, sizeof(notifier->last_status), "%s", status);
@@ -1973,25 +1856,26 @@ static OPENUPS_HOT bool systemd_notifier_status(systemd_notifier_t* restrict not
     return ok;
 }
 
-/* 通知 systemd 程序即将停止运行 */
+/* Send STOPPING=1 immediately before the process exits. */
 static bool systemd_notifier_stopping(systemd_notifier_t* restrict notifier)
 {
     return send_notify(notifier, "STOPPING=1");
 }
 
+/* Send WATCHDOG=1 when the kick interval has elapsed; no-op if watchdog is unconfigured. */
 static OPENUPS_HOT bool systemd_notifier_watchdog(systemd_notifier_t* restrict notifier)
 {
     if (OPENUPS_UNLIKELY(notifier == NULL || !notifier->enabled)) {
         return false;
     }
 
-    /* 未设置 WatchdogSec 时 systemd 不会提供 WATCHDOG_USEC，此时应默认 no-op。 */
+    /* Skip if WatchdogSec is not configured (watchdog_usec == 0) */
     if (OPENUPS_UNLIKELY(notifier->watchdog_usec == 0)) {
         return true;
     }
 
     uint64_t now_ms = get_monotonic_ms();
-    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 -> ms */
+    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 → ms */
     if (interval_ms == 0) {
         interval_ms = 1;
     }
@@ -2007,13 +1891,14 @@ static OPENUPS_HOT bool systemd_notifier_watchdog(systemd_notifier_t* restrict n
     return ok;
 }
 
+/* Return the recommended watchdog kick interval in milliseconds (WATCHDOG_USEC / 2). */
 static OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(const systemd_notifier_t* restrict notifier)
 {
     if (notifier == NULL || !notifier->enabled || notifier->watchdog_usec == 0) {
         return 0;
     }
 
-    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 -> ms */
+    uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 → ms */
     if (interval_ms == 0) {
         interval_ms = 1;
     }
@@ -2024,12 +1909,12 @@ static OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(const systemd
  * Context functions
  * ============================================================ */
 
+/* --- Signal handling --- */
 
-/* === 全局上下文指针（仅用于信号处理） === */
+/* Global context pointer; set once in setup_signal_handlers, used only by signal_handler. */
 static openups_ctx_t* g_ctx = NULL;
 
-/* === 信号处理 === */
-
+/* Translate SIGINT/SIGTERM to stop_flag and SIGUSR1 to print_stats_flag. */
 static void signal_handler(int signum)
 {
     if (g_ctx == NULL) {
@@ -2049,6 +1934,7 @@ static void signal_handler(int signum)
     }
 }
 
+/* Install SIGINT, SIGTERM and SIGUSR1 signal handlers and bind g_ctx. */
 static void setup_signal_handlers(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
@@ -2057,9 +1943,10 @@ static void setup_signal_handlers(openups_ctx_t* restrict ctx)
 
     g_ctx = ctx;
 
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
+    struct sigaction sa = {
+        .sa_handler = signal_handler,
+        .sa_flags   = 0,
+    };
     sigemptyset(&sa.sa_mask);
 
     (void)sigaction(SIGINT, &sa, NULL);
@@ -2067,9 +1954,9 @@ static void setup_signal_handlers(openups_ctx_t* restrict ctx)
     (void)sigaction(SIGUSR1, &sa, NULL);
 }
 
-/* === 内部辅助函数 === */
+/* --- ICMP callbacks --- */
 
-/* watchdog 心跳回调（在 ICMP 等待期间定期发送） */
+/* Watchdog tick callback: kick systemd watchdog during ICMP wait periods. */
 static void watchdog_tick_callback(void* user_data)
 {
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
@@ -2080,17 +1967,17 @@ static void watchdog_tick_callback(void* user_data)
     (void)systemd_notifier_watchdog(&ctx->systemd);
 }
 
-/* 监控停止条件回调（ICMP 等待期间检查是否应中断） */
+/* Stop-condition callback: returns true when the monitor has been asked to terminate. */
 static bool monitor_should_stop(void* user_data)
 {
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
     return ctx != NULL && ctx->stop_flag != 0;
 }
 
-/* systemd 状态通知辅助函数 */
-static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restrict fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+/* --- Context lifecycle --- */
 
+/* Format and forward a status string to systemd (printf-style). */
+[[gnu::format(printf, 2, 3)]]
 static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restrict fmt, ...)
 {
     if (ctx == NULL || !ctx->systemd_enabled || fmt == NULL) {
@@ -2106,8 +1993,7 @@ static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restr
     (void)systemd_notifier_status(&ctx->systemd, status_msg);
 }
 
-/* === 上下文初始化 === */
-
+/* Initialise context: load config (CLI > env > defaults), validate, open pinger, connect systemd. */
 static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restrict argv,
                       char* restrict error_msg, size_t error_size)
 {
@@ -2115,11 +2001,9 @@ static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restr
         return false;
     }
 
-    /* 零初始化 */
     memset(ctx, 0, sizeof(*ctx));
-    ctx->start_time_ms = get_monotonic_ms();
 
-    /* === 配置加载（3 层优先级） === */
+    /* Load config: CLI > env vars > defaults */
     config_init_default(&ctx->config);
     config_load_from_env(&ctx->config);
 
@@ -2132,31 +2016,27 @@ static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restr
         return false;
     }
 
-    /* === 日志器初始化 === */
+    /* Logger */
     logger_init(&ctx->logger, ctx->config.log_level, ctx->config.enable_timestamp);
-
-    /* 调试模式下打印配置 */
     if (ctx->config.log_level == LOG_LEVEL_DEBUG) {
         config_print(&ctx->config);
     }
 
-    /* === ICMP pinger 初始化 === */
+    /* ICMP pinger */
     if (!icmp_pinger_init(&ctx->pinger, ctx->config.use_ipv6, error_msg, error_size)) {
-        logger_destroy(&ctx->logger);
         return false;
     }
 
-    /* === 指标初始化 === */
+    /* Metrics */
     metrics_init(&ctx->metrics);
 
-    /* === systemd 集成初始化 === */
+    /* systemd integration */
     if (ctx->config.enable_systemd) {
         systemd_notifier_init(&ctx->systemd);
         ctx->systemd_enabled = systemd_notifier_is_enabled(&ctx->systemd);
 
         if (ctx->systemd_enabled) {
             logger_debug(&ctx->logger, "systemd integration enabled");
-
             if (ctx->config.enable_watchdog) {
                 ctx->watchdog_interval_ms = systemd_notifier_watchdog_interval_ms(&ctx->systemd);
                 logger_debug(&ctx->logger, "watchdog interval: %" PRIu64 "ms",
@@ -2172,6 +2052,7 @@ static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restr
     return true;
 }
 
+/* Release all resources held by context and clear the struct. */
 static void openups_ctx_destroy(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
@@ -2180,14 +2061,12 @@ static void openups_ctx_destroy(openups_ctx_t* restrict ctx)
 
     icmp_pinger_destroy(&ctx->pinger);
     systemd_notifier_destroy(&ctx->systemd);
-    logger_destroy(&ctx->logger);
 
     g_ctx = NULL;
     memset(ctx, 0, sizeof(*ctx));
 }
 
-/* === 统计信息打印 === */
-
+/* Emit a one-line statistics summary to the logger (triggered by SIGUSR1 or at shutdown). */
 static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
@@ -2213,8 +2092,9 @@ static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
     }
 }
 
-/* === Ping 执行（带重试） === */
+/* --- Monitor loop --- */
 
+/* Execute one ping with up to max_retries retries; returns true on success. */
 static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_result_t* restrict result)
 {
     if (ctx == NULL || result == NULL) {
@@ -2223,10 +2103,8 @@ static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_
 
     const config_t* config = &ctx->config;
 
-    /* 执行 ping（带重试机制） */
+    /* Ping with retries */
     for (int attempt = 0; attempt <= config->max_retries; attempt++) {
-        ctx->last_ping_time_ms = get_monotonic_ms();
-
         *result = icmp_pinger_ping_ex(&ctx->pinger, config->target, config->timeout_ms,
                                       config->payload_size, watchdog_tick_callback, ctx,
                                       monitor_should_stop, ctx);
@@ -2239,13 +2117,11 @@ static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_
             return false;
         }
 
-        /* 重试前延迟 100ms */
+        /* 100ms inter-retry delay */
         if (attempt < config->max_retries) {
             struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000L};
             while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
-                if (ctx->stop_flag) {
-                    return false;  /* 收到停止信号，立即退出，不再发起新的 attempt */
-                }
+                if (ctx->stop_flag) return false;
             }
         }
     }
@@ -2253,8 +2129,7 @@ static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_
     return false;
 }
 
-/* === 可中断休眠 === */
-
+/* Sleep for `seconds`, processing watchdog kicks and honouring stop_flag interrupts. */
 static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
 {
     if (ctx == NULL || seconds <= 0) {
@@ -2266,8 +2141,7 @@ static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict 
 
     uint64_t remaining_ms = 0;
     if (ckd_mul(&remaining_ms, (uint64_t)seconds, UINT64_C(1000))) {
-        /* 溢出（seconds 极大时）：cap 到 24 小时，避免近乎无限休眠 */
-        remaining_ms = UINT64_C(86400000);
+        remaining_ms = UINT64_C(86400000); /* overflow: cap at 24 hours */
     }
 
     while (remaining_ms > 0) {
@@ -2275,13 +2149,13 @@ static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict 
             break;
         }
 
-        /* 计算本次休眠时长（不超过 watchdog 间隔） */
+        /* Determine sleep chunk (must not exceed watchdog interval) */
         uint64_t chunk_ms = remaining_ms;
         if (watchdog_enabled && watchdog_interval_ms > 0 && watchdog_interval_ms < chunk_ms) {
             chunk_ms = watchdog_interval_ms;
         }
 
-        /* 休眠 */
+        /* Sleep */
         struct timespec ts = {.tv_sec = (time_t)(chunk_ms / 1000ULL),
                               .tv_nsec = (long)((chunk_ms % 1000ULL) * 1000000ULL)};
         while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
@@ -2290,12 +2164,10 @@ static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict 
             }
         }
 
-        /* 喂 watchdog */
         if (watchdog_enabled) {
             (void)systemd_notifier_watchdog(&ctx->systemd);
         }
 
-        /* 更新剩余时间 */
         if (chunk_ms >= remaining_ms) {
             remaining_ms = 0;
         } else {
@@ -2304,9 +2176,7 @@ static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict 
     }
 }
 
-/* === 监控循环核心逻辑 === */
-
-/* 处理 ping 成功 */
+/* Handle a successful ping: reset fail counter, record metrics, update systemd status. */
 static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
 {
     if (ctx == NULL || result == NULL) {
@@ -2319,7 +2189,7 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
     logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                  ctx->config.target, result->latency_ms);
 
-    /* systemd 状态通知 */
+    /* Update systemd status */
     if (ctx->systemd_enabled) {
         const metrics_t* metrics = &ctx->metrics;
         double success_rate = metrics_success_rate(metrics);
@@ -2330,7 +2200,7 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
     }
 }
 
-/* 处理 ping 失败 */
+/* Handle a failed ping: increment fail counter, record metrics, update systemd status. */
 static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
 {
     if (ctx == NULL || result == NULL) {
@@ -2343,14 +2213,14 @@ static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const 
     logger_warn(&ctx->logger, "Ping failed to %s: %s (consecutive failures: %d)",
                 ctx->config.target, result->error_msg, ctx->consecutive_fails);
 
-    /* systemd 状态通知 */
+    /* Update systemd status */
     if (ctx->systemd_enabled) {
         notify_systemd_status(ctx, "WARNING: %d consecutive failures, threshold is %d",
                               ctx->consecutive_fails, ctx->config.fail_threshold);
     }
 }
 
-/* 触发关机 */
+/* Check threshold; if reached, invoke shutdown_trigger and return true to break the loop. */
 static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL || ctx->consecutive_fails < ctx->config.fail_threshold) {
@@ -2361,33 +2231,33 @@ static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
     shutdown_trigger(&ctx->config, &ctx->logger, use_systemctl_poweroff);
 
     if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-        ctx->consecutive_fails = 0; /* 重置计数器，继续监控 */
+        ctx->consecutive_fails = 0; /* log-only: reset counter and keep monitoring */
         return false;
     }
 
     logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
-    return true; /* 退出监控循环 */
+    return true;
 }
 
-/* 执行单次监控迭代 */
+/* Execute one monitor iteration: handle stats signal, ping once, dispatch success/failure. */
 static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
         return false;
     }
 
-    /* 处理统计信息打印请求 */
+    /* Handle pending stats-print request (SIGUSR1) */
     if (OPENUPS_UNLIKELY(ctx->print_stats_flag)) {
         openups_ctx_print_stats(ctx);
         ctx->print_stats_flag = 0;
     }
 
-    /* 检查停止标志 */
+    /* Honour stop flag */
     if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
         return true;
     }
 
-    /* 执行 ping */
+    /* Ping */
     ping_result_t result;
     bool success = openups_ctx_ping_once(ctx, &result);
 
@@ -2395,7 +2265,7 @@ static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
         return true;
     }
 
-    /* 处理结果 */
+    /* Dispatch result */
     if (OPENUPS_LIKELY(success)) {
         handle_ping_success(ctx, &result);
         return false;
@@ -2405,8 +2275,7 @@ static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
     return trigger_shutdown(ctx);
 }
 
-/* === 主监控循环 === */
-
+/* Main monitor loop: setup signals, notify systemd ready, iterate until stop or shutdown. */
 static int openups_ctx_run(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
@@ -2415,24 +2284,20 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
 
     const config_t* config = &ctx->config;
 
-    /* 设置信号处理 */
     setup_signal_handlers(ctx);
 
-    /* 启动日志 */
     logger_info(&ctx->logger,
                 "Starting OpenUPS monitor for target %s, checking every %d seconds, "
                 "shutdown after %d consecutive failures (IPv%s)",
                 config->target, config->interval_sec, config->fail_threshold,
                 config->use_ipv6 ? "6" : "4");
 
-    /* 通知 systemd ready */
     if (ctx->systemd_enabled) {
         (void)systemd_notifier_ready(&ctx->systemd);
         notify_systemd_status(ctx, "Monitoring %s, checking every %ds, threshold %d failures",
                               config->target, config->interval_sec, config->fail_threshold);
     }
 
-    /* 主循环 */
     while (!ctx->stop_flag) {
         if (run_iteration(ctx)) {
             break;
@@ -2441,7 +2306,6 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
         openups_ctx_sleep_interruptible(ctx, config->interval_sec);
     }
 
-    /* 优雅关闭 */
     if (ctx->stop_flag) {
         logger_info(&ctx->logger, "Received shutdown signal, stopping gracefully...");
         if (ctx->systemd_enabled) {
@@ -2455,9 +2319,8 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
     return 0;
 }
 
-
 /* ============================================================
- * main()
+ * Entry point
  * ============================================================ */
 
 int main(int argc, char** argv)
