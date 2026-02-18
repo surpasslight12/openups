@@ -68,9 +68,6 @@
 #else
 static inline bool openups_ckd_add_u64(uint64_t* result, uint64_t a, uint64_t b)
 {
-    if (result == NULL) {
-        return true;
-    }
     if (b > UINT64_MAX - a) {
         return true;
     }
@@ -80,9 +77,6 @@ static inline bool openups_ckd_add_u64(uint64_t* result, uint64_t a, uint64_t b)
 
 static inline bool openups_ckd_mul_u64(uint64_t* result, uint64_t a, uint64_t b)
 {
-    if (result == NULL) {
-        return true;
-    }
     if (a != 0 && b > UINT64_MAX / a) {
         return true;
     }
@@ -240,25 +234,6 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int), "sig_atomic_t must be at leas
  * Base utility functions
  * ============================================================ */
 
-__attribute__((unused))
-static uint64_t get_timestamp_ms(void)
-{
-    struct timespec ts;
-    if (OPENUPS_UNLIKELY(clock_gettime(CLOCK_REALTIME, &ts) != 0)) {
-        return UINT64_MAX;
-    }
-    uint64_t seconds_ms = 0;
-    if (OPENUPS_UNLIKELY(ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, UINT64_C(1000)))) {
-        return UINT64_MAX;
-    }
-    uint64_t nsec_ms = (uint64_t)ts.tv_nsec / UINT64_C(1000000);
-    uint64_t timestamp = 0;
-    if (OPENUPS_UNLIKELY(ckd_add(&timestamp, seconds_ms, nsec_ms))) {
-        return UINT64_MAX;
-    }
-    return timestamp;
-}
-
 static uint64_t get_monotonic_ms(void)
 {
     struct timespec ts;
@@ -373,6 +348,7 @@ static void logger_destroy(logger_t* restrict logger)
     if (logger == NULL) {
         return;
     }
+    /* 当前 logger 不持有动态资源（预留给未来扩展，如日志文件句柄）。 */
 }
 
 static OPENUPS_CONST const char* log_level_to_string(log_level_t level)
@@ -428,7 +404,7 @@ OPENUPS_HOT static void logger_debug(logger_t* restrict logger, const char* rest
     __attribute__((format(printf, 2, 3)));
 OPENUPS_HOT static void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
 {
-    if (OPENUPS_LIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG)) {
+    if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG)) {
         return;
     }
     char buffer[1024];
@@ -496,8 +472,8 @@ static void metrics_init(metrics_t* metrics)
     metrics->successful_pings = 0;
     metrics->failed_pings = 0;
     metrics->total_latency = 0.0;
-    metrics->min_latency = -1.0;
-    metrics->max_latency = -1.0;
+    metrics->min_latency = -1.0;  /* 哨兵值：-1.0 表示「尚未记录」，延迟不可能为负 */
+    metrics->max_latency = -1.0;  /* 哨兵值：-1.0 表示「尚未记录」 */
     metrics->start_time_ms = get_monotonic_ms();
 }
 
@@ -628,15 +604,6 @@ static bool shutdown_mode_parse(const char* restrict str, shutdown_mode_t* restr
     if (strcasecmp(str, "delayed") == 0) { *out_mode = SHUTDOWN_MODE_DELAYED; return true; }
     if (strcasecmp(str, "log-only") == 0) { *out_mode = SHUTDOWN_MODE_LOG_ONLY; return true; }
     return false;
-}
-
-__attribute__((unused))
-static OPENUPS_PURE shutdown_mode_t string_to_shutdown_mode(const char* restrict str)
-{
-    if (str == NULL) return SHUTDOWN_MODE_IMMEDIATE;
-    shutdown_mode_t parsed_mode;
-    if (shutdown_mode_parse(str, &parsed_mode)) return parsed_mode;
-    return SHUTDOWN_MODE_IMMEDIATE;
 }
 
 static void config_init_default(config_t* restrict config)
@@ -1542,15 +1509,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
                                                 icmp_should_stop_fn should_stop,
                                                 void* stop_user_data);
 
-/* 执行 ping 操作 (自动根据地址类型选择 IPv4/IPv6） */
-__attribute__((unused))
-static OPENUPS_HOT ping_result_t icmp_pinger_ping(icmp_pinger_t* restrict pinger,
-                               const char* restrict target,
-                               int timeout_ms, int payload_size)
-{
-    return icmp_pinger_ping_ex(pinger, target, timeout_ms, payload_size, NULL, NULL, NULL, NULL);
-}
-
 static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
                                   const char* restrict target,
                                   int timeout_ms, int payload_size, icmp_tick_fn tick,
@@ -1738,10 +1696,17 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
     }
 
     if (child_pid == 0) {
-        int devnull = open("/dev/null", O_WRONLY);
+        /* 将 stdout/stdin 重定向到 /dev/null，避免关机命令输出干扰父进程 tty。
+         * 注意：open() 返回的 fd 可能恰好等于 STDOUT_FILENO（如 fd 0/1 已关闭），
+         * 须在 dup2 后才关闭临时 fd，且要防止关掉已重定向好的目标 fd。 */
+        int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
+            (void)dup2(devnull, STDIN_FILENO);
             (void)dup2(devnull, STDOUT_FILENO);
-            close(devnull);
+            /* 仅当 devnull 不是我们刚 dup2 进去的那两个 fd 时才关闭 */
+            if (devnull != STDIN_FILENO && devnull != STDOUT_FILENO) {
+                close(devnull);
+            }
         }
 
         execvp(argv[0], argv);
@@ -1797,7 +1762,9 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
             return false;
         }
 
-        usleep(100000);
+        /* 轮询间隔：100ms，使用 nanosleep 保持与其他休眠风格一致 */
+        struct timespec poll_ts = {.tv_sec = 0, .tv_nsec = 100000000L};
+        (void)nanosleep(&poll_ts, NULL);
     }
 }
 
@@ -1824,7 +1791,10 @@ static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logg
         return;
     }
 
-    if (!build_shutdown_argv(command_buf, command_buf, sizeof(command_buf), argv,
+    /* 使用独立缓冲区供 build_shutdown_argv 原地分词，保留 command_buf 用于错误日志。
+     * 注意：不能将同一指针同时作为 command 和 buffer 传入（违反 restrict 约定）。 */
+    char argv_buf[512];
+    if (!build_shutdown_argv(command_buf, argv_buf, sizeof(argv_buf), argv,
                              sizeof(argv) / sizeof(argv[0]))) {
         logger_error(logger, "Failed to parse shutdown command: %s", command_buf);
         return;
@@ -2226,13 +2196,21 @@ static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
 
     const metrics_t* metrics = &ctx->metrics;
 
-    logger_info(&ctx->logger,
-                "Statistics: %" PRIu64 " total pings, %" PRIu64 " successful, %" PRIu64
-                " failed (%.2f%% success rate), latency min %.2fms / max %.2fms / avg %.2fms, "
-                "uptime %" PRIu64 " seconds",
-                metrics->total_pings, metrics->successful_pings, metrics->failed_pings,
-                metrics_success_rate(metrics), metrics->min_latency, metrics->max_latency,
-                metrics_avg_latency(metrics), metrics_uptime_seconds(metrics));
+    if (metrics->successful_pings > 0) {
+        logger_info(&ctx->logger,
+                    "Statistics: %" PRIu64 " total pings, %" PRIu64 " successful, %" PRIu64
+                    " failed (%.2f%% success rate), latency min %.2fms / max %.2fms / avg %.2fms,"
+                    " uptime %" PRIu64 " seconds",
+                    metrics->total_pings, metrics->successful_pings, metrics->failed_pings,
+                    metrics_success_rate(metrics), metrics->min_latency, metrics->max_latency,
+                    metrics_avg_latency(metrics), metrics_uptime_seconds(metrics));
+    } else {
+        logger_info(&ctx->logger,
+                    "Statistics: %" PRIu64 " total pings, 0 successful, %" PRIu64
+                    " failed (0.00%% success rate), latency N/A, uptime %" PRIu64 " seconds",
+                    metrics->total_pings, metrics->failed_pings,
+                    metrics_uptime_seconds(metrics));
+    }
 }
 
 /* === Ping 执行（带重试） === */
@@ -2266,7 +2244,7 @@ static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_
             struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000L};
             while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
                 if (ctx->stop_flag) {
-                    break;
+                    return false;  /* 收到停止信号，立即退出，不再发起新的 attempt */
                 }
             }
         }
@@ -2288,7 +2266,8 @@ static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict 
 
     uint64_t remaining_ms = 0;
     if (ckd_mul(&remaining_ms, (uint64_t)seconds, UINT64_C(1000))) {
-        remaining_ms = UINT64_MAX;
+        /* 溢出（seconds 极大时）：cap 到 24 小时，避免近乎无限休眠 */
+        remaining_ms = UINT64_C(86400000);
     }
 
     while (remaining_ms > 0) {

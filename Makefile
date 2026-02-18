@@ -50,7 +50,7 @@ SRCS := $(SRC_DIR)/main.c
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean run install uninstall test help
+.PHONY: all clean run install uninstall test strip help
 
 all: $(TARGET)
 

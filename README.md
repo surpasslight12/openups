@@ -17,7 +17,7 @@
 - **灵活的关机策略**：immediate、delayed、log-only 三种模式
 
 ### 性能优势
-- **C23 标准**：使用最新 C 语言标准（`static_assert`、`restrict`、`[[nodiscard]]`、`stdckdint.h`）
+- **C23 标准**：使用最新 C 语言标准（`static_assert`、`restrict`、`stdckdint.h`、`ckd_add/ckd_mul`）
 - **极致性能**：-O3 + LTO + CPU 原生优化，约 55 KB 二进制，< 5 MB 内存，< 1% CPU
 - **统一上下文架构**：单参数传递，CPU 缓存友好的内存布局
 - **ICMP 热路径优化**：payload 预填充与缓冲区复用
@@ -379,10 +379,9 @@ sudo systemctl cat openups
 
 | 特性 | 用途 |
 |------|------|
-| `[[nodiscard]]` | 关键函数强制检查返回值 |
 | `restrict` | 优化指针别名，提升编译器优化能力 |
 | `static_assert` | 编译时断言（如 `sizeof(sig_atomic_t) >= sizeof(int)`） |
-| `stdckdint.h` | 溢出安全的整数运算（秒→毫秒等时间换算） |
+| `stdckdint.h` / `ckd_add` / `ckd_mul` | 溢出安全的整数运算（秒→毫秒等时间换算）；老编译器自动回退到等价实现 |
 | `CLOCK_MONOTONIC` | 延迟测量与 uptime 统计使用单调时钟，避免系统时间调整影响 |
 
 编译器不支持 `stdckdint.h` 时，项目会自动回退到等价的安全实现。
@@ -393,10 +392,10 @@ sudo systemctl cat openups
 
 | 模块 | 关键 API |
 |------|----------|
-| 通用工具 | `get_timestamp_ms()`, `get_env_or_default()`, `trim_whitespace()` |
+| 通用工具 | `get_monotonic_ms()`, `get_timestamp_str()`, `get_env_int()`, `get_env_bool()`, `is_safe_path()` |
 | 日志 | `logger_init()`, `logger_info/warn/error/debug()` — 自然语序输出，编译时格式检查 |
 | 配置 | `config_init_default()`, `config_load_from_env()`, `config_load_from_cmdline()`, `config_validate()` |
-| ICMP | `icmp_pinger_init()`, `icmp_pinger_ping()` → `ping_result_t { success, latency_ms, error_msg }` |
+| ICMP | `icmp_pinger_init()`, `icmp_pinger_ping_ex()` → `ping_result_t { success, latency_ms, error_msg }` |
 | systemd | `systemd_notifier_ready()`, `systemd_notifier_status()`, `systemd_notifier_watchdog()` |
 | 上下文 | `openups_ctx_init()`, `openups_ctx_run()`, `openups_ctx_destroy()` |
 
@@ -565,7 +564,7 @@ journalctl -u openups -f
 达到阈值时记录日志，重置计数器，继续监控。
 
 **Q: 为什么编译需要 GCC 14+？**
-C23 特性支持（`static_assert`、`restrict`、`[[nodiscard]]` 等）。检查：`gcc -std=c23 -E -dM - < /dev/null | grep __STDC_VERSION__`
+GCC 14 是首个对 C23 标准提供较完整支持的稳定版本（包括 `-std=c23` 标志、`stdckdint.h`、改进的 `restrict` 分析等）。检查当前版本：`gcc --version && gcc -std=c23 -E -dM - < /dev/null | grep __STDC_VERSION__`
 
 **Q: systemd watchdog 如何工作？**
 从 `WATCHDOG_USEC` 环境变量读取超时时间，在可中断休眠循环中周期性发送心跳。

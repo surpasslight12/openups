@@ -50,7 +50,7 @@ typedef enum {
 // 函数：module_action 格式
 void logger_init(logger_t* logger, ...);
 bool config_validate(const config_t* config, char* error_msg, size_t error_size);
-ping_result_t icmp_pinger_ping(icmp_pinger_t* pinger, ...);
+ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* pinger, ...);  /* 主入口 */
 
 // 静态函数：static 关键字
 static bool resolve_target(const char* target, ...);
@@ -175,8 +175,10 @@ if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
 }
 
 // 执行 ping（微秒级延迟测量）
-ping_result_t result = icmp_pinger_ping(&pinger, "1.1.1.1",
-                                        2000, 56);  // timeout_ms, payload_size
+// 内部使用 icmp_pinger_ping_ex()，内嵌 tick/stop 回调；上层无需直接调用
+ping_result_t result = icmp_pinger_ping_ex(&ctx->pinger, "1.1.1.1",
+                                           2000, 56,  // timeout_ms, payload_size
+                                           NULL, NULL, NULL, NULL);
 if (result.success) {
     logger_debug(&logger, "Ping successful, latency: %.2fms", result.latency_ms);
 } else {
@@ -199,8 +201,8 @@ if (systemd.enabled) {
     systemd_notifier_ready(&systemd);  // 通知启动完成
 
     // 主循环中
-    systemd_notifier_status(&systemd, "Monitoring target=1.1.1.1");
-    systemd_notifier_watchdog(&systemd);  // 每秒发送心跳
+    systemd_notifier_status(&systemd, "Monitoring 1.1.1.1, checking every 10s");
+    systemd_notifier_watchdog(&systemd);  // 按 watchdog_interval_ms 周期发送心跳
 }
 
 // 工作原理
@@ -277,7 +279,7 @@ journalctl -u openups -f
 
 ### 修改 ICMP 行为
 - 重点文件：`src/main.c`（ICMP 相关代码区域）
-- 关键函数：`icmp_pinger_ping()`, `calculate_checksum()`
+- 关键函数：`icmp_pinger_ping_ex()`，`calculate_checksum()`
 - 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
 
 ### systemd 服务配置
