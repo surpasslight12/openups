@@ -29,6 +29,7 @@ jobs:
         run: CC=gcc-14 ./test.sh
 
       - name: Upload binary
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: openups-linux-amd64

@@ -145,7 +145,7 @@ typedef struct {
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only
     bool dry_run;               // 默认 true（防止误操作）
     bool use_ipv6;
-    // ... 更多字段见 config.h（内部配置头）
+    // ... 更多字段见 src/main.c 中的 config_t 定义
 } config_t;
 
 // 初始化流程（openups_ctx_init/openups_ctx_run 标准模式）
@@ -258,9 +258,6 @@ kill -USR1 $(pidof openups)  # 输出成功率、延迟、运行时长
 journalctl -u openups -f
 ```
 
-## 常见任务模式
-
-## 性能和安全注意事项
 ## 常见任务模式
 
 ### 添加新配置项

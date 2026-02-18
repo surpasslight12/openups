@@ -1617,12 +1617,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
  * Shutdown functions
  * ============================================================ */
 
-
-
-/* ============================================================
- * shutdown 关机触发
- * ============================================================ */
-
 /* 构建关机命令参数数组（空白分隔，不支持引号） */
 static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer_size,
                                 char* argv[], size_t argv_size)
@@ -1843,12 +1837,6 @@ static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logg
 
 /* ============================================================
  * Systemd functions
- * ============================================================ */
-
-
-
-/* ============================================================
- * systemd 通知器
  * ============================================================ */
 
 static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
