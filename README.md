@@ -266,13 +266,24 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 
 完整参数以 `./bin/openups --help` 为准。
 
-| 目标 | 推荐参数 |
-|------|----------|
-| 调整检测频率 | `--interval <sec>` / `--timeout <ms>` |
-| 调整容错阈值 | `--threshold <num>` / `--retries <num>` |
-| 生产启用关机 | `--dry-run=false` |
-| 选择关机策略 | `--shutdown-mode immediate|delayed|log-only` |
-| systemd 集成 | `--systemd[=true/false]` / `--watchdog[=true/false]` |
+### 默认值一览
+
+| 参数 | CLI 选项 | 环境变量 | 默认值 | 说明 |
+|------|----------|----------|--------|------|
+| 监控目标 | `-t, --target` | `OPENUPS_TARGET` | `1.1.1.1` | 目标 IP 字面量（不支持域名） |
+| 检测间隔 | `-i, --interval` | `OPENUPS_INTERVAL` | `10`（秒） | 两次 ping 之间的间隔 |
+| 失败阈值 | `-n, --threshold` | `OPENUPS_THRESHOLD` | `5` | 连续失败多少次触发关机 |
+| 超时时间 | `-w, --timeout` | `OPENUPS_TIMEOUT` | `2000`（ms） | 单次 ping 等待回包的超时 |
+| 载荷大小 | `-s, --payload-size` | `OPENUPS_PAYLOAD_SIZE` | `56`（字节） | ICMP 数据载荷长度 |
+| 重试次数 | `-r, --retries` | `OPENUPS_RETRIES` | `2` | 每次 ping 的重试次数（总尝试 = 重试 + 1） |
+| IPv6 模式 | `-6, --ipv6` | `OPENUPS_IPV6` | `false` | 启用 IPv6（目标须为 IPv6 字面量） |
+| 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
+| 延迟时长 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1`（分钟） | `delayed` 模式下的关机延迟 |
+| 演习模式 | `-d, --dry-run` | `OPENUPS_DRY_RUN` | `true` | 不执行实际关机（安全默认值） |
+| 日志级别 | `-L, --log-level` | `OPENUPS_LOG_LEVEL` | `info` | `silent` / `error` / `warn` / `info` / `debug` |
+| 时间戳 | `-T, --timestamp` | `OPENUPS_TIMESTAMP` | `true` | 日志前缀时间戳（systemd 下建议 false） |
+| systemd | `-M, --systemd` | `OPENUPS_SYSTEMD` | `true` | 启用 sd_notify 集成 |
+| watchdog | `-W, --watchdog` | `OPENUPS_WATCHDOG` | `true` | 启用 systemd watchdog 心跳 |
 
 ## 🔒 安全特性
 

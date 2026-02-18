@@ -290,7 +290,7 @@ Environment="OPENUPS_TARGET=192.168.1.1"
 Environment="OPENUPS_INTERVAL=60"
 Environment="OPENUPS_THRESHOLD=5"
 Environment="OPENUPS_TIMEOUT=2000"
-Environment="OPENUPS_MAX_RETRIES=2"
+Environment="OPENUPS_RETRIES=2"
 Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"  # 避免双重时间戳（推荐）
