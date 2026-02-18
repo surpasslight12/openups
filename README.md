@@ -176,18 +176,11 @@ sudo setcap cap_net_raw+ep ./bin/openups
 ### 安装为系统服务
 
 ```bash
-# 1. 编译
-make
+# 一键编译 + 安装二进制 + 安装 systemd service
+sudo make install
 
-# 2. 安装二进制文件
-sudo cp bin/openups /usr/local/bin/
-sudo chmod 755 /usr/local/bin/openups
-sudo setcap cap_net_raw+ep /usr/local/bin/openups
-
-# 3. 安装 systemd 服务
-sudo cp systemd/openups.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable openups
+# 启用并启动
+sudo systemctl enable --now openups
 
 # 查看帮助
 openups --help
@@ -206,13 +199,16 @@ sudo systemctl edit openups
 Environment="OPENUPS_TARGET=8.8.8.8"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_TIMEOUT=2000"
+Environment="OPENUPS_MAX_RETRIES=2"
+Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_DRY_RUN=false"
 Environment="OPENUPS_TIMESTAMP=false"
 
 ; 权限说明（默认 unit）：
-; - service 以 root 运行，但 CapabilityBoundingSet 仅保留 CAP_NET_RAW
-; - 关机通过 systemctl/shutdown 完成，不需要 CAP_SYS_BOOT
-; - 仓库默认 unit 使用 OPENUPS_DRY_RUN=true（安全默认值）
+; - service 以 root 运行，但 CapabilityBoundingSet 仅保留 CAP_NET_RAW + CAP_SYS_BOOT
+; - CAP_SYS_BOOT 用于执行 shutdown/poweroff 命令
+; - 仓库默认 OPENUPS_DRY_RUN=true（安全默认值）
 ; - 如需 systemd watchdog，请同时设置 WatchdogSec=30 并启用 OPENUPS_WATCHDOG=true
 ```
 
@@ -296,10 +292,12 @@ sudo ./bin/openups --target 1.1.1.1
 ```
 
 **systemd 安全策略**：
-- `CapabilityBoundingSet=CAP_NET_RAW`
+- `CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT`
+- `AmbientCapabilities=CAP_NET_RAW`
 - `NoNewPrivileges=true`
 - `ProtectSystem=strict`
 - `ProtectHome=true`
+- `SystemCallFilter=@system-service @network-io @reboot`（`@reboot` 用于执行 shutdown 命令）
 
 ### 输入验证
 
@@ -526,6 +524,12 @@ make clean && make CC=gcc CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
 
 # 运行测试套件
 ./test.sh
+
+# 安装到系统（二进制 + service 文件 + setcap）
+sudo make install
+
+# 卸载（二进制 + service 文件）
+sudo make uninstall
 
 # GDB 调试
 gdb --args ./bin/openups --target 127.0.0.1 --log-level debug

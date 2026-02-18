@@ -52,6 +52,9 @@ DEPS := $(OBJS:.o=.d)
 
 .PHONY: all clean run install uninstall test strip help
 
+SERVICE_SRC  := systemd/openups.service
+SERVICE_DEST := /etc/systemd/system/openups.service
+
 all: $(TARGET)
 
 -include $(DEPS)
@@ -90,12 +93,19 @@ install: $(TARGET)
 	sudo cp $(TARGET) /usr/local/bin/openups
 	sudo chmod 755 /usr/local/bin/openups
 	sudo setcap cap_net_raw+ep /usr/local/bin/openups || true
+	@echo "Installing systemd service to $(SERVICE_DEST)..."
+	sudo cp $(SERVICE_SRC) $(SERVICE_DEST)
+	sudo systemctl daemon-reload
 	@echo "Installation complete. Run 'openups --help' for usage."
+	@echo "To enable service: sudo systemctl enable --now openups"
 
 # 卸载
 uninstall:
-	@echo "Uninstalling openups from /usr/local/bin..."
+	@echo "Uninstalling openups..."
+	sudo systemctl disable --now openups 2>/dev/null || true
 	sudo rm -f /usr/local/bin/openups
+	sudo rm -f $(SERVICE_DEST)
+	sudo systemctl daemon-reload
 	@echo "Uninstall complete."
 
 # 帮助信息
@@ -111,8 +121,9 @@ help:
 	@echo "  clean      - Remove build artifacts (bin/ directory)"
 	@echo "  test       - Build and run automated test suite"
 	@echo "  run        - Build and run in test mode with localhost"
-	@echo "  install    - Install binary to /usr/local/bin and set CAP_NET_RAW"
-	@echo "  uninstall  - Remove binary from /usr/local/bin"
+	@echo "  strip      - Strip debug symbols from binary"
+	@echo "  install    - Install binary + systemd service, set CAP_NET_RAW"
+	@echo "  uninstall  - Remove binary and systemd service"
 	@echo "  help       - Display this help message"
 	@echo ""
 	@echo "Variables (optional):"

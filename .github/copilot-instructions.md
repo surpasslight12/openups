@@ -224,8 +224,8 @@ make CC=gcc-14
 make clean
 make CC=gcc-14 CFLAGS="-g -O0 -std=c23 -Wall -Wextra"
 
-# 安装到系统
-sudo make install  # → /usr/local/bin/openups + setcap cap_net_raw+ep
+# 安装到系统（二进制 + systemd service + setcap）
+sudo make install  # → /usr/local/bin/openups + /etc/systemd/system/openups.service + setcap cap_net_raw+ep
 ```
 
 ### 测试
@@ -289,13 +289,18 @@ journalctl -u openups -f
 Environment="OPENUPS_TARGET=192.168.1.1"
 Environment="OPENUPS_INTERVAL=60"
 Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_TIMEOUT=2000"
+Environment="OPENUPS_MAX_RETRIES=2"
+Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"  # 避免双重时间戳（推荐）
 Environment="OPENUPS_DRY_RUN=false"
 Environment="OPENUPS_WATCHDOG=false"  # 启用前需同时配置 WatchdogSec
 
 # 安全限制
-CapabilityBoundingSet=CAP_NET_RAW
+# CAP_NET_RAW: ICMP raw socket； CAP_SYS_BOOT: 执行 shutdown/poweroff 命令
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
+AmbientCapabilities=CAP_NET_RAW
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

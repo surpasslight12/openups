@@ -4,50 +4,58 @@ Documentation=https://github.com/surpasslight12/openups
 After=network-online.target
 Wants=network-online.target
 
-# Restart rate limiting
+# Rate-limit restarts: max 3 starts per 300 s
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
 [Service]
-# Service type: notify (program communicates readiness via sd_notify protocol)
+# Type=notify: program signals readiness via sd_notify(3)
 Type=notify
 NotifyAccess=main
 
-# Wait 2 minutes before starting the monitor
+# Wait 2 minutes before starting the monitor so the network stack
+# has time to fully come up after boot.
 ExecStartPre=/usr/bin/sleep 120
 ExecStart=/usr/local/bin/openups
 
-# Timeout configurations
-# Maximum time to wait for service startup
-# 180s = 120s startup delay + 60s monitor startup budget
+# Timeout configuration
+# 180 s = 120 s startup delay + 60 s monitor startup budget
 TimeoutStartSec=180
-# Maximum time for graceful shutdown
+# Allow 10 s for graceful shutdown (SIGTERM handler)
 TimeoutStopSec=10
 
 # Restart policy
-# Only restart if process exits with error
 Restart=on-failure
-# Wait N seconds before restart attempt
 RestartSec=10
 
-# Optional: enable systemd watchdog
+# Uncomment to enable systemd watchdog (also set OPENUPS_WATCHDOG=true)
 # WatchdogSec=30
 
+# -------------------------------------------------------------------
 # Environment
+# Override any value with: sudo systemctl edit openups
+# Install path: sudo make install  (sets CAP_NET_RAW automatically)
+# -------------------------------------------------------------------
 EnvironmentFile=-/etc/default/openups
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
+Environment="OPENUPS_TIMEOUT=2000"
 Environment="OPENUPS_PAYLOAD_SIZE=56"
+Environment="OPENUPS_MAX_RETRIES=2"
 Environment="OPENUPS_DRY_RUN=true"
+Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"
 Environment="OPENUPS_SYSTEMD=true"
 Environment="OPENUPS_WATCHDOG=false"
 
-# Security
+# Security hardening
+# CAP_NET_RAW is set via 'setcap' by 'make install' instead of
+# running as root, but root is needed to invoke shutdown commands.
 User=root
-CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -67,8 +75,9 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 MemoryDenyWriteExecute=true
 PrivateDevices=true
 SystemCallArchitectures=native
-SystemCallFilter=@system-service @network-io
-SystemCallFilter=~@privileged @resources @mount @swap @reboot
+# @reboot is required for the shutdown/poweroff commands
+SystemCallFilter=@system-service @network-io @reboot
+SystemCallFilter=~@privileged @resources @mount @swap
 UMask=0077
 
 # 资源限制
