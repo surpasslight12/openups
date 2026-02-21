@@ -9,7 +9,6 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <netinet/icmp6.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
@@ -93,7 +92,6 @@ typedef struct {
     int  timeout_ms;
     int  payload_size;
     int  max_retries;
-    bool use_ipv6;
 
     /* Shutdown */
     shutdown_mode_t shutdown_mode;
@@ -118,7 +116,6 @@ typedef struct {
 
 /* --- ICMP pinger --- */
 typedef struct {
-    bool     use_ipv6;
     int      sockfd;
     uint16_t sequence;
 
@@ -189,7 +186,6 @@ static OPENUPS_COLD void config_print_version(void);
 static_assert(sizeof(uint64_t) == 8,                 "uint64_t must be 8 bytes");
 static_assert(sizeof(time_t) >= 4,                   "time_t must be at least 4 bytes");
 static_assert(sizeof(struct icmphdr) >= 8,           "icmphdr must be at least 8 bytes");
-static_assert(sizeof(struct icmp6_hdr) >= 8,         "icmp6_hdr must be at least 8 bytes");
 static_assert(sizeof(sig_atomic_t) >= sizeof(int),   "sig_atomic_t must be at least int size");
 
 /* ============================================================
@@ -552,15 +548,14 @@ static bool parse_int_arg(const char* arg, int* out_value, int min_value, int ma
     return true;
 }
 
-/* Return true if target is a valid IPv4/IPv6 literal (DNS is disabled). */
-static bool is_valid_ip_literal(const char* restrict target, bool use_ipv6)
+/* Return true if target is a valid IPv4 literal (DNS is disabled). */
+static bool is_valid_ip_literal(const char* restrict target)
 {
     if (target == NULL || target[0] == '\0') {
         return false;
     }
-    unsigned char buf[sizeof(struct in6_addr)];
-    int family = use_ipv6 ? AF_INET6 : AF_INET;
-    return inet_pton(family, target, buf) == 1;
+    unsigned char buf[sizeof(struct in_addr)];
+    return inet_pton(AF_INET, target, buf) == 1;
 }
 
 static OPENUPS_CONST const char* shutdown_mode_to_string(shutdown_mode_t mode)
@@ -597,7 +592,6 @@ static void config_init_default(config_t* restrict config)
     config->timeout_ms = 2000;
     config->payload_size = 56;
     config->max_retries = 2;
-    config->use_ipv6 = false;
     config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;
     config->delay_minutes = 1;
     config->dry_run = true;
@@ -623,7 +617,6 @@ static void config_load_from_env(config_t* restrict config)
     config->timeout_ms = get_env_int("OPENUPS_TIMEOUT", config->timeout_ms);
     config->payload_size = get_env_int("OPENUPS_PAYLOAD_SIZE", config->payload_size);
     config->max_retries = get_env_int("OPENUPS_RETRIES", config->max_retries);
-    config->use_ipv6 = get_env_bool("OPENUPS_IPV6", config->use_ipv6);
     value = getenv("OPENUPS_SHUTDOWN_MODE");
     if (value != NULL) {
         shutdown_mode_t parsed_mode;
@@ -655,7 +648,6 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
         {"timeout", required_argument, 0, 'w'},
         {"payload-size", required_argument, 0, 's'},
         {"retries", required_argument, 0, 'r'},
-        {"ipv6", optional_argument, 0, '6'},
         {"shutdown-mode", required_argument, 0, 'S'},
         {"delay", required_argument, 0, 'D'},
         {"dry-run", optional_argument, 0, 'd'},
@@ -669,7 +661,7 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
     };
     int c;
     int option_index = 0;
-    const char* optstring = "t:i:n:w:s:r:6::S:D:d::L:T::M::W::vh";
+    const char* optstring = "t:i:n:w:s:r:S:D:d::L:T::M::W::vh";
     while ((c = getopt_long(argc, argv, optstring, long_options, &option_index)) != -1) {
         switch (c) {
             case 't': snprintf(config->target, sizeof(config->target), "%s", optarg); break;
@@ -701,12 +693,6 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
                 if (!parse_int_arg(optarg, &config->delay_minutes, 1, INT_MAX, "--delay")) return false;
                 break;
             case 'L': config->log_level = string_to_log_level(optarg); break;
-            case '6':
-                if (!parse_bool_arg(optarg, &config->use_ipv6)) {
-                    fprintf(stderr, "Invalid value for --ipv6: %s (use true|false)\n", optarg ? optarg : "<empty>");
-                    return false;
-                }
-                break;
             case 'd':
                 if (!parse_bool_arg(optarg, &config->dry_run)) {
                     fprintf(stderr, "Invalid value for --dry-run: %s (use true|false)\n", optarg ? optarg : "<empty>");
@@ -754,9 +740,8 @@ static bool config_validate(const config_t* restrict config, char* restrict erro
         snprintf(error_msg, error_size, "Target host cannot be empty");
         return false;
     }
-    if (!is_valid_ip_literal(config->target, config->use_ipv6)) {
-        snprintf(error_msg, error_size, "Target must be a valid %s address (DNS is disabled)",
-                 config->use_ipv6 ? "IPv6" : "IPv4");
+    if (!is_valid_ip_literal(config->target)) {
+        snprintf(error_msg, error_size, "Target must be a valid IPv4 address (DNS is disabled)");
         return false;
     }
     if (config->interval_sec <= 0) {
@@ -771,7 +756,7 @@ static bool config_validate(const config_t* restrict config, char* restrict erro
         snprintf(error_msg, error_size, "Timeout must be positive");
         return false;
     }
-    const int max_payload = config->use_ipv6 ? 65487 : 65507;
+    const int max_payload = 65507;
     if (config->payload_size < 0 || config->payload_size > max_payload) {
         snprintf(error_msg, error_size, "Payload size must be between 0 and %d", max_payload);
         return false;
@@ -806,7 +791,6 @@ OPENUPS_COLD static void config_print(const config_t* restrict config)
     printf("  Timeout: %d ms\n", config->timeout_ms);
     printf("  Payload Size: %d bytes\n", config->payload_size);
     printf("  Max Retries: %d\n", config->max_retries);
-    printf("  IPv6: %s\n", config->use_ipv6 ? "true" : "false");
     printf("  Shutdown Mode: %s\n", shutdown_mode_to_string(config->shutdown_mode));
     printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
     printf("  Log Level: %s\n", log_level_to_string(config->log_level));
@@ -824,8 +808,7 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("  -n, --threshold <num>       Consecutive failures threshold (default: 5)\n");
     printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: 2000)\n");
     printf("  -s, --payload-size <bytes>  ICMP payload size (default: 56)\n");
-    printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n");
-    printf("  -6, --ipv6[=true|false]     Enable/disable IPv6 mode (default: false)\n\n");
+    printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n\n");
     printf("Shutdown Options:\n");
     printf("  -S, --shutdown-mode <mode>  Shutdown mode: immediate|delayed|log-only\n");
     printf("                              (default: immediate)\n");
@@ -847,8 +830,7 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("  -h, --help                  Show this help message\n\n");
     printf("Environment Variables (lower priority than CLI args):\n");
     printf("  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
-    printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE, OPENUPS_RETRIES,\n");
-    printf("                OPENUPS_IPV6\n");
+    printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE, OPENUPS_RETRIES\n");
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_DRY_RUN\n");
     printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP\n");
@@ -877,7 +859,7 @@ OPENUPS_COLD static void config_print_version(void)
 
 /* --- Internal helpers --- */
 
-/* Compute the standard ones-complement ICMP checksum (IPv4 only; IPv6 is done by the kernel). */
+/* Compute the standard ones-complement ICMP checksum. */
 static uint16_t calculate_checksum(const void* data, size_t len)
 {
     const uint16_t* buf = (const uint16_t*)data;
@@ -898,14 +880,13 @@ static uint16_t calculate_checksum(const void* data, size_t len)
 /* --- Pinger lifecycle --- */
 
 /* Initialise ICMP pinger and open raw socket (requires CAP_NET_RAW). */
-static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
+static bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
                              char* restrict error_msg, size_t error_size)
 {
     if (pinger == NULL || error_msg == NULL || error_size == 0) {
         return false;
     }
 
-    pinger->use_ipv6 = use_ipv6;
     pinger->sockfd = -1;
     pinger->sequence = 0;
     pinger->send_buf = NULL;
@@ -917,29 +898,11 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger, bool use_ipv6,
     pinger->cached_addr_len = 0;
 
     /* Create raw socket */
-    int family = use_ipv6 ? AF_INET6 : AF_INET;
-    int protocol = use_ipv6 ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
-
-    pinger->sockfd = socket(family, SOCK_RAW | SOCK_CLOEXEC, protocol);
+    pinger->sockfd = socket(AF_INET, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_ICMP);
     if (pinger->sockfd < 0) {
         snprintf(error_msg, error_size, "Failed to create socket: %s (require root or CAP_NET_RAW)",
                  strerror(errno));
         return false;
-    }
-
-    /* IPv6: checksum is handled by the kernel; set IPV6_CHECKSUM best-effort (continue on EINVAL/ENOPROTOOPT) */
-    if (use_ipv6) {
-        int offset = (int)offsetof(struct icmp6_hdr, icmp6_cksum);
-        if (setsockopt(pinger->sockfd, IPPROTO_IPV6, IPV6_CHECKSUM, &offset,
-                       (socklen_t)sizeof(offset)) != 0) {
-            if (errno != EINVAL && errno != ENOPROTOOPT) {
-                snprintf(error_msg, error_size, "Failed to set IPV6_CHECKSUM: %s",
-                         strerror(errno));
-                close(pinger->sockfd);
-                pinger->sockfd = -1;
-                return false;
-            }
-        }
     }
 
     /* Non-blocking: prevents recvfrom from blocking unexpectedly; paired with poll + EAGAIN logic */
@@ -977,7 +940,7 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
 /* --- Packet helpers --- */
 
 /* Resolve target IP literal into a sockaddr (no DNS); caching is handled by the caller. */
-static bool resolve_target(const char* restrict target, bool use_ipv6,
+static bool resolve_target(const char* restrict target,
                            struct sockaddr_storage* restrict addr, socklen_t* restrict addr_len,
                            char* restrict error_msg, size_t error_size)
 {
@@ -987,17 +950,6 @@ static bool resolve_target(const char* restrict target, bool use_ipv6,
     }
 
     memset(addr, 0, sizeof(*addr));
-
-    if (use_ipv6) {
-        struct sockaddr_in6* addr6 = (struct sockaddr_in6*)addr;
-        addr6->sin6_family = AF_INET6;
-        if (inet_pton(AF_INET6, target, &addr6->sin6_addr) != 1) {
-            snprintf(error_msg, error_size, "Invalid IPv6 address (DNS disabled): %s", target);
-            return false;
-        }
-        *addr_len = sizeof(*addr6);
-        return true;
-    }
 
     struct sockaddr_in* addr4 = (struct sockaddr_in*)addr;
     addr4->sin_family = AF_INET;
@@ -1285,127 +1237,7 @@ static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
     }
 }
 
-/* IPv6 ping (ICMPv6 Echo Request/Reply, RFC 4443). */
-static OPENUPS_HOT ping_result_t ping_ipv6(icmp_pinger_t* restrict pinger,
-                               struct sockaddr_in6* restrict dest_addr, int timeout_ms,
-                               int payload_size, icmp_tick_fn tick, void* tick_user_data,
-                               icmp_should_stop_fn should_stop, void* stop_user_data)
-{
-    ping_result_t result = {false, 0.0, ""};
-
-    if (pinger == NULL || dest_addr == NULL) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
-        return result;
-    }
-
-    if (timeout_ms <= 0) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid timeout");
-        return result;
-    }
-
-    /* Build ICMPv6 Echo Request packet (reuse buffer) */
-    size_t packet_len = sizeof(struct icmp6_hdr) + (size_t)payload_size;
-    if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
-        return result;
-    }
-    fill_payload_pattern(pinger, sizeof(struct icmp6_hdr), (size_t)payload_size);
-
-    struct icmp6_hdr* icmp6_hdr = (struct icmp6_hdr*)pinger->send_buf;
-    memset(icmp6_hdr, 0, sizeof(*icmp6_hdr));
-    icmp6_hdr->icmp6_type = ICMP6_ECHO_REQUEST;
-    icmp6_hdr->icmp6_code = 0;
-    uint16_t ident = get_cached_ident();
-    uint16_t seq = next_sequence(pinger);
-    icmp6_hdr->icmp6_id = ident;
-    icmp6_hdr->icmp6_seq = seq;
-
-    struct timespec send_time;
-    (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
-
-    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, MSG_NOSIGNAL,
-                          (struct sockaddr*)dest_addr,
-                          sizeof(*dest_addr));
-    if (OPENUPS_UNLIKELY(sent < 0)) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Failed to send packet: %s",
-                 strerror(errno));
-        return result;
-    }
-
-    /* Receive ICMPv6 Echo Reply */
-    uint8_t recv_buf[4096] __attribute__((aligned(16)));
-    struct sockaddr_in6 recv_addr;
-    socklen_t recv_addr_len = sizeof(recv_addr);
-
-    uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
-                       (uint64_t)send_time.tv_nsec / 1000000ULL;
-    uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
-
-    while (1) {
-        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms, tick, tick_user_data,
-                                              should_stop, stop_user_data);
-        if (wait_rc == -2) {
-            snprintf(result.error_msg, sizeof(result.error_msg), "Stopped");
-            return result;
-        }
-        if (wait_rc < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                snprintf(result.error_msg, sizeof(result.error_msg), "Timeout");
-            } else {
-                snprintf(result.error_msg, sizeof(result.error_msg), "Failed to wait: %s",
-                         strerror(errno));
-            }
-            return result;
-        }
-
-        ssize_t received;
-        recv_addr_len = sizeof(recv_addr);
-        do {
-            received = recvfrom(pinger->sockfd, recv_buf, sizeof(recv_buf), 0,
-                                (struct sockaddr*)&recv_addr, &recv_addr_len);
-        } while (received < 0 && errno == EINTR);
-
-        if (received < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            snprintf(result.error_msg, sizeof(result.error_msg), "Failed to receive: %s",
-                     strerror(errno));
-            return result;
-        }
-
-        /* Filter by source address */
-        if (memcmp(&recv_addr.sin6_addr, &dest_addr->sin6_addr, sizeof(struct in6_addr)) != 0) {
-            continue;
-        }
-
-        if (received < (ssize_t)sizeof(struct icmp6_hdr)) {
-            continue;
-        }
-
-        struct icmp6_hdr* recv_icmp6 = (struct icmp6_hdr*)recv_buf;
-        if (recv_icmp6->icmp6_type != ICMP6_ECHO_REPLY) {
-            continue;
-        }
-        if (recv_icmp6->icmp6_id != ident || recv_icmp6->icmp6_seq != seq) {
-            continue;
-        }
-
-        struct timespec recv_time;
-        (void)clock_gettime(CLOCK_MONOTONIC, &recv_time);
-
-        double latency = (recv_time.tv_sec - send_time.tv_sec) * 1000.0 +
-                         (recv_time.tv_nsec - send_time.tv_nsec) / 1000000.0;
-        if (latency < 0.0) {
-            latency = 0.0;
-        }
-
-        result.success = true;
-        result.latency_ms = latency;
-        return result;
-    }
-}
-
-/* Resolve target (with per-pinger cache) and dispatch to IPv4 or IPv6 implementation. */
+/* Resolve target (with per-pinger cache) and dispatch to IPv4 implementation. */
 static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
                                   const char* restrict target,
                                   int timeout_ms, int payload_size, icmp_tick_fn tick,
@@ -1429,7 +1261,7 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
         return result;
     }
 
-    const int max_payload = pinger->use_ipv6 ? 65487 : 65507;
+    const int max_payload = 65507;
     if (payload_size > max_payload) {
         snprintf(result.error_msg, sizeof(result.error_msg),
                  "Payload size must be between 0 and %d", max_payload);
@@ -1446,7 +1278,7 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
         addr_len = pinger->cached_addr_len;
     } else {
         struct sockaddr_storage addr;
-        if (!resolve_target(target, pinger->use_ipv6, &addr, &addr_len, result.error_msg,
+        if (!resolve_target(target, &addr, &addr_len, result.error_msg,
                             sizeof(result.error_msg))) {
             return result;
         }
@@ -1458,10 +1290,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
         addr_ptr = &pinger->cached_addr;
     }
 
-    if (pinger->use_ipv6) {
-        return ping_ipv6(pinger, (struct sockaddr_in6*)(void*)addr_ptr, timeout_ms, payload_size,
-                         tick, tick_user_data, should_stop, stop_user_data);
-    }
     return ping_ipv4(pinger, (struct sockaddr_in*)(void*)addr_ptr, timeout_ms, payload_size, tick,
                      tick_user_data, should_stop, stop_user_data);
 }
@@ -2023,7 +1851,7 @@ static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restr
     }
 
     /* ICMP pinger */
-    if (!icmp_pinger_init(&ctx->pinger, ctx->config.use_ipv6, error_msg, error_size)) {
+    if (!icmp_pinger_init(&ctx->pinger, error_msg, error_size)) {
         return false;
     }
 
@@ -2288,9 +2116,8 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
 
     logger_info(&ctx->logger,
                 "Starting OpenUPS monitor for target %s, checking every %d seconds, "
-                "shutdown after %d consecutive failures (IPv%s)",
-                config->target, config->interval_sec, config->fail_threshold,
-                config->use_ipv6 ? "6" : "4");
+                "shutdown after %d consecutive failures",
+                config->target, config->interval_sec, config->fail_threshold);
 
     if (ctx->systemd_enabled) {
         (void)systemd_notifier_ready(&ctx->systemd);

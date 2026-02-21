@@ -18,7 +18,7 @@ src/
 - **日志系统**：5 级日志（SILENT/ERROR/WARN/INFO/DEBUG）
 - **指标统计**：ping 成功率、延迟、运行时长
 - **配置管理**：CLI 参数、环境变量、验证
-- **ICMP 实现**：原生 raw socket（IPv4/IPv6）
+- **ICMP 实现**：原生 raw socket（IPv4）
 - **关机触发**：fork/execvp 执行
 - **systemd 集成**：sd_notify 协议、watchdog 心跳
 - **上下文管理**：统一上下文、信号处理、监控循环
@@ -144,7 +144,6 @@ typedef struct {
     bool enable_timestamp;      // 时间戳开关（systemd 场景下禁用）
     shutdown_mode_t shutdown_mode;  // immediate/delayed/log-only
     bool dry_run;               // 默认 true（防止误操作）
-    bool use_ipv6;
     // ... 更多字段见 src/main.c 中的 config_t 定义
 } config_t;
 
@@ -169,7 +168,7 @@ if (!config_validate(&config, error_msg, sizeof(error_msg))) {
 ```c
 // 初始化（需要 CAP_NET_RAW）
 icmp_pinger_t pinger;
-if (!icmp_pinger_init(&pinger, use_ipv6, error_msg, sizeof(error_msg))) {
+if (!icmp_pinger_init(&pinger, error_msg, sizeof(error_msg))) {
     logger_error(&logger, error_msg);
     return false;
 }
@@ -187,7 +186,6 @@ if (result.success) {
 
 // 关键实现细节
 // - IPv4: 手动计算 ICMP 校验和（calculate_checksum）
-// - IPv6: 内核自动处理校验和
 // - 编译时断言：static_assert(sizeof(struct icmphdr) >= 8, ...)
 ```
 
@@ -280,7 +278,7 @@ journalctl -u openups -f
 ### 修改 ICMP 行为
 - 重点文件：`src/main.c`（ICMP 相关代码区域）
 - 关键函数：`icmp_pinger_ping_ex()`，`calculate_checksum()`
-- 注意：IPv4/IPv6 校验和处理不同，IPv6 需要 `IPV6_CHECKSUM` socket 选项
+- 注意：ICMP 使用 IPv4 raw socket，校验和需要手动计算
 
 ### systemd 服务配置
 ```ini

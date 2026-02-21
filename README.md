@@ -12,7 +12,6 @@
 
 ### 核心功能
 - **原生 ICMP 实现**：使用 raw socket，无需依赖系统 `ping` 命令
-- **IPv4/IPv6 双栈支持**：同时支持 IPv4 和 IPv6 网络
 - **智能重试机制**：可配置的重试次数
 - **灵活的关机策略**：immediate、delayed、log-only 三种模式
 
@@ -43,7 +42,7 @@ src/
 - **日志系统**：5 级日志（SILENT/ERROR/WARN/INFO/DEBUG）
 - **指标统计**：ping 成功率、延迟、运行时长
 - **配置管理**：CLI 参数、环境变量、验证
-- **ICMP 实现**：原生 raw socket（IPv4/IPv6）
+- **ICMP 实现**：原生 raw socket（IPv4）
 - **关机触发**：fork/execvp 执行
 - **systemd 集成**：sd_notify 协议、watchdog 心跳
 - **上下文管理**：统一上下文、信号处理、监控循环
@@ -251,13 +250,7 @@ sudo ./bin/openups --target 192.168.1.1 --shutdown-mode log-only
 sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=false
 ```
 
-### IPv6 监控
-
-```bash
-./bin/openups --target 2606:4700:4700::1111 --ipv6 --interval 10
-```
-
-> 注意：OpenUPS 不做 DNS 解析，`--target` 仅支持 IP 字面量（IPv4/IPv6）。
+> 注意：OpenUPS 不做 DNS 解析，`--target` 仅支持 IPv4 数字 IP 字面量。
 
 补充：默认不会直接调用内核 `reboot()` 关机接口；会通过 `fork()` + `exec*()` 调用
 `systemctl poweroff`（systemd 场景）或 `/sbin/shutdown`（非 systemd 场景）。
@@ -276,7 +269,6 @@ sudo ./bin/openups --target 192.168.1.1 --interval 5 --threshold 3 --dry-run=fal
 | 超时时间 | `-w, --timeout` | `OPENUPS_TIMEOUT` | `2000`（ms） | 单次 ping 等待回包的超时 |
 | 载荷大小 | `-s, --payload-size` | `OPENUPS_PAYLOAD_SIZE` | `56`（字节） | ICMP 数据载荷长度 |
 | 重试次数 | `-r, --retries` | `OPENUPS_RETRIES` | `2` | 每次 ping 的重试次数（总尝试 = 重试 + 1） |
-| IPv6 模式 | `-6, --ipv6` | `OPENUPS_IPV6` | `false` | 启用 IPv6（目标须为 IPv6 字面量） |
 | 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
 | 延迟时长 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1`（分钟） | `delayed` 模式下的关机延迟 |
 | 演习模式 | `-d, --dry-run` | `OPENUPS_DRY_RUN` | `true` | 不执行实际关机（安全默认值） |
@@ -410,7 +402,6 @@ sudo systemctl cat openups
 
 **ICMP 实现细节**：
 - IPv4：手动计算校验和（可选 AVX2 加速，运行时自动分发）
-- IPv6：校验和由内核处理，尽力设置 `IPV6_CHECKSUM`
 - raw socket 设为 non-blocking，等待回包使用 `poll()`，处理 `EINTR/EAGAIN`
 - 需要 `CAP_NET_RAW` 权限
 
@@ -590,7 +581,7 @@ GCC 14 是首个对 C23 标准提供较完整支持的稳定版本（包括 `-st
 ## ⚠️ 已知限制
 
 - 仅支持 ICMP（不支持 TCP/UDP 探测）；某些网络可能过滤 ICMP。
-- 目标地址：仅支持 IPv4/IPv6 数字 IP 字面量（不做 DNS 解析）。
+- 目标地址：仅支持 IPv4 数字 IP 字面量（不做 DNS 解析）。
 - Linux 专属；ICMP raw socket 需要 root 或 `CAP_NET_RAW`。
 - 单进程单目标；多目标需要启动多个实例。
 
