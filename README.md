@@ -16,28 +16,37 @@
 
 ## 🚀 快速开始
 
-### 编译与运行
+### 安装与管理服务
+
+快速、方便地一键安装（自动完成编译、交互式参数配置和 systemd 服务注册）：
 
 ```bash
-# 安装编译工具
-sudo apt install build-essential
+# 赋予执行权限
+chmod +x install.sh
 
+# 交互式安装 / 初始化配置
+sudo ./install.sh install
+
+# 更新构建
+sudo ./install.sh update
+
+# 卸载系统服务
+sudo ./install.sh uninstall
+```
+
+### 手动调试运行
+
+如果你只想编译并在前台测试：
+
+```bash
 # 编译
 make
 
 # 查看帮助
 ./bin/openups --help
 
-# 测试运行
+# 测试运行（干跑模式不关机）
 sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
-```
-
-### 安装为系统服务
-
-```bash
-sudo make install
-sudo systemctl enable --now openups
-sudo systemctl status openups
 ```
 
 ## ⚙️ 默认参数

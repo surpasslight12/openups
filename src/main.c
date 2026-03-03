@@ -1,8 +1,4 @@
-/* ============================================================
- * Includes
- * ============================================================ */
 
-/* --- System / POSIX --- */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -28,16 +24,8 @@
 #include <time.h>
 #include <unistd.h>
 
-/* ============================================================
- * Version / program name
- * ============================================================ */
-
 #define OPENUPS_VERSION      "1.0.0"
 #define OPENUPS_PROGRAM_NAME "openups"
-
-/* ============================================================
- * Compiler hint macros  (GCC 14+ / Clang 15+ required)
- * ============================================================ */
 
 #define OPENUPS_LIKELY(x)   __builtin_expect(!!(x), 1)
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -46,11 +34,6 @@
 #define OPENUPS_PURE        __attribute__((pure))
 #define OPENUPS_CONST       __attribute__((const))
 
-/* ============================================================
- * Type definitions
- * ============================================================ */
-
-/* --- Log level --- */
 typedef enum {
     LOG_LEVEL_SILENT = -1,  /* completely silent, suitable for systemd */
     LOG_LEVEL_ERROR = 0,
@@ -59,13 +42,11 @@ typedef enum {
     LOG_LEVEL_DEBUG = 3     /* verbose: prints per-ping latency */
 } log_level_t;
 
-/* --- Logger --- */
 typedef struct {
     log_level_t level;
     bool enable_timestamp;
 } logger_t;
 
-/* --- Metrics --- */
 typedef struct {
     uint64_t total_pings;
     uint64_t successful_pings;
@@ -76,14 +57,12 @@ typedef struct {
     uint64_t start_time_ms;
 } metrics_t;
 
-/* --- Shutdown mode --- */
 typedef enum {
     SHUTDOWN_MODE_IMMEDIATE,
     SHUTDOWN_MODE_DELAYED,
     SHUTDOWN_MODE_LOG_ONLY
 } shutdown_mode_t;
 
-/* --- Configuration --- */
 typedef struct {
     /* Network */
     char target[256];
@@ -107,14 +86,12 @@ typedef struct {
     bool enable_watchdog;
 } config_t;
 
-/* --- Ping result --- */
 typedef struct {
     bool   success;
     double latency_ms;
     char   error_msg[256];
 } ping_result_t;
 
-/* --- ICMP pinger --- */
 typedef struct {
     int      sockfd;
     uint16_t sequence;
@@ -135,7 +112,6 @@ typedef struct {
 typedef void (*icmp_tick_fn)(void* user_data);
 typedef bool (*icmp_should_stop_fn)(void* user_data);
 
-/* --- systemd notifier --- */
 typedef struct {
     bool     enabled;
     int      sockfd;
@@ -145,7 +121,6 @@ typedef struct {
     char     last_status[256];
 } systemd_notifier_t;
 
-/* --- Monitor context (top-level object) --- */
 typedef struct openups_context {
     volatile sig_atomic_t stop_flag;
     volatile sig_atomic_t print_stats_flag;
@@ -161,36 +136,21 @@ typedef struct openups_context {
     systemd_notifier_t systemd;
 } openups_ctx_t;
 
-/* ============================================================
- * Forward declarations
- * ============================================================ */
-
-/* --- Utility --- */
 static uint64_t get_monotonic_ms(void);
 static OPENUPS_PURE bool is_safe_path(const char* restrict path);
 
-/* --- Logger --- */
 static OPENUPS_CONST const char* log_level_to_string(log_level_t level);
 static OPENUPS_PURE log_level_t string_to_log_level(const char* restrict str);
 
-/* --- Config --- */
 static OPENUPS_CONST const char* shutdown_mode_to_string(shutdown_mode_t mode);
 static bool shutdown_mode_parse(const char* restrict str, shutdown_mode_t* restrict out_mode);
 static OPENUPS_COLD void config_print_usage(void);
 static OPENUPS_COLD void config_print_version(void);
 
-/* ============================================================
- * Compile-time assertions
- * ============================================================ */
-
 static_assert(sizeof(uint64_t) == 8,                 "uint64_t must be 8 bytes");
 static_assert(sizeof(time_t) >= 4,                   "time_t must be at least 4 bytes");
 static_assert(sizeof(struct icmphdr) >= 8,           "icmphdr must be at least 8 bytes");
 static_assert(sizeof(sig_atomic_t) >= sizeof(int),   "sig_atomic_t must be at least int size");
-
-/* ============================================================
- * Utility functions
- * ============================================================ */
 
 /* Monotonic clock in milliseconds; returns UINT64_MAX on overflow or error. */
 static uint64_t get_monotonic_ms(void)
@@ -293,10 +253,6 @@ static OPENUPS_PURE bool is_safe_path(const char* restrict path)
     }
     return true;
 }
-
-/* ============================================================
- * Logger functions
- * ============================================================ */
 
 /* Initialise logger with the given level and timestamp preference. */
 static void logger_init(logger_t* restrict logger, log_level_t level, bool enable_timestamp)
@@ -420,10 +376,6 @@ static void logger_error(logger_t* restrict logger, const char* restrict fmt, ..
     log_message(logger, LOG_LEVEL_ERROR, buffer);
 }
 
-/* ============================================================
- * Metrics functions
- * ============================================================ */
-
 /* Initialise metrics; min/max latency use -1.0 as "not yet recorded" sentinel. */
 static void metrics_init(metrics_t* metrics)
 {
@@ -498,12 +450,6 @@ static uint64_t metrics_uptime_seconds(const metrics_t* metrics)
     return (now_ms - metrics->start_time_ms) / 1000ULL;
 }
 
-/* ============================================================
- * Config functions
- * ============================================================ */
-
-/* --- Argument parsers --- */
-
 /* Parse optional boolean CLI argument; NULL arg means flag was given without value (→ true). */
 static bool parse_bool_arg(const char* arg, bool* out_value)
 {
@@ -577,8 +523,6 @@ static bool shutdown_mode_parse(const char* restrict str, shutdown_mode_t* restr
     if (strcasecmp(str, "log-only") == 0) { *out_mode = SHUTDOWN_MODE_LOG_ONLY; return true; }
     return false;
 }
-
-/* --- Config lifecycle --- */
 
 /* Fill config with built-in defaults (dry_run=true for safety). */
 static void config_init_default(config_t* restrict config)
@@ -853,12 +797,6 @@ OPENUPS_COLD static void config_print_version(void)
     printf("OpenUPS network monitor\n");
 }
 
-/* ============================================================
- * ICMP functions
- * ============================================================ */
-
-/* --- Internal helpers --- */
-
 /* Compute the standard ones-complement ICMP checksum. */
 static uint16_t calculate_checksum(const void* data, size_t len)
 {
@@ -876,8 +814,6 @@ static uint16_t calculate_checksum(const void* data, size_t len)
     }
     return (uint16_t)(~sum);
 }
-
-/* --- Pinger lifecycle --- */
 
 /* Initialise ICMP pinger and open raw socket (requires CAP_NET_RAW). */
 static bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
@@ -930,8 +866,6 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
     memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
     pinger->cached_addr_len = 0;
 }
-
-/* --- Packet helpers --- */
 
 /* Resolve target IP literal into a sockaddr (no DNS); caching is handled by the caller. */
 static bool resolve_target(const char* restrict target,
@@ -1076,8 +1010,6 @@ static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn ti
         return -1;
     }
 }
-
-/* --- Ping implementation --- */
 
 /* Return the ICMP identifier derived from getpid(); cached to avoid repeated syscalls. */
 static uint16_t get_cached_ident(void)
@@ -1288,12 +1220,6 @@ static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pin
                      tick_user_data, should_stop, stop_user_data);
 }
 
-/* ============================================================
- * Shutdown functions
- * ============================================================ */
-
-/* --- Command building --- */
-
 /* Split command string into an argv array for execvp (no shell); rejects unsafe characters. */
 static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer_size,
                                 char* argv[], size_t argv_size)
@@ -1367,8 +1293,6 @@ static bool shutdown_select_command(const config_t* restrict config, bool use_sy
 
     return false;
 }
-
-/* --- Execution --- */
 
 /* Emit a log warning describing the imminent shutdown action. */
 static void log_shutdown_plan(logger_t* restrict logger, shutdown_mode_t mode,
@@ -1513,12 +1437,6 @@ static OPENUPS_COLD void shutdown_trigger(const config_t* config, logger_t* logg
     (void)shutdown_execute_command(argv, logger);
 }
 
-/* ============================================================
- * Systemd functions
- * ============================================================ */
-
-/* --- socket address helpers --- */
-
 /* Populate a sockaddr_un from NOTIFY_SOCKET path, handling abstract namespace (@-prefix). */
 static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr_un* restrict addr,
                               socklen_t* restrict addr_len)
@@ -1552,8 +1470,6 @@ static bool build_systemd_addr(const char* restrict socket_path, struct sockaddr
     *addr_len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + path_len + 1);
     return true;
 }
-
-/* --- Notifier operations --- */
 
 /* Send a sd_notify datagram; skips silently if notifier is disabled. */
 static OPENUPS_HOT bool send_notify(systemd_notifier_t* restrict notifier, const char* restrict message)
@@ -1727,12 +1643,6 @@ static OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(const systemd
     return interval_ms;
 }
 
-/* ============================================================
- * Context functions
- * ============================================================ */
-
-/* --- Signal handling --- */
-
 /* Global context pointer; set once in setup_signal_handlers, used only by signal_handler. */
 static openups_ctx_t* g_ctx = NULL;
 
@@ -1776,8 +1686,6 @@ static void setup_signal_handlers(openups_ctx_t* restrict ctx)
     (void)sigaction(SIGUSR1, &sa, NULL);
 }
 
-/* --- ICMP callbacks --- */
-
 /* Watchdog tick callback: kick systemd watchdog during ICMP wait periods. */
 static void watchdog_tick_callback(void* user_data)
 {
@@ -1795,8 +1703,6 @@ static bool monitor_should_stop(void* user_data)
     openups_ctx_t* ctx = (openups_ctx_t*)user_data;
     return ctx != NULL && ctx->stop_flag != 0;
 }
-
-/* --- Context lifecycle --- */
 
 /* Format and forward a status string to systemd (printf-style). */
 [[gnu::format(printf, 2, 3)]]
@@ -1913,8 +1819,6 @@ static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
                     metrics_uptime_seconds(metrics));
     }
 }
-
-/* --- Monitor loop --- */
 
 /* Execute one ping with up to max_retries retries; returns true on success. */
 static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_result_t* restrict result)
@@ -2139,10 +2043,6 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
 
     return 0;
 }
-
-/* ============================================================
- * Entry point
- * ============================================================ */
 
 int main(int argc, char** argv)
 {
