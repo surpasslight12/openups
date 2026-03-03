@@ -111,9 +111,6 @@ typedef struct {
 } icmp_pinger_t;
 
 /* Callbacks used by icmp_pinger_ping_ex */
-typedef void (*icmp_tick_fn)(void* user_data);
-typedef bool (*icmp_should_stop_fn)(void* user_data);
-
 typedef struct {
     bool     enabled;
     int      sockfd;
@@ -897,23 +894,7 @@ static bool resolve_target(const char* restrict target,
     return true;
 }
 
-/* Ensure the static buffer can satisfy the need. */
-static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
-                               char* restrict error_msg, size_t error_size)
-{
-    if (pinger == NULL || error_msg == NULL || error_size == 0) {
-        return false;
-    }
 
-    if (need > sizeof(pinger->send_buf)) {
-        snprintf(error_msg, error_size, "Requested buffer size %zu exceeds static capacity %zu",
-                 need, sizeof(pinger->send_buf));
-        return false;
-    }
-
-    pinger->send_buf_capacity = sizeof(pinger->send_buf);
-    return true;
-}
 
 /* Write a repeating 0x00..0xFF byte pattern into the payload region; skips if already filled. */
 static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_size,
@@ -957,269 +938,13 @@ static uint16_t next_sequence(icmp_pinger_t* restrict pinger)
 /* Poll fd until readable, deadline passes, or should_stop fires.
  * Fires tick callback periodically (every ~1 s) while waiting.
  * Returns 0 on readable, -1 on timeout/error (errno set), -2 on stop request. */
-static int wait_readable_with_tick(int fd, uint64_t deadline_ms, icmp_tick_fn tick,
-                                   void* tick_user_data, icmp_should_stop_fn should_stop,
-                                   void* stop_user_data)
-{
-    uint64_t last_tick_ms = 0;
 
-    while (1) {
-        if (should_stop != NULL && should_stop(stop_user_data)) {
-            errno = EINTR;
-            return -2;
-        }
 
-        uint64_t now_ms = get_monotonic_ms();
-        if (now_ms == UINT64_MAX) {
-            errno = EINVAL;
-            return -1;
-        }
 
-        if (now_ms >= deadline_ms) {
-            errno = EAGAIN;
-            return -1;
-        }
 
-        /* Default: tick at most once per second to avoid excessive callbacks */
-        if (tick != NULL && (last_tick_ms == 0 || now_ms - last_tick_ms >= 1000)) {
-            tick(tick_user_data);
-            last_tick_ms = now_ms;
-        }
 
-        int timeout_ms = (int)(deadline_ms - now_ms);
-        if (timeout_ms > 200) {
-            timeout_ms = 200;
-        }
-        if (timeout_ms < 1) {
-            timeout_ms = 1;
-        }
 
-        struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
 
-        int rc = poll(&pfd, 1, timeout_ms);
-        if (rc > 0) {
-            /* fd is readable (POLLIN) or has an error event; let recvfrom sort it out */
-            return 0;
-        }
-        if (rc == 0) {
-            continue; /* poll timeout slice elapsed — recheck deadline */
-        }
-
-        if (errno == EINTR) {
-            continue;
-        }
-        return -1;
-    }
-}
-
-/* Return the ICMP identifier derived from getpid(); cached to avoid repeated syscalls. */
-static uint16_t get_cached_ident(void)
-{
-    static uint16_t cached_ident = 0;
-    if (OPENUPS_UNLIKELY(cached_ident == 0)) {
-        cached_ident = (uint16_t)(getpid() & 0xFFFF);
-        if (cached_ident == 0) {
-            cached_ident = 1;
-        }
-    }
-    return cached_ident;
-}
-
-/* IPv4 ping (ICMP Echo Request/Reply, RFC 792). */
-static OPENUPS_HOT ping_result_t ping_ipv4(icmp_pinger_t* restrict pinger,
-                               struct sockaddr_in* restrict dest_addr, int timeout_ms,
-                               int payload_size, icmp_tick_fn tick, void* tick_user_data,
-                               icmp_should_stop_fn should_stop, void* stop_user_data)
-{
-    ping_result_t result = {false, 0.0, ""};
-
-    if (pinger == NULL || dest_addr == NULL) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
-        return result;
-    }
-
-    if (timeout_ms <= 0) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid timeout");
-        return result;
-    }
-
-    /* Build ICMP Echo Request packet (reuse buffer) */
-    size_t packet_len = sizeof(struct icmphdr) + (size_t)payload_size;
-    if (!ensure_send_buffer(pinger, packet_len, result.error_msg, sizeof(result.error_msg))) {
-        return result;
-    }
-    fill_payload_pattern(pinger, sizeof(struct icmphdr), (size_t)payload_size);
-
-    struct icmphdr* icmp_hdr = (struct icmphdr*)pinger->send_buf;
-    memset(icmp_hdr, 0, sizeof(*icmp_hdr));
-    icmp_hdr->type = ICMP_ECHO;
-    icmp_hdr->code = 0;
-    uint16_t ident = get_cached_ident();
-    uint16_t seq = next_sequence(pinger);
-    icmp_hdr->un.echo.id = ident;
-    icmp_hdr->un.echo.sequence = seq;
-
-    /* Compute checksum */
-    icmp_hdr->checksum = 0;
-    icmp_hdr->checksum = calculate_checksum(pinger->send_buf, packet_len);
-
-    struct timespec send_time;
-    (void)clock_gettime(CLOCK_MONOTONIC, &send_time);
-
-    ssize_t sent = sendto(pinger->sockfd, pinger->send_buf, packet_len, MSG_NOSIGNAL,
-                          (struct sockaddr*)dest_addr,
-                          sizeof(*dest_addr));
-    if (OPENUPS_UNLIKELY(sent < 0)) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Failed to send packet: %s",
-                 strerror(errno));
-        return result;
-    }
-
-    /* Receive ICMP Echo Reply (includes IPv4 header) */
-    uint8_t recv_buf[4096] __attribute__((aligned(16)));
-    struct sockaddr_in recv_addr;
-    socklen_t recv_addr_len = sizeof(recv_addr);
-
-    uint64_t send_ms = (uint64_t)send_time.tv_sec * 1000ULL +
-                       (uint64_t)send_time.tv_nsec / 1000000ULL;
-    uint64_t deadline_ms = send_ms + (uint64_t)timeout_ms;
-
-    while (1) {
-        int wait_rc = wait_readable_with_tick(pinger->sockfd, deadline_ms, tick, tick_user_data,
-                                              should_stop, stop_user_data);
-        if (wait_rc == -2) {
-            snprintf(result.error_msg, sizeof(result.error_msg), "Stopped");
-            return result;
-        }
-        if (wait_rc < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                snprintf(result.error_msg, sizeof(result.error_msg), "Timeout");
-            } else {
-                snprintf(result.error_msg, sizeof(result.error_msg), "Failed to wait: %s",
-                         strerror(errno));
-            }
-            return result;
-        }
-
-        ssize_t received;
-        recv_addr_len = sizeof(recv_addr);
-        do {
-            received = recvfrom(pinger->sockfd, recv_buf, sizeof(recv_buf), 0,
-                                (struct sockaddr*)&recv_addr, &recv_addr_len);
-        } while (received < 0 && errno == EINTR);
-
-        if (received < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            snprintf(result.error_msg, sizeof(result.error_msg), "Failed to receive: %s",
-                     strerror(errno));
-            return result;
-        }
-
-        /* Fast filter: only accept replies from the target address */
-        if (recv_addr.sin_addr.s_addr != dest_addr->sin_addr.s_addr) {
-            continue;
-        }
-
-        /* Parse IPv4 header (variable length) and ICMP header */
-        if (received < (ssize_t)sizeof(struct ip)) {
-            continue;
-        }
-
-        struct ip* ip_hdr = (struct ip*)recv_buf;
-        if (ip_hdr->ip_p != IPPROTO_ICMP) {
-            continue;
-        }
-
-        size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
-        if (ip_hdr_len < sizeof(struct ip) || ip_hdr_len > (size_t)received) {
-            continue;
-        }
-
-        if (ip_hdr_len + sizeof(struct icmphdr) > (size_t)received) {
-            continue;
-        }
-
-        struct icmphdr* recv_icmp = (struct icmphdr*)(recv_buf + ip_hdr_len);
-        if (recv_icmp->type != ICMP_ECHOREPLY) {
-            continue;
-        }
-        if (recv_icmp->un.echo.id != ident || recv_icmp->un.echo.sequence != seq) {
-            continue;
-        }
-
-        struct timespec recv_time;
-        (void)clock_gettime(CLOCK_MONOTONIC, &recv_time);
-
-        double latency = (recv_time.tv_sec - send_time.tv_sec) * 1000.0 +
-                         (recv_time.tv_nsec - send_time.tv_nsec) / 1000000.0;
-        if (latency < 0.0) {
-            latency = 0.0;
-        }
-
-        result.success = true;
-        result.latency_ms = latency;
-        return result;
-    }
-}
-
-/* Resolve target (with per-pinger cache) and dispatch to IPv4 implementation. */
-static OPENUPS_HOT ping_result_t icmp_pinger_ping_ex(icmp_pinger_t* restrict pinger,
-                                  const char* restrict target,
-                                  int timeout_ms, int payload_size, icmp_tick_fn tick,
-                                  void* tick_user_data, icmp_should_stop_fn should_stop,
-                                  void* stop_user_data)
-{
-    ping_result_t result = {false, 0.0, ""};
-
-    if (pinger == NULL || target == NULL) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid arguments");
-        return result;
-    }
-
-    if (timeout_ms <= 0) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid timeout");
-        return result;
-    }
-
-    if (payload_size < 0) {
-        snprintf(result.error_msg, sizeof(result.error_msg), "Invalid payload size");
-        return result;
-    }
-
-    const int max_payload = 65507;
-    if (payload_size > max_payload) {
-        snprintf(result.error_msg, sizeof(result.error_msg),
-                 "Payload size must be between 0 and %d", max_payload);
-        return result;
-    }
-
-    /* Resolve target address (with cache) */
-    const struct sockaddr_storage* addr_ptr = NULL;
-    socklen_t addr_len = 0;
-
-    if (pinger->cached_target_valid &&
-        strncmp(pinger->cached_target, target, sizeof(pinger->cached_target)) == 0) {
-        addr_ptr = &pinger->cached_addr;
-        addr_len = pinger->cached_addr_len;
-    } else {
-        struct sockaddr_storage addr;
-        if (!resolve_target(target, &addr, &addr_len, result.error_msg,
-                            sizeof(result.error_msg))) {
-            return result;
-        }
-
-        (void)snprintf(pinger->cached_target, sizeof(pinger->cached_target), "%s", target);
-        pinger->cached_addr = addr;
-        pinger->cached_addr_len = addr_len;
-        pinger->cached_target_valid = true;
-        addr_ptr = &pinger->cached_addr;
-    }
-
-    return ping_ipv4(pinger, (struct sockaddr_in*)(void*)addr_ptr, timeout_ms, payload_size, tick,
-                     tick_user_data, should_stop, stop_user_data);
-}
 
 /* Split command string into an argv array for execvp (no shell); rejects unsafe characters. */
 static bool build_shutdown_argv(const char* command, char* buffer, size_t buffer_size,
@@ -1644,67 +1369,6 @@ static OPENUPS_PURE uint64_t systemd_notifier_watchdog_interval_ms(const systemd
     return interval_ms;
 }
 
-/* Global context pointer; set once in setup_signal_handlers, used only by signal_handler. */
-static openups_ctx_t* g_ctx = NULL;
-
-/* Translate SIGINT/SIGTERM to stop_flag and SIGUSR1 to print_stats_flag. */
-static void signal_handler(int signum)
-{
-    if (g_ctx == NULL) {
-        return;
-    }
-
-    switch (signum) {
-    case SIGINT:
-    case SIGTERM:
-        g_ctx->stop_flag = 1;
-        break;
-    case SIGUSR1:
-        g_ctx->print_stats_flag = 1;
-        break;
-    default:
-        break;
-    }
-}
-
-/* Install SIGINT, SIGTERM and SIGUSR1 signal handlers and bind g_ctx. */
-static void setup_signal_handlers(openups_ctx_t* restrict ctx)
-{
-    if (ctx == NULL) {
-        return;
-    }
-
-    g_ctx = ctx;
-
-    struct sigaction sa = {
-        .sa_handler = signal_handler,
-        .sa_flags   = 0,
-    };
-    sigemptyset(&sa.sa_mask);
-
-    (void)sigaction(SIGINT, &sa, NULL);
-    (void)sigaction(SIGTERM, &sa, NULL);
-    (void)sigaction(SIGUSR1, &sa, NULL);
-}
-
-/* Watchdog tick callback: kick systemd watchdog during ICMP wait periods. */
-static void watchdog_tick_callback(void* user_data)
-{
-    openups_ctx_t* ctx = (openups_ctx_t*)user_data;
-    if (ctx == NULL || !ctx->config.enable_watchdog || !ctx->systemd_enabled) {
-        return;
-    }
-
-    (void)systemd_notifier_watchdog(&ctx->systemd);
-}
-
-/* Stop-condition callback: returns true when the monitor has been asked to terminate. */
-static bool monitor_should_stop(void* user_data)
-{
-    openups_ctx_t* ctx = (openups_ctx_t*)user_data;
-    return ctx != NULL && ctx->stop_flag != 0;
-}
-
 /* Format and forward a status string to systemd (printf-style). */
 [[gnu::format(printf, 2, 3)]]
 static void notify_systemd_status(openups_ctx_t* restrict ctx, const char* restrict fmt, ...)
@@ -1791,7 +1455,6 @@ static void openups_ctx_destroy(openups_ctx_t* restrict ctx)
     icmp_pinger_destroy(&ctx->pinger);
     systemd_notifier_destroy(&ctx->systemd);
 
-    g_ctx = NULL;
     memset(ctx, 0, sizeof(*ctx));
 }
 
@@ -1871,87 +1534,9 @@ static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
     }
 }
 
-/* Execute one ping with up to max_retries retries; returns true on success. */
-static OPENUPS_HOT bool openups_ctx_ping_once(openups_ctx_t* restrict ctx, ping_result_t* restrict result)
-{
-    if (ctx == NULL || result == NULL) {
-        return false;
-    }
 
-    const config_t* config = &ctx->config;
 
-    /* Ping with retries */
-    for (int attempt = 0; attempt <= config->max_retries; attempt++) {
-        *result = icmp_pinger_ping_ex(&ctx->pinger, config->target, config->timeout_ms,
-                                      config->payload_size, watchdog_tick_callback, ctx,
-                                      monitor_should_stop, ctx);
 
-        if (result->success) {
-            return true;
-        }
-
-        if (ctx->stop_flag) {
-            return false;
-        }
-
-        /* 100ms inter-retry delay */
-        if (attempt < config->max_retries) {
-            struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000L};
-            while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
-                if (ctx->stop_flag) return false;
-            }
-        }
-    }
-
-    return false;
-}
-
-/* Sleep for `seconds`, processing watchdog kicks and honouring stop_flag interrupts. */
-static OPENUPS_HOT void openups_ctx_sleep_interruptible(openups_ctx_t* restrict ctx, int seconds)
-{
-    if (ctx == NULL || seconds <= 0) {
-        return;
-    }
-
-    const bool watchdog_enabled = ctx->systemd_enabled && ctx->config.enable_watchdog;
-    const uint64_t watchdog_interval_ms = watchdog_enabled ? ctx->watchdog_interval_ms : 0;
-
-    uint64_t remaining_ms = 0;
-    if (ckd_mul(&remaining_ms, (uint64_t)seconds, UINT64_C(1000))) {
-        remaining_ms = UINT64_C(86400000); /* overflow: cap at 24 hours */
-    }
-
-    while (remaining_ms > 0) {
-        if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
-            break;
-        }
-
-        /* Determine sleep chunk (must not exceed watchdog interval) */
-        uint64_t chunk_ms = remaining_ms;
-        if (watchdog_enabled && watchdog_interval_ms > 0 && watchdog_interval_ms < chunk_ms) {
-            chunk_ms = watchdog_interval_ms;
-        }
-
-        /* Sleep */
-        struct timespec ts = {.tv_sec = (time_t)(chunk_ms / 1000ULL),
-                              .tv_nsec = (long)((chunk_ms % 1000ULL) * 1000000ULL)};
-        while (nanosleep(&ts, &ts) != 0 && errno == EINTR) {
-            if (ctx->stop_flag) {
-                break;
-            }
-        }
-
-        if (watchdog_enabled) {
-            (void)systemd_notifier_watchdog(&ctx->systemd);
-        }
-
-        if (chunk_ms >= remaining_ms) {
-            remaining_ms = 0;
-        } else {
-            remaining_ms -= chunk_ms;
-        }
-    }
-}
 
 /* Handle a successful ping: reset fail counter, record metrics, update systemd status. */
 static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
@@ -2020,84 +1605,9 @@ static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
     return true;
 }
 
-/* Execute one monitor iteration: handle stats signal, ping once, dispatch success/failure. */
-static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
-{
-    if (ctx == NULL) {
-        return false;
-    }
 
-    /* Handle pending stats-print request (SIGUSR1) */
-    if (OPENUPS_UNLIKELY(ctx->print_stats_flag)) {
-        openups_ctx_print_stats(ctx);
-        ctx->print_stats_flag = 0;
-    }
 
-    /* Honour stop flag */
-    if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
-        return true;
-    }
 
-    /* Ping */
-    ping_result_t result;
-    bool success = openups_ctx_ping_once(ctx, &result);
-
-    if (OPENUPS_UNLIKELY(ctx->stop_flag)) {
-        return true;
-    }
-
-    /* Dispatch result */
-    if (OPENUPS_LIKELY(success)) {
-        handle_ping_success(ctx, &result);
-        return false;
-    }
-
-    handle_ping_failure(ctx, &result);
-    return trigger_shutdown(ctx);
-}
-
-/* Main monitor loop: setup signals, notify systemd ready, iterate until stop or shutdown. */
-static __attribute__((unused)) int openups_ctx_run(openups_ctx_t* restrict ctx)
-{
-    if (ctx == NULL) {
-        return -1;
-    }
-
-    const config_t* config = &ctx->config;
-
-    setup_signal_handlers(ctx);
-
-    logger_info(&ctx->logger,
-                "Starting OpenUPS monitor for target %s, checking every %d seconds, "
-                "shutdown after %d consecutive failures",
-                config->target, config->interval_sec, config->fail_threshold);
-
-    if (ctx->systemd_enabled) {
-        (void)systemd_notifier_ready(&ctx->systemd);
-        notify_systemd_status(ctx, "Monitoring %s, checking every %ds, threshold %d failures",
-                              config->target, config->interval_sec, config->fail_threshold);
-    }
-
-    while (!ctx->stop_flag) {
-        if (run_iteration(ctx)) {
-            break;
-        }
-
-        openups_ctx_sleep_interruptible(ctx, config->interval_sec);
-    }
-
-    if (ctx->stop_flag) {
-        logger_info(&ctx->logger, "Received shutdown signal, stopping gracefully...");
-        if (ctx->systemd_enabled) {
-            (void)systemd_notifier_stopping(&ctx->systemd);
-        }
-    }
-
-    openups_ctx_print_stats(ctx);
-    logger_info(&ctx->logger, "OpenUPS monitor stopped");
-
-    return 0;
-}
 
 
 /* ============================================================ */
