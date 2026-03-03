@@ -826,8 +826,7 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
 
     pinger->sockfd = -1;
     pinger->sequence = 0;
-    pinger->send_buf = NULL;
-    pinger->send_buf_capacity = 0;
+    pinger->send_buf_capacity = sizeof(pinger->send_buf);
     pinger->payload_filled_size = 0;
     pinger->cached_target_valid = false;
     pinger->cached_target[0] = '\0';
@@ -858,8 +857,7 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
     }
 
     free(pinger->send_buf);
-    pinger->send_buf = NULL;
-    pinger->send_buf_capacity = 0;
+    pinger->send_buf_capacity = sizeof(pinger->send_buf);
     pinger->payload_filled_size = 0;
 
     pinger->cached_target_valid = false;
