@@ -43,7 +43,7 @@ build_project() {
 
 configure_env() {
     print_step "Configuring parameters (interactive)"
-    
+
     echo -e "Press Enter to accept the defaults.\n"
 
     read -p "Target IP to monitor [1.1.1.1]: " TARGET
@@ -99,13 +99,13 @@ install_service() {
     cp "${PROJECT_DIR}/systemd/${SERVICE_NAME}" "$SERVICE_PATH"
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
-    
+
     # Check if user wants to start it
     read -p "Do you want to start the service now? (y/n) [y]: " START_NOW
     START_NOW=${START_NOW:-y}
     if [[ "$START_NOW" =~ ^[Yy]$ ]]; then
         systemctl start "$SERVICE_NAME"
-        echo 
+        echo
         systemctl status "$SERVICE_NAME" --no-pager
     fi
     print_step "Installation complete!"

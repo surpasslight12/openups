@@ -1469,7 +1469,7 @@ static OPENUPS_COLD void openups_ctx_dump_state(openups_ctx_t* restrict ctx)
     fprintf(fp, "    \"failed_pings\": %" PRIu64 ",\n", metrics->failed_pings);
     fprintf(fp, "    \"success_rate\": %.2f,\n", metrics->total_pings > 0 ? metrics_success_rate(metrics) : 0.0);
     fprintf(fp, "    \"uptime_seconds\": %" PRIu64 ",\n", metrics_uptime_seconds(metrics));
-    
+
     if (metrics->successful_pings > 0) {
         fprintf(fp, "    \"latency_min_ms\": %.2f,\n", metrics->min_latency);
         fprintf(fp, "    \"latency_max_ms\": %.2f,\n", metrics->max_latency);
@@ -1479,7 +1479,7 @@ static OPENUPS_COLD void openups_ctx_dump_state(openups_ctx_t* restrict ctx)
         fprintf(fp, "    \"latency_max_ms\": 0.0,\n");
         fprintf(fp, "    \"latency_avg_ms\": 0.0\n");
     }
-    
+
     fprintf(fp, "  }\n");
     fprintf(fp, "}\n");
 
@@ -1542,7 +1542,7 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
                               metrics->successful_pings, metrics->total_pings, success_rate,
                               result->latency_ms);
     }
-    
+
     openups_ctx_dump_state(ctx);
 }
 
@@ -1564,7 +1564,7 @@ static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const 
         notify_systemd_status(ctx, "WARNING: %d consecutive failures, threshold is %d",
                               ctx->consecutive_fails, ctx->config.fail_threshold);
     }
-    
+
     openups_ctx_dump_state(ctx);
 }
 
@@ -1609,12 +1609,12 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
     sigaddset(&mask, SIGUSR1);
-    
+
     if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
         logger_error(&ctx->logger, "sigprocmask failed: %s", strerror(errno));
         return -1;
     }
-    
+
     int sig_fd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
     if (sig_fd < 0) {
         logger_error(&ctx->logger, "signalfd failed: %s", strerror(errno));
@@ -1643,7 +1643,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
     uint64_t reply_deadline_ms = 0;
     bool waiting_for_reply = false;
     uint64_t current_ping_send_time = 0;
-    
+
     struct sockaddr_storage dest_addr;
     socklen_t dest_addr_len = sizeof(dest_addr);
     if (!resolve_target(config->target, &dest_addr, &dest_addr_len, err_msg, sizeof(err_msg))) {
@@ -1654,7 +1654,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
 
     while (!ctx->stop_flag) {
         now = get_monotonic_ms();
-        
+
         if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
             if (now - last_watchdog_ms >= ctx->watchdog_interval_ms) {
                 (void)systemd_notifier_watchdog(&ctx->systemd);
@@ -1678,7 +1678,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                  break;
             }
             fill_payload_pattern(&ctx->pinger, sizeof(struct icmphdr), (size_t)config->payload_size);
-            
+
             struct icmphdr* icmp_hdr = (struct icmphdr*)ctx->pinger.send_buf;
             memset(icmp_hdr, 0, sizeof(*icmp_hdr));
             icmp_hdr->type = ICMP_ECHO;
@@ -1696,14 +1696,14 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                  ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
                  handle_ping_failure(ctx, &fail_res);
                  if (trigger_shutdown(ctx)) break;
-                 
+
                  next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
                  if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
             } else {
                  current_ping_send_time = now;
                  waiting_for_reply = true;
                  reply_deadline_ms = now + (uint64_t)config->timeout_ms;
-                 
+
                  next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
                  if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
             }
@@ -1712,7 +1712,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
         /* 3: Compute exact timeout bounds for poll */
         now = get_monotonic_ms();
         int wait_timeout_ms = -1;
-        
+
         if (waiting_for_reply) {
             wait_timeout_ms = reply_deadline_ms > now ? (int)(reply_deadline_ms - now) : 0;
         } else {
@@ -1750,10 +1750,10 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
             uint8_t recv_buf[4096] __attribute__((aligned(16)));
             struct sockaddr_storage recv_addr;
             socklen_t recv_addr_len = sizeof(recv_addr);
-            
+
             ssize_t received = recvfrom(ctx->pinger.sockfd, recv_buf, sizeof(recv_buf), 0,
                                         (struct sockaddr*)&recv_addr, &recv_addr_len);
-            
+
             if (received > 0 && recv_addr.ss_family == dest_addr.ss_family) {
                 bool addr_match = false;
                 if (dest_addr.ss_family == AF_INET) {
@@ -1761,7 +1761,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                     struct sockaddr_in* r = (struct sockaddr_in*)&recv_addr;
                     if (d->sin_addr.s_addr == r->sin_addr.s_addr) addr_match = true;
                 }
-                
+
                 if (addr_match && received >= (ssize_t)sizeof(struct ip)) {
                     struct ip* ip_hdr = (struct ip*)recv_buf;
                     if (ip_hdr->ip_p == IPPROTO_ICMP) {
@@ -1772,15 +1772,15 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                                 uint16_t expected_id = (uint16_t)(getpid() & 0xFFFF);
                                 if (expected_id == 0) expected_id = 1;
                                 uint16_t expected_seq = ctx->pinger.sequence;
-                                
+
                                 if (recv_icmp->type == ICMP_ECHOREPLY &&
                                     recv_icmp->un.echo.id == expected_id &&
                                     recv_icmp->un.echo.sequence == expected_seq) {
-                                    
+
                                     double latency = (double)(now - current_ping_send_time);
                                     ping_result_t succ_res = {true, latency, ""};
                                     handle_ping_success(ctx, &succ_res);
-                                    
+
                                     waiting_for_reply = false;
                                 }
                             }

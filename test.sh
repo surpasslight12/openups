@@ -362,7 +362,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     set -e
 
 phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
-    
+
     # Check JSON file
     if [ -f "/tmp/openups.state.json" ] && grep -q '"successful_pings"' /tmp/openups.state.json; then
         json_ok=1
