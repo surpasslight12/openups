@@ -59,6 +59,7 @@ sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-l
 | 超时时间     | `-w, --timeout`       | `OPENUPS_TIMEOUT`     | `2000`（ms） | 单次 ping 等待回包的超时 |
 | 关机模式     | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
 | 演习模式     | `-d, --dry-run`       | `OPENUPS_DRY_RUN`     | `true`       | 不执行实际关机（安全默认值） |
+| 状态报告     | `-F, --state-file`    | `OPENUPS_STATE_FILE`  | `(空)`       | 原子写入运行时状态的 JSON 路径 |
 
 ## 📄 许可证
 

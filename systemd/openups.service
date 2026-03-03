@@ -30,6 +30,7 @@ Environment="OPENUPS_DRY_RUN=true"
 Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"
+Environment="OPENUPS_STATE_FILE=/run/openups.state.json"
 Environment="OPENUPS_SYSTEMD=true"
 Environment="OPENUPS_WATCHDOG=false"
 
