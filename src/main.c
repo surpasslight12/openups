@@ -2045,13 +2045,9 @@ static __attribute__((unused)) int openups_ctx_run(openups_ctx_t* restrict ctx)
 
 
 /* ============================================================ */
+/* ============================================================ */
 /* Reactor Engine                                               */
 /* ============================================================ */
-
-typedef enum {
-    REACTOR_STATE_IDLE,
-    REACTOR_STATE_WAIT_REPLY
-} reactor_state_t;
 
 static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
 {
@@ -2094,8 +2090,10 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
     fds[1].fd = ctx->pinger.sockfd;
     fds[1].events = POLLIN;
 
-    reactor_state_t state = REACTOR_STATE_IDLE;
-    uint64_t next_action_ms = get_monotonic_ms();
+    uint64_t now = get_monotonic_ms();
+    uint64_t next_ping_ms = now;
+    uint64_t reply_deadline_ms = 0;
+    bool waiting_for_reply = false;
     uint64_t current_ping_send_time = 0;
     
     struct sockaddr_storage dest_addr;
@@ -2107,7 +2105,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
     }
 
     while (!ctx->stop_flag) {
-        uint64_t now = get_monotonic_ms();
+        now = get_monotonic_ms();
         
         if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
             if (now - last_watchdog_ms >= ctx->watchdog_interval_ms) {
@@ -2116,64 +2114,71 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
             }
         }
 
-        if (now >= next_action_ms) {
-            if (state == REACTOR_STATE_IDLE) {
-                size_t packet_len = sizeof(struct icmphdr) + (size_t)config->payload_size;
-                if (!ensure_send_buffer(&ctx->pinger, packet_len, err_msg, sizeof(err_msg))) {
-                    logger_error(&ctx->logger, "Buffer error: %s", err_msg);
-                    break;
-                }
-                fill_payload_pattern(&ctx->pinger, sizeof(struct icmphdr), (size_t)config->payload_size);
-                
-                struct icmphdr* icmp_hdr = (struct icmphdr*)ctx->pinger.send_buf;
-                memset(icmp_hdr, 0, sizeof(*icmp_hdr));
-                icmp_hdr->type = ICMP_ECHO;
-                icmp_hdr->code = 0;
-                icmp_hdr->un.echo.id = (uint16_t)(getpid() & 0xFFFF);
-                if (icmp_hdr->un.echo.id == 0) icmp_hdr->un.echo.id = 1;
-                ctx->pinger.sequence = next_sequence(&ctx->pinger);
-                icmp_hdr->un.echo.sequence = ctx->pinger.sequence;
-                icmp_hdr->checksum = 0;
-                icmp_hdr->checksum = calculate_checksum(ctx->pinger.send_buf, packet_len);
+        /* 1: Check if a reply has timed out */
+        if (waiting_for_reply && now >= reply_deadline_ms) {
+            ping_result_t fail_res = {false, -1.0, "Timeout waiting for ICMP reply"};
+            handle_ping_failure(ctx, &fail_res);
+            waiting_for_reply = false;
+            if (trigger_shutdown(ctx)) break;
+        }
 
-                ssize_t sent = sendto(ctx->pinger.sockfd, ctx->pinger.send_buf, packet_len, MSG_NOSIGNAL,
-                                      (struct sockaddr*)&dest_addr, dest_addr_len);
-                if (sent < 0) {
-                     ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
-                     handle_ping_failure(ctx, &fail_res);
-                     if (trigger_shutdown(ctx)) break;
-                     next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
-                } else {
-                     current_ping_send_time = now;
-                     state = REACTOR_STATE_WAIT_REPLY;
-                     next_action_ms = now + (uint64_t)config->timeout_ms;
-                }
-            } else if (state == REACTOR_STATE_WAIT_REPLY) {
-                ping_result_t fail_res = {false, -1.0, "Timeout waiting for ICMP reply"};
-                handle_ping_failure(ctx, &fail_res);
-                if (trigger_shutdown(ctx)) break;
-                
-                state = REACTOR_STATE_IDLE;
-                next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+        /* 2: Check if it is time to send the next ping */
+        if (!waiting_for_reply && now >= next_ping_ms) {
+            size_t packet_len = sizeof(struct icmphdr) + (size_t)config->payload_size;
+            if (packet_len > sizeof(ctx->pinger.send_buf)) {
+                 logger_error(&ctx->logger, "Buffer error: %zu exceeds capacity", packet_len);
+                 break;
+            }
+            fill_payload_pattern(&ctx->pinger, sizeof(struct icmphdr), (size_t)config->payload_size);
+            
+            struct icmphdr* icmp_hdr = (struct icmphdr*)ctx->pinger.send_buf;
+            memset(icmp_hdr, 0, sizeof(*icmp_hdr));
+            icmp_hdr->type = ICMP_ECHO;
+            icmp_hdr->code = 0;
+            icmp_hdr->un.echo.id = (uint16_t)(getpid() & 0xFFFF);
+            if (icmp_hdr->un.echo.id == 0) icmp_hdr->un.echo.id = 1;
+            ctx->pinger.sequence = next_sequence(&ctx->pinger);
+            icmp_hdr->un.echo.sequence = ctx->pinger.sequence;
+            icmp_hdr->checksum = 0;
+            icmp_hdr->checksum = calculate_checksum(ctx->pinger.send_buf, packet_len);
+
+            ssize_t sent = sendto(ctx->pinger.sockfd, ctx->pinger.send_buf, packet_len, MSG_NOSIGNAL,
+                                  (struct sockaddr*)&dest_addr, dest_addr_len);
+            if (sent < 0) {
+                 ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
+                 handle_ping_failure(ctx, &fail_res);
+                 if (trigger_shutdown(ctx)) break;
+                 
+                 next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
+                 if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+            } else {
+                 current_ping_send_time = now;
+                 waiting_for_reply = true;
+                 reply_deadline_ms = now + (uint64_t)config->timeout_ms;
+                 
+                 next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
+                 if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
             }
         }
 
+        /* 3: Compute exact timeout bounds for poll */
         now = get_monotonic_ms();
-        int timeout_ms = -1;
-        if (next_action_ms > now) {
-            timeout_ms = (int)(next_action_ms - now);
+        int wait_timeout_ms = -1;
+        
+        if (waiting_for_reply) {
+            wait_timeout_ms = reply_deadline_ms > now ? (int)(reply_deadline_ms - now) : 0;
         } else {
-            timeout_ms = 0;
+            wait_timeout_ms = next_ping_ms > now ? (int)(next_ping_ms - now) : 0;
         }
 
         if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
              int wd_wait = (int)(last_watchdog_ms + ctx->watchdog_interval_ms - now);
-             if (wd_wait < timeout_ms || timeout_ms == -1) {
-                 timeout_ms = wd_wait < 0 ? 0 : wd_wait;
+             if (wait_timeout_ms == -1 || wd_wait < wait_timeout_ms) {
+                 wait_timeout_ms = wd_wait < 0 ? 0 : wd_wait;
              }
         }
 
-        int rc = poll(fds, 2, timeout_ms);
+        int rc = poll(fds, 2, wait_timeout_ms);
         if (rc < 0 && errno != EINTR) {
             logger_error(&ctx->logger, "poll error: %s", strerror(errno));
             break;
@@ -2193,7 +2198,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
             }
         }
 
-        if ((fds[1].revents & POLLIN) && state == REACTOR_STATE_WAIT_REPLY) {
+        if ((fds[1].revents & POLLIN) && waiting_for_reply) {
             uint8_t recv_buf[4096] __attribute__((aligned(16)));
             struct sockaddr_storage recv_addr;
             socklen_t recv_addr_len = sizeof(recv_addr);
@@ -2228,8 +2233,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                                     ping_result_t succ_res = {true, latency, ""};
                                     handle_ping_success(ctx, &succ_res);
                                     
-                                    state = REACTOR_STATE_IDLE;
-                                    next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+                                    waiting_for_reply = false;
                                 }
                             }
                         }
