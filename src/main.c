@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/signalfd.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -2044,6 +2045,216 @@ static int openups_ctx_run(openups_ctx_t* restrict ctx)
     return 0;
 }
 
+
+/* ============================================================ */
+/* Reactor Engine                                               */
+/* ============================================================ */
+
+typedef enum {
+    REACTOR_STATE_IDLE,
+    REACTOR_STATE_WAIT_REPLY
+} reactor_state_t;
+
+static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
+{
+    if (ctx == NULL) return -1;
+    const config_t* config = &ctx->config;
+    char err_msg[256] = {0};
+
+    /* Setup signalfd */
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    sigaddset(&mask, SIGUSR1);
+    
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
+        logger_error(&ctx->logger, "sigprocmask failed: %s", strerror(errno));
+        return -1;
+    }
+    
+    int sig_fd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+    if (sig_fd < 0) {
+        logger_error(&ctx->logger, "signalfd failed: %s", strerror(errno));
+        return -1;
+    }
+
+    uint64_t last_watchdog_ms = get_monotonic_ms();
+
+    logger_info(&ctx->logger,
+                "Starting OpenUPS (Event Loop Engine) for target %s, every %ds",
+                config->target, config->interval_sec);
+
+    if (ctx->systemd_enabled) {
+        (void)systemd_notifier_ready(&ctx->systemd);
+        notify_systemd_status(ctx, "Monitoring %s (Event Loop)", config->target);
+    }
+
+    struct pollfd fds[2];
+    fds[0].fd = sig_fd;
+    fds[0].events = POLLIN;
+    fds[1].fd = ctx->pinger.sockfd;
+    fds[1].events = POLLIN;
+
+    reactor_state_t state = REACTOR_STATE_IDLE;
+    uint64_t next_action_ms = get_monotonic_ms();
+    uint64_t current_ping_send_time = 0;
+    
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_addr_len = sizeof(dest_addr);
+    if (!resolve_target(config->target, &dest_addr, &dest_addr_len, err_msg, sizeof(err_msg))) {
+        logger_error(&ctx->logger, "Failed to resolve target: %s", err_msg);
+        close(sig_fd);
+        return -1;
+    }
+
+    while (!ctx->stop_flag) {
+        uint64_t now = get_monotonic_ms();
+        
+        if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
+            if (now - last_watchdog_ms >= ctx->watchdog_interval_ms) {
+                (void)systemd_notifier_watchdog(&ctx->systemd);
+                last_watchdog_ms = now;
+            }
+        }
+
+        if (now >= next_action_ms) {
+            if (state == REACTOR_STATE_IDLE) {
+                size_t packet_len = sizeof(struct icmphdr) + (size_t)config->payload_size;
+                if (!ensure_send_buffer(&ctx->pinger, packet_len, err_msg, sizeof(err_msg))) {
+                    logger_error(&ctx->logger, "Buffer error: %s", err_msg);
+                    break;
+                }
+                fill_payload_pattern(&ctx->pinger, sizeof(struct icmphdr), (size_t)config->payload_size);
+                
+                struct icmphdr* icmp_hdr = (struct icmphdr*)ctx->pinger.send_buf;
+                memset(icmp_hdr, 0, sizeof(*icmp_hdr));
+                icmp_hdr->type = ICMP_ECHO;
+                icmp_hdr->code = 0;
+                icmp_hdr->un.echo.id = (uint16_t)(getpid() & 0xFFFF);
+                if (icmp_hdr->un.echo.id == 0) icmp_hdr->un.echo.id = 1;
+                ctx->pinger.sequence = next_sequence(&ctx->pinger);
+                icmp_hdr->un.echo.sequence = ctx->pinger.sequence;
+                icmp_hdr->checksum = 0;
+                icmp_hdr->checksum = calculate_checksum(ctx->pinger.send_buf, packet_len);
+
+                ssize_t sent = sendto(ctx->pinger.sockfd, ctx->pinger.send_buf, packet_len, MSG_NOSIGNAL,
+                                      (struct sockaddr*)&dest_addr, dest_addr_len);
+                if (sent < 0) {
+                     ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
+                     handle_ping_failure(ctx, &fail_res);
+                     if (trigger_shutdown(ctx)) break;
+                     next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+                } else {
+                     current_ping_send_time = now;
+                     state = REACTOR_STATE_WAIT_REPLY;
+                     next_action_ms = now + (uint64_t)config->timeout_ms;
+                }
+            } else if (state == REACTOR_STATE_WAIT_REPLY) {
+                ping_result_t fail_res = {false, -1.0, "Timeout waiting for ICMP reply"};
+                handle_ping_failure(ctx, &fail_res);
+                if (trigger_shutdown(ctx)) break;
+                
+                state = REACTOR_STATE_IDLE;
+                next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+            }
+        }
+
+        now = get_monotonic_ms();
+        int timeout_ms = -1;
+        if (next_action_ms > now) {
+            timeout_ms = (int)(next_action_ms - now);
+        } else {
+            timeout_ms = 0;
+        }
+
+        if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
+             int wd_wait = (int)(last_watchdog_ms + ctx->watchdog_interval_ms - now);
+             if (wd_wait < timeout_ms || timeout_ms == -1) {
+                 timeout_ms = wd_wait < 0 ? 0 : wd_wait;
+             }
+        }
+
+        int rc = poll(fds, 2, timeout_ms);
+        if (rc < 0 && errno != EINTR) {
+            logger_error(&ctx->logger, "poll error: %s", strerror(errno));
+            break;
+        }
+
+        now = get_monotonic_ms();
+
+        if (fds[0].revents & POLLIN) {
+            struct signalfd_siginfo sfd_info;
+            ssize_t res = read(sig_fd, &sfd_info, sizeof(struct signalfd_siginfo));
+            if (res == sizeof(struct signalfd_siginfo)) {
+                if (sfd_info.ssi_signo == SIGINT || sfd_info.ssi_signo == SIGTERM) {
+                    ctx->stop_flag = 1;
+                } else if (sfd_info.ssi_signo == SIGUSR1) {
+                    openups_ctx_print_stats(ctx);
+                }
+            }
+        }
+
+        if ((fds[1].revents & POLLIN) && state == REACTOR_STATE_WAIT_REPLY) {
+            uint8_t recv_buf[4096] __attribute__((aligned(16)));
+            struct sockaddr_storage recv_addr;
+            socklen_t recv_addr_len = sizeof(recv_addr);
+            
+            ssize_t received = recvfrom(ctx->pinger.sockfd, recv_buf, sizeof(recv_buf), 0,
+                                        (struct sockaddr*)&recv_addr, &recv_addr_len);
+            
+            if (received > 0 && recv_addr.ss_family == dest_addr.ss_family) {
+                bool addr_match = false;
+                if (dest_addr.ss_family == AF_INET) {
+                    struct sockaddr_in* d = (struct sockaddr_in*)&dest_addr;
+                    struct sockaddr_in* r = (struct sockaddr_in*)&recv_addr;
+                    if (d->sin_addr.s_addr == r->sin_addr.s_addr) addr_match = true;
+                }
+                
+                if (addr_match && received >= (ssize_t)sizeof(struct ip)) {
+                    struct ip* ip_hdr = (struct ip*)recv_buf;
+                    if (ip_hdr->ip_p == IPPROTO_ICMP) {
+                        size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
+                        if (ip_hdr_len >= sizeof(struct ip) && ip_hdr_len <= (size_t)received) {
+                            if (ip_hdr_len + sizeof(struct icmphdr) <= (size_t)received) {
+                                struct icmphdr* recv_icmp = (struct icmphdr*)(recv_buf + ip_hdr_len);
+                                uint16_t expected_id = (uint16_t)(getpid() & 0xFFFF);
+                                if (expected_id == 0) expected_id = 1;
+                                uint16_t expected_seq = ctx->pinger.sequence;
+                                
+                                if (recv_icmp->type == ICMP_ECHOREPLY &&
+                                    recv_icmp->un.echo.id == expected_id &&
+                                    recv_icmp->un.echo.sequence == expected_seq) {
+                                    
+                                    double latency = (double)(now - current_ping_send_time);
+                                    ping_result_t succ_res = {true, latency, ""};
+                                    handle_ping_success(ctx, &succ_res);
+                                    
+                                    state = REACTOR_STATE_IDLE;
+                                    next_action_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (ctx->stop_flag) {
+        logger_info(&ctx->logger, "Received shutdown signal, stopping gracefully...");
+        if (ctx->systemd_enabled) {
+            (void)systemd_notifier_stopping(&ctx->systemd);
+        }
+    }
+
+    openups_ctx_print_stats(ctx);
+    logger_info(&ctx->logger, "OpenUPS monitor stopped");
+
+    close(sig_fd);
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     char error_msg[256];
@@ -2052,7 +2263,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
         return 1;
     }
-    int rc = openups_ctx_run(&ctx);
+    int rc = openups_reactor_run(&ctx);
     openups_ctx_destroy(&ctx);
     if (rc != 0) {
         fprintf(stderr, "OpenUPS exited with code %d\n", rc);
