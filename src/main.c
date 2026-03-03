@@ -28,7 +28,6 @@
 #define OPENUPS_VERSION      "1.0.0"
 #define OPENUPS_PROGRAM_NAME "openups"
 
-#define OPENUPS_LIKELY(x)   __builtin_expect(!!(x), 1)
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define OPENUPS_HOT         __attribute__((hot))
 #define OPENUPS_COLD        __attribute__((cold))
@@ -102,15 +101,8 @@ typedef struct {
     uint8_t  send_buf[4096];
     size_t   send_buf_capacity;
     size_t   payload_filled_size;
-
-    /* Resolved address cache */
-    bool                    cached_target_valid;
-    char                    cached_target[256];
-    struct sockaddr_storage cached_addr;
-    socklen_t               cached_addr_len;
 } icmp_pinger_t;
 
-/* Callbacks used by icmp_pinger_ping_ex */
 typedef struct {
     bool     enabled;
     int      sockfd;
@@ -122,7 +114,6 @@ typedef struct {
 
 typedef struct openups_context {
     volatile sig_atomic_t stop_flag;
-    volatile sig_atomic_t print_stats_flag;
     int  consecutive_fails;
 
     bool     systemd_enabled;
@@ -835,10 +826,6 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
     pinger->sequence = 0;
     pinger->send_buf_capacity = sizeof(pinger->send_buf);
     pinger->payload_filled_size = 0;
-    pinger->cached_target_valid = false;
-    pinger->cached_target[0] = '\0';
-    memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
-    pinger->cached_addr_len = 0;
 
     /* Create raw socket, CLOEXEC for security, NONBLOCK for poll multiplexing */
     pinger->sockfd = socket(AF_INET, SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK, IPPROTO_ICMP);
@@ -865,11 +852,6 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
 
     pinger->send_buf_capacity = sizeof(pinger->send_buf);
     pinger->payload_filled_size = 0;
-
-    pinger->cached_target_valid = false;
-    pinger->cached_target[0] = '\0';
-    memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
-    pinger->cached_addr_len = 0;
 }
 
 /* Resolve target IP literal into a sockaddr (no DNS); caching is handled by the caller. */
