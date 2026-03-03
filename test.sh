@@ -344,13 +344,15 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
 
     # Phase 4: SIGUSR1 统计信息测试
     echo "[INFO] Phase 4: SIGUSR1 统计信息输出"
+    rm -f /tmp/openups.state.json
     set +e
     ${SUDO} "${BIN_PATH}" \
         --target 127.0.0.1 \
         --interval 1 \
         --threshold 10 \
         --dry-run=true \
-        --log-level debug >"${PHASE4_LOG}" 2>&1 &
+        --log-level debug \
+        --state-file /tmp/openups.state.json > "${PHASE4_LOG}" 2>&1 &
     PHASE4_PID=$!
     sleep "${SIGNAL_TEST_SEC}"
     ${SUDO} kill -10 "${PHASE4_PID}" 2>/dev/null || true
@@ -359,15 +361,23 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     wait "${PHASE4_PID}" 2>/dev/null
     set -e
 
-    phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
+phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
+    
+    # Check JSON file
+    if [ -f "/tmp/openups.state.json" ] && grep -q '"successful_pings"' /tmp/openups.state.json; then
+        json_ok=1
+    else
+        json_ok=0
+    fi
 
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
-    if [[ "${phase4_stats}" -ge 2 ]]; then
-        echo "  ✓ Phase 4: SIGUSR1 统计信息输出 (${phase4_stats} statistics lines)"
+    if [[ "${phase4_stats}" -ge 2 ]] && [[ "${json_ok}" -eq 1 ]]; then
+        echo "  ✓ Phase 4: SIGUSR1 统计信息输出 & JSON state file (${phase4_stats} lines, json_ok=${json_ok})"
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
-        echo "  ❌ Phase 4: SIGUSR1 统计信息测试失败 (stats=${phase4_stats})"
+        echo "  ❌ Phase 4: SIGUSR1 统计信息测试失败 (stats=${phase4_stats}, json_ok=${json_ok})"
         tail -n 20 "${PHASE4_LOG}" || true
+        cat /tmp/openups.state.json || true
         exit 1
     fi
 

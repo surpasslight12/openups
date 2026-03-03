@@ -80,6 +80,7 @@ typedef struct {
 
     /* Logging */
     bool        enable_timestamp;
+    char        state_file[256];
     log_level_t log_level;
 
     /* Integration */
@@ -97,8 +98,8 @@ typedef struct {
     int      sockfd;
     uint16_t sequence;
 
-    /* Send buffer (heap-allocated, reused across pings) */
-    uint8_t* send_buf;
+    /* Send buffer (stack-allocated, zero-alloc model) */
+    uint8_t  send_buf[4096];
     size_t   send_buf_capacity;
     size_t   payload_filled_size;
 
@@ -541,6 +542,7 @@ static void config_init_default(config_t* restrict config)
     config->delay_minutes = 1;
     config->dry_run = true;
     config->enable_timestamp = true;
+    config->state_file[0] = '\0';
     config->log_level = LOG_LEVEL_INFO;
     config->enable_systemd = true;
     config->enable_watchdog = true;
@@ -578,6 +580,9 @@ static void config_load_from_env(config_t* restrict config)
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
     config->enable_watchdog = get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
     config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
+    if ((value = getenv("OPENUPS_STATE_FILE")) != NULL) {
+        snprintf(config->state_file, sizeof(config->state_file), "%s", value);
+    }
 }
 
 /* Parse command-line arguments (highest priority); returns false on parse error. */
@@ -598,6 +603,7 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
         {"dry-run", optional_argument, 0, 'd'},
         {"log-level", required_argument, 0, 'L'},
         {"timestamp", optional_argument, 0, 'T'},
+        {"state-file", required_argument, 0, 'F'},
         {"systemd", optional_argument, 0, 'M'},
         {"watchdog", optional_argument, 0, 'W'},
         {"version", no_argument, 0, 'v'},
@@ -606,7 +612,7 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
     };
     int c;
     int option_index = 0;
-    const char* optstring = "t:i:n:w:s:r:S:D:d::L:T::M::W::vh";
+    const char* optstring = "t:i:n:w:s:r:S:D:d::L:T::F:M::W::vh";
     while ((c = getopt_long(argc, argv, optstring, long_options, &option_index)) != -1) {
         switch (c) {
             case 't': snprintf(config->target, sizeof(config->target), "%s", optarg); break;
@@ -649,6 +655,9 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
                     fprintf(stderr, "Invalid value for --timestamp: %s (use true|false)\n", optarg ? optarg : "<empty>");
                     return false;
                 }
+                break;
+            case 'F':
+                if (optarg) snprintf(config->state_file, sizeof(config->state_file), "%s", optarg);
                 break;
             case 'M':
                 if (!parse_bool_arg(optarg, &config->enable_systemd)) {
@@ -765,7 +774,8 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("  -L, --log-level <level>     Log level: silent|error|warn|info|debug\n");
     printf("                              (default: info)\n");
     printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: true)\n");
-    printf("                              ARG format: true|false\n\n");
+    printf("                              ARG format: true|false\n");
+    printf("  -F, --state-file <path>     Write state and metrics to JSON file atomically\n\n");
     printf("System Integration:\n");
     printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: true)\n");
     printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: true)\n");
@@ -778,7 +788,7 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE, OPENUPS_RETRIES\n");
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_DRY_RUN\n");
-    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP\n");
+    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP, OPENUPS_STATE_FILE\n");
     printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n");
     printf("\n");
     printf("Examples:\n");
@@ -856,7 +866,6 @@ static void icmp_pinger_destroy(icmp_pinger_t* restrict pinger)
         pinger->sockfd = -1;
     }
 
-    free(pinger->send_buf);
     pinger->send_buf_capacity = sizeof(pinger->send_buf);
     pinger->payload_filled_size = 0;
 
@@ -888,7 +897,7 @@ static bool resolve_target(const char* restrict target,
     return true;
 }
 
-/* Grow the pinger send buffer to at least `need` bytes; resets payload fill state on realloc. */
+/* Ensure the static buffer can satisfy the need. */
 static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
                                char* restrict error_msg, size_t error_size)
 {
@@ -896,20 +905,13 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
         return false;
     }
 
-    if (need <= pinger->send_buf_capacity && pinger->send_buf != NULL) {
-        return true;
-    }
-
-    uint8_t* new_buf = (uint8_t*)realloc(pinger->send_buf, need);
-    if (new_buf == NULL) {
-        snprintf(error_msg, error_size, "Memory allocation failed");
+    if (need > sizeof(pinger->send_buf)) {
+        snprintf(error_msg, error_size, "Requested buffer size %zu exceeds static capacity %zu",
+                 need, sizeof(pinger->send_buf));
         return false;
     }
 
-    pinger->send_buf = new_buf;
-    pinger->send_buf_capacity = need;
-    /* realloc may move the buffer; reset payload fill state */
-    pinger->payload_filled_size = 0;
+    pinger->send_buf_capacity = sizeof(pinger->send_buf);
     return true;
 }
 
@@ -917,7 +919,7 @@ static bool ensure_send_buffer(icmp_pinger_t* restrict pinger, size_t need,
 static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_size,
                                  size_t payload_size)
 {
-    if (pinger == NULL || pinger->send_buf == NULL) {
+    if (pinger == NULL) {
         return;
     }
 
@@ -1793,6 +1795,56 @@ static void openups_ctx_destroy(openups_ctx_t* restrict ctx)
     memset(ctx, 0, sizeof(*ctx));
 }
 
+/* Atomically write the current operational state and metrics to a JSON file. */
+static OPENUPS_COLD void openups_ctx_dump_state(openups_ctx_t* restrict ctx)
+{
+    if (ctx == NULL || ctx->config.state_file[0] == '\0') {
+        return;
+    }
+
+    char tmp_file[512];
+    snprintf(tmp_file, sizeof(tmp_file), "%s.tmp", ctx->config.state_file);
+
+    FILE* fp = fopen(tmp_file, "w");
+    if (!fp) {
+        logger_error(&ctx->logger, "Failed to open state file for writing: %s", strerror(errno));
+        return;
+    }
+
+    const metrics_t* metrics = &ctx->metrics;
+
+    fprintf(fp, "{\n");
+    fprintf(fp, "  \"target\": \"%s\",\n", ctx->config.target);
+    fprintf(fp, "  \"status\": \"%s\",\n", ctx->consecutive_fails >= ctx->config.fail_threshold ? "down" : "up");
+    fprintf(fp, "  \"failures_current\": %d,\n", ctx->consecutive_fails);
+    fprintf(fp, "  \"failures_threshold\": %d,\n", ctx->config.fail_threshold);
+    fprintf(fp, "  \"metrics\": {\n");
+    fprintf(fp, "    \"total_pings\": %" PRIu64 ",\n", metrics->total_pings);
+    fprintf(fp, "    \"successful_pings\": %" PRIu64 ",\n", metrics->successful_pings);
+    fprintf(fp, "    \"failed_pings\": %" PRIu64 ",\n", metrics->failed_pings);
+    fprintf(fp, "    \"success_rate\": %.2f,\n", metrics->total_pings > 0 ? metrics_success_rate(metrics) : 0.0);
+    fprintf(fp, "    \"uptime_seconds\": %" PRIu64 ",\n", metrics_uptime_seconds(metrics));
+    
+    if (metrics->successful_pings > 0) {
+        fprintf(fp, "    \"latency_min_ms\": %.2f,\n", metrics->min_latency);
+        fprintf(fp, "    \"latency_max_ms\": %.2f,\n", metrics->max_latency);
+        fprintf(fp, "    \"latency_avg_ms\": %.2f\n", metrics_avg_latency(metrics));
+    } else {
+        fprintf(fp, "    \"latency_min_ms\": 0.0,\n");
+        fprintf(fp, "    \"latency_max_ms\": 0.0,\n");
+        fprintf(fp, "    \"latency_avg_ms\": 0.0\n");
+    }
+    
+    fprintf(fp, "  }\n");
+    fprintf(fp, "}\n");
+
+    fclose(fp);
+
+    if (rename(tmp_file, ctx->config.state_file) != 0) {
+        logger_error(&ctx->logger, "Failed to rename state file to %s: %s", ctx->config.state_file, strerror(errno));
+    }
+}
+
 /* Emit a one-line statistics summary to the logger (triggered by SIGUSR1 or at shutdown). */
 static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
 {
@@ -1923,6 +1975,8 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
                               metrics->successful_pings, metrics->total_pings, success_rate,
                               result->latency_ms);
     }
+    
+    openups_ctx_dump_state(ctx);
 }
 
 /* Handle a failed ping: increment fail counter, record metrics, update systemd status. */
@@ -1943,6 +1997,8 @@ static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const 
         notify_systemd_status(ctx, "WARNING: %d consecutive failures, threshold is %d",
                               ctx->consecutive_fails, ctx->config.fail_threshold);
     }
+    
+    openups_ctx_dump_state(ctx);
 }
 
 /* Check threshold; if reached, invoke shutdown_trigger and return true to break the loop. */
@@ -2125,7 +2181,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
         /* 2: Check if it is time to send the next ping */
         if (!waiting_for_reply && now >= next_ping_ms) {
             size_t packet_len = sizeof(struct icmphdr) + (size_t)config->payload_size;
-            if (packet_len > sizeof(ctx->pinger.send_buf)) {
+            if (packet_len > ctx->pinger.send_buf_capacity) {
                  logger_error(&ctx->logger, "Buffer error: %zu exceeds capacity", packet_len);
                  break;
             }
