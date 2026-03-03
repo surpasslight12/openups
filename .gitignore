@@ -1,33 +1,37 @@
 # .gitignore for OpenUPS
 
-# 构建输出
+# 构建输出 (Build Outputs)
 bin/
+build/
 *.o
 *.a
 *.so
 
-# 编译器生成
+# 编译器生成 (Compiler Generated)
 *.d
 *.gch
 *.pch
 *.su
 
-# 编辑器和 IDE
+# 编辑器和 IDE (Editors and IDEs)
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 *~
+*.bak
 .DS_Store
 
-# 调试文件
+# 调试文件 (Debugging)
 vgcore.*
 core
+core.*
 
-# 测试和日志
+# 测试和日志 (Testing and Logs)
 *.log
 test_output/
 graylogs/
 
-# 工具
+# 工具 (Tools)
 _codeql_detected_source_root

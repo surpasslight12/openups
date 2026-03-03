@@ -897,18 +897,12 @@ static bool icmp_pinger_init(icmp_pinger_t* restrict pinger,
     memset(&pinger->cached_addr, 0, sizeof(pinger->cached_addr));
     pinger->cached_addr_len = 0;
 
-    /* Create raw socket */
-    pinger->sockfd = socket(AF_INET, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_ICMP);
+    /* Create raw socket, CLOEXEC for security, NONBLOCK for poll multiplexing */
+    pinger->sockfd = socket(AF_INET, SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK, IPPROTO_ICMP);
     if (pinger->sockfd < 0) {
         snprintf(error_msg, error_size, "Failed to create socket: %s (require root or CAP_NET_RAW)",
                  strerror(errno));
         return false;
-    }
-
-    /* Non-blocking: prevents recvfrom from blocking unexpectedly; paired with poll + EAGAIN logic */
-    int flags = fcntl(pinger->sockfd, F_GETFL, 0);
-    if (flags >= 0) {
-        (void)fcntl(pinger->sockfd, F_SETFL, flags | O_NONBLOCK);
     }
 
     return true;

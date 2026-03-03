@@ -50,18 +50,11 @@ SRCS := $(SRC_DIR)/main.c
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean run install uninstall test strip help
-
-SERVICE_SRC  := systemd/openups.service
-SERVICE_DEST := /etc/systemd/system/openups.service
+.PHONY: all clean
 
 all: $(TARGET)
 
 -include $(DEPS)
-
-test: all
-	@echo "Running test suite..."
-	@./test.sh
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
@@ -77,73 +70,3 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -rf $(BIN_DIR)
-
-strip: $(TARGET)
-	strip --strip-all $(TARGET)
-	@echo "Strip complete: $(TARGET)"
-	@ls -lh $(TARGET)
-
-run: $(TARGET)
-	@echo "Running $(TARGET) in dry-run mode..."
-	sudo $(TARGET) --target 127.0.0.1 --interval 1 --threshold 2 --dry-run --log-level debug
-
-# 安装到系统
-install: $(TARGET)
-	@echo "Installing $(TARGET) to /usr/local/bin..."
-	sudo cp $(TARGET) /usr/local/bin/openups
-	sudo chmod 755 /usr/local/bin/openups
-	sudo setcap cap_net_raw+ep /usr/local/bin/openups || true
-	@echo "Installing systemd service to $(SERVICE_DEST)..."
-	sudo cp $(SERVICE_SRC) $(SERVICE_DEST)
-	sudo systemctl daemon-reload
-	@echo "Installation complete. Run 'openups --help' for usage."
-	@echo "To enable service: sudo systemctl enable --now openups"
-
-# 卸载
-uninstall:
-	@echo "Uninstalling openups..."
-	sudo systemctl disable --now openups 2>/dev/null || true
-	sudo rm -f /usr/local/bin/openups
-	sudo rm -f $(SERVICE_DEST)
-	sudo systemctl daemon-reload
-	@echo "Uninstall complete."
-
-# 帮助信息
-help:
-	@echo "========================================"
-	@echo "OpenUPS - Network Monitor with Auto-Shutdown"
-	@echo "========================================"
-	@echo ""
-	@echo "Usage: make [target] [variables]"
-	@echo ""
-	@echo "Targets:"
-	@echo "  all        - Build the project (default target)"
-	@echo "  clean      - Remove build artifacts (bin/ directory)"
-	@echo "  test       - Build and run automated test suite"
-	@echo "  run        - Build and run in test mode with localhost"
-	@echo "  strip      - Strip debug symbols from binary"
-	@echo "  install    - Install binary + systemd service, set CAP_NET_RAW"
-	@echo "  uninstall  - Remove binary and systemd service"
-	@echo "  help       - Display this help message"
-	@echo ""
-	@echo "Variables (optional):"
-	@echo "  CC         - C compiler executable (default: gcc)"
-	@echo "  CFLAGS     - Compiler optimization and safety flags"
-	@echo "  LDFLAGS    - Linker security and optimization flags"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make                       # Build with optimizations"
-	@echo "  make clean && make test    # Clean build and run tests"
-	@echo "  make CC=clang              # Build with clang instead of gcc"
-	@echo "  make install               # Install system-wide"
-	@echo ""
-	@echo "After installation:"
-	@echo "  openups --help             # Show program usage"
-	@echo "  openups --version          # Show version info"
-	@echo "  systemctl start openups    # Start systemd service"
-	@echo ""
-	@echo "Source Structure (single-file architecture):"
-	@echo "  src/main.c - All source code in a single file"
-	@echo ""
-	@echo "Documentation:"
-	@echo "  README.md         - Project overview, technical details, and development guide"
