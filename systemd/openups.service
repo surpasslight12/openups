@@ -3,39 +3,22 @@ Description=OpenUPS Network Monitor with Auto-Shutdown
 Documentation=https://github.com/surpasslight12/openups
 After=network-online.target
 Wants=network-online.target
-
-# Rate-limit restarts: max 3 starts per 300 s
 StartLimitIntervalSec=300
 StartLimitBurst=3
 
 [Service]
-# Type=notify: program signals readiness via sd_notify(3)
 Type=notify
 NotifyAccess=main
 
-# Wait 2 minutes before starting the monitor so the network stack
-# has time to fully come up after boot.
-ExecStartPre=/usr/bin/sleep 120
+# Allow network stack to fully come up
+ExecStartPre=/usr/bin/sleep 60
 ExecStart=/usr/local/bin/openups
 
-# Timeout configuration
-# 180 s = 120 s startup delay + 60 s monitor startup budget
-TimeoutStartSec=180
-# Allow 10 s for graceful shutdown (SIGTERM handler)
+TimeoutStartSec=90
 TimeoutStopSec=10
-
-# Restart policy
 Restart=on-failure
 RestartSec=10
 
-# Uncomment to enable systemd watchdog (also set OPENUPS_WATCHDOG=true)
-# WatchdogSec=30
-
-# -------------------------------------------------------------------
-# Environment
-# Override any value with: sudo systemctl edit openups
-# Install path: sudo make install  (sets CAP_NET_RAW automatically)
-# -------------------------------------------------------------------
 EnvironmentFile=-/etc/default/openups
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
@@ -50,37 +33,19 @@ Environment="OPENUPS_TIMESTAMP=false"
 Environment="OPENUPS_SYSTEMD=true"
 Environment="OPENUPS_WATCHDOG=false"
 
-# Security hardening
-# CAP_NET_RAW is set via 'setcap' by 'make install' instead of
-# running as root, but root is needed to invoke shutdown commands.
+# Base Security Hardening
 User=root
-AmbientCapabilities=CAP_NET_RAW
-CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT CAP_KILL CAP_SYS_ADMIN
 NoNewPrivileges=true
-PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectKernelLogs=true
-ProtectControlGroups=true
-ProtectClock=true
-ProtectHostname=true
-ProtectProc=invisible
-LockPersonality=true
-RestrictSUIDSGID=true
-RestrictRealtime=true
-RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-MemoryDenyWriteExecute=true
+PrivateTmp=true
 PrivateDevices=true
-SystemCallArchitectures=native
-# @reboot is required for the shutdown/poweroff commands
-SystemCallFilter=@system-service @network-io @reboot
-SystemCallFilter=~@privileged @resources @mount @swap
-UMask=0077
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
 
-# 资源限制
+# Resource Limits
 MemoryMax=50M
 TasksMax=10
 
