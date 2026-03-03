@@ -2001,7 +2001,7 @@ static OPENUPS_HOT bool run_iteration(openups_ctx_t* restrict ctx)
 }
 
 /* Main monitor loop: setup signals, notify systemd ready, iterate until stop or shutdown. */
-static int openups_ctx_run(openups_ctx_t* restrict ctx)
+static __attribute__((unused)) int openups_ctx_run(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) {
         return -1;
