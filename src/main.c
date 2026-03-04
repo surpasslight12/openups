@@ -116,6 +116,7 @@ typedef struct openups_context {
 
     bool     systemd_enabled;
     uint64_t watchdog_interval_ms;
+    uint16_t cached_pid;          /* cached getpid() & 0xFFFF, avoids syscall in hot path */
 
     config_t           config;
     logger_t           logger;
@@ -304,65 +305,40 @@ static void log_message(logger_t* restrict logger, log_level_t level, const char
     }
 }
 
-/* Log at DEBUG level (only when log_level >= DEBUG). */
-[[gnu::format(printf, 2, 3)]] OPENUPS_HOT
-static void logger_debug(logger_t* restrict logger, const char* restrict fmt, ...)
+/* Internal variadic log implementation; callers pass the target level. */
+static void logger_log_va(logger_t* restrict logger, log_level_t level,
+                          const char* restrict fmt, va_list ap)
 {
-    if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_DEBUG)) {
-        return;
-    }
     char buffer[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-    log_message(logger, LOG_LEVEL_DEBUG, buffer);
+    vsnprintf(buffer, sizeof(buffer), fmt, ap);
+    log_message(logger, level, buffer);
 }
 
-/* Log at INFO level. */
-[[gnu::format(printf, 2, 3)]] OPENUPS_HOT
-static void logger_info(logger_t* restrict logger, const char* restrict fmt, ...)
-{
-    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_INFO) {
-        return;
+/*
+ * DEFINE_LOGGER(name, level, attrs)
+ * Generates a printf-like static function:  logger_<name>(logger_t*, fmt, ...)
+ * The early-return guard and attribute annotations are caller-specified.
+ */
+#define DEFINE_LOGGER(name, lvl, attrs)                                         \
+    [[gnu::format(printf, 2, 3)]] attrs                                         \
+    static void logger_##name(logger_t* restrict logger,                        \
+                              const char* restrict fmt, ...)                    \
+    {                                                                           \
+        if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL ||                   \
+                             logger->level < (lvl)))                            \
+            return;                                                             \
+        va_list args;                                                           \
+        va_start(args, fmt);                                                    \
+        logger_log_va(logger, (lvl), fmt, args);                                \
+        va_end(args);                                                           \
     }
-    char buffer[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-    log_message(logger, LOG_LEVEL_INFO, buffer);
-}
 
-/* Log at WARN level. */
-[[gnu::format(printf, 2, 3)]]
-static void logger_warn(logger_t* restrict logger, const char* restrict fmt, ...)
-{
-    if (logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_WARN) {
-        return;
-    }
-    char buffer[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-    log_message(logger, LOG_LEVEL_WARN, buffer);
-}
+DEFINE_LOGGER(debug, LOG_LEVEL_DEBUG, OPENUPS_HOT)
+DEFINE_LOGGER(info,  LOG_LEVEL_INFO,  OPENUPS_HOT)
+DEFINE_LOGGER(warn,  LOG_LEVEL_WARN,  /**/)
+DEFINE_LOGGER(error, LOG_LEVEL_ERROR, OPENUPS_COLD)
 
-/* Log at ERROR level (always shown unless SILENT). */
-[[gnu::format(printf, 2, 3)]] OPENUPS_COLD
-static void logger_error(logger_t* restrict logger, const char* restrict fmt, ...)
-{
-    if (OPENUPS_UNLIKELY(logger == NULL || fmt == NULL || logger->level < LOG_LEVEL_ERROR)) {
-        return;
-    }
-    char buffer[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    va_end(args);
-    log_message(logger, LOG_LEVEL_ERROR, buffer);
-}
+#undef DEFINE_LOGGER
 
 /* Initialise metrics; min/max latency use -1.0 as "not yet recorded" sentinel. */
 static void metrics_init(metrics_t* metrics)
@@ -700,24 +676,24 @@ static bool config_validate(const config_t* restrict config, char* restrict erro
     return true;
 }
 
-/* Print config summary (used at DEBUG log level on startup). */
-OPENUPS_COLD static void config_print(const config_t* restrict config)
+/* Print config summary via logger (used at DEBUG log level on startup). */
+OPENUPS_COLD static void config_print(const config_t* restrict config, logger_t* restrict logger)
 {
-    if (config == NULL) {
+    if (config == NULL || logger == NULL) {
         return;
     }
-    printf("Configuration:\n");
-    printf("  Target: %s\n", config->target);
-    printf("  Interval: %d seconds\n", config->interval_sec);
-    printf("  Threshold: %d\n", config->fail_threshold);
-    printf("  Timeout: %d ms\n", config->timeout_ms);
-    printf("  Payload Size: %d bytes\n", config->payload_size);
-    printf("  Shutdown Mode: %s\n", shutdown_mode_to_string(config->shutdown_mode));
-    printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
-    printf("  Log Level: %s\n", log_level_to_string(config->log_level));
-    printf("  Timestamp: %s\n", config->enable_timestamp ? "true" : "false");
-    printf("  Systemd: %s\n", config->enable_systemd ? "true" : "false");
-    printf("  Watchdog: %s\n", config->enable_watchdog ? "true" : "false");
+    logger_debug(logger, "Configuration:");
+    logger_debug(logger, "  Target: %s", config->target);
+    logger_debug(logger, "  Interval: %d seconds", config->interval_sec);
+    logger_debug(logger, "  Threshold: %d", config->fail_threshold);
+    logger_debug(logger, "  Timeout: %d ms", config->timeout_ms);
+    logger_debug(logger, "  Payload Size: %d bytes", config->payload_size);
+    logger_debug(logger, "  Shutdown Mode: %s", shutdown_mode_to_string(config->shutdown_mode));
+    logger_debug(logger, "  Dry Run: %s", config->dry_run ? "true" : "false");
+    logger_debug(logger, "  Log Level: %s", log_level_to_string(config->log_level));
+    logger_debug(logger, "  Timestamp: %s", config->enable_timestamp ? "true" : "false");
+    logger_debug(logger, "  Systemd: %s", config->enable_systemd ? "true" : "false");
+    logger_debug(logger, "  Watchdog: %s", config->enable_watchdog ? "true" : "false");
 }
 
 OPENUPS_COLD static void config_print_usage(void)
@@ -1355,10 +1331,14 @@ static bool openups_ctx_init(openups_ctx_t* restrict ctx, int argc, char** restr
         return false;
     }
 
+    /* Cache PID for hot-path ICMP id matching (avoid repeated getpid syscall) */
+    ctx->cached_pid = (uint16_t)(getpid() & 0xFFFF);
+    if (ctx->cached_pid == 0) ctx->cached_pid = 1;
+
     /* Logger */
     logger_init(&ctx->logger, ctx->config.log_level, ctx->config.enable_timestamp);
     if (ctx->config.log_level == LOG_LEVEL_DEBUG) {
-        config_print(&ctx->config);
+        config_print(&ctx->config, &ctx->logger);
     }
 
     /* ICMP pinger */
@@ -1502,6 +1482,56 @@ static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
 /* Reactor Engine                                               */
 /* ============================================================ */
 
+/*
+ * Parse an incoming ICMP echo reply from the raw socket.
+ * Returns true if a valid reply matching our (pid, sequence) was received,
+ * filling out_result with latency information.  Returns false otherwise
+ * (wrong packet, address mismatch, truncated, etc.) — caller should ignore.
+ */
+static OPENUPS_HOT bool parse_icmp_reply(const openups_ctx_t* restrict ctx,
+                                         const struct sockaddr_storage* restrict dest_addr,
+                                         uint64_t now_ms, uint64_t send_time_ms,
+                                         ping_result_t* restrict out_result)
+{
+    uint8_t recv_buf[4096] __attribute__((aligned(16)));
+    struct sockaddr_storage recv_addr;
+    socklen_t recv_addr_len = sizeof(recv_addr);
+
+    ssize_t received = recvfrom(ctx->pinger.sockfd, recv_buf, sizeof(recv_buf), 0,
+                                (struct sockaddr*)&recv_addr, &recv_addr_len);
+    if (received <= 0 || recv_addr.ss_family != dest_addr->ss_family) {
+        return false;
+    }
+
+    /* Verify source address matches the target */
+    if (dest_addr->ss_family == AF_INET) {
+        const struct sockaddr_in* d = (const struct sockaddr_in*)dest_addr;
+        const struct sockaddr_in* r = (const struct sockaddr_in*)&recv_addr;
+        if (d->sin_addr.s_addr != r->sin_addr.s_addr) return false;
+    }
+
+    /* Validate minimum IP header size */
+    if (received < (ssize_t)sizeof(struct ip)) return false;
+
+    const struct ip* ip_hdr = (const struct ip*)recv_buf;
+    if (ip_hdr->ip_p != IPPROTO_ICMP) return false;
+
+    size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
+    if (ip_hdr_len < sizeof(struct ip) || ip_hdr_len > (size_t)received) return false;
+    if (ip_hdr_len + sizeof(struct icmphdr) > (size_t)received) return false;
+
+    const struct icmphdr* recv_icmp = (const struct icmphdr*)(recv_buf + ip_hdr_len);
+
+    if (recv_icmp->type != ICMP_ECHOREPLY) return false;
+    if (recv_icmp->un.echo.id != ctx->cached_pid) return false;
+    if (recv_icmp->un.echo.sequence != ctx->pinger.sequence) return false;
+
+    out_result->success = true;
+    out_result->latency_ms = (double)(now_ms - send_time_ms);
+    out_result->error_msg[0] = '\0';
+    return true;
+}
+
 static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
 {
     if (ctx == NULL) return -1;
@@ -1527,6 +1557,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
     }
 
     uint64_t last_watchdog_ms = get_monotonic_ms();
+    const uint16_t my_pid = ctx->cached_pid;
 
     logger_info(&ctx->logger,
                 "Starting OpenUPS (Event Loop Engine) for target %s, every %ds",
@@ -1588,8 +1619,7 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
             memset(icmp_hdr, 0, sizeof(*icmp_hdr));
             icmp_hdr->type = ICMP_ECHO;
             icmp_hdr->code = 0;
-            icmp_hdr->un.echo.id = (uint16_t)(getpid() & 0xFFFF);
-            if (icmp_hdr->un.echo.id == 0) icmp_hdr->un.echo.id = 1;
+            icmp_hdr->un.echo.id = my_pid;
             ctx->pinger.sequence = next_sequence(&ctx->pinger);
             icmp_hdr->un.echo.sequence = ctx->pinger.sequence;
             icmp_hdr->checksum = 0;
@@ -1652,46 +1682,10 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
         }
 
         if ((fds[1].revents & POLLIN) && waiting_for_reply) {
-            uint8_t recv_buf[4096] __attribute__((aligned(16)));
-            struct sockaddr_storage recv_addr;
-            socklen_t recv_addr_len = sizeof(recv_addr);
-
-            ssize_t received = recvfrom(ctx->pinger.sockfd, recv_buf, sizeof(recv_buf), 0,
-                                        (struct sockaddr*)&recv_addr, &recv_addr_len);
-
-            if (received > 0 && recv_addr.ss_family == dest_addr.ss_family) {
-                bool addr_match = false;
-                if (dest_addr.ss_family == AF_INET) {
-                    struct sockaddr_in* d = (struct sockaddr_in*)&dest_addr;
-                    struct sockaddr_in* r = (struct sockaddr_in*)&recv_addr;
-                    if (d->sin_addr.s_addr == r->sin_addr.s_addr) addr_match = true;
-                }
-
-                if (addr_match && received >= (ssize_t)sizeof(struct ip)) {
-                    struct ip* ip_hdr = (struct ip*)recv_buf;
-                    if (ip_hdr->ip_p == IPPROTO_ICMP) {
-                        size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
-                        if (ip_hdr_len >= sizeof(struct ip) && ip_hdr_len <= (size_t)received) {
-                            if (ip_hdr_len + sizeof(struct icmphdr) <= (size_t)received) {
-                                struct icmphdr* recv_icmp = (struct icmphdr*)(recv_buf + ip_hdr_len);
-                                uint16_t expected_id = (uint16_t)(getpid() & 0xFFFF);
-                                if (expected_id == 0) expected_id = 1;
-                                uint16_t expected_seq = ctx->pinger.sequence;
-
-                                if (recv_icmp->type == ICMP_ECHOREPLY &&
-                                    recv_icmp->un.echo.id == expected_id &&
-                                    recv_icmp->un.echo.sequence == expected_seq) {
-
-                                    double latency = (double)(now - current_ping_send_time);
-                                    ping_result_t succ_res = {true, latency, ""};
-                                    handle_ping_success(ctx, &succ_res);
-
-                                    waiting_for_reply = false;
-                                }
-                            }
-                        }
-                    }
-                }
+            ping_result_t reply;
+            if (parse_icmp_reply(ctx, &dest_addr, now, current_ping_send_time, &reply)) {
+                handle_ping_success(ctx, &reply);
+                waiting_for_reply = false;
             }
         }
     }

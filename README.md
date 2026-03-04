@@ -21,17 +21,17 @@
 快速、方便地一键安装（自动完成编译、交互式参数配置和 systemd 服务注册）：
 
 ```bash
-# 赋予执行权限
-chmod +x install.sh
-
 # 交互式安装 / 初始化配置
-sudo ./install.sh install
+sudo make install
 
-# 更新构建
-sudo ./install.sh update
+# 仅更新配置（重新交互式写入 /etc/default/openups）
+sudo make configure
+
+# 更新构建并重启服务
+sudo make update
 
 # 卸载系统服务
-sudo ./install.sh uninstall
+sudo make uninstall
 ```
 
 ### 手动调试运行
