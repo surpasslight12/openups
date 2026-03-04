@@ -18,14 +18,11 @@
 
 ### 安装与管理服务
 
-快速、方便地一键安装（自动完成编译、交互式参数配置和 systemd 服务注册）：
+快速、方便地一键安装（自动完成编译和 systemd 服务注册）；安装后直接编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
 
 ```bash
-# 交互式安装 / 初始化配置
+# 安装（编译 + 二进制 + systemd 服务注册）
 sudo make install
-
-# 仅更新配置（重新交互式写入 /etc/default/openups）
-sudo make configure
 
 # 更新构建并重启服务
 sudo make update

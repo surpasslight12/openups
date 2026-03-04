@@ -347,8 +347,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --interval 1 \
         --threshold 10 \
         --dry-run=true \
-        --log-level debug \
-
+        --log-level debug >"${PHASE4_LOG}" 2>&1 &
     PHASE4_PID=$!
     sleep "${SIGNAL_TEST_SEC}"
     ${SUDO} kill -10 "${PHASE4_PID}" 2>/dev/null || true
@@ -357,7 +356,8 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     wait "${PHASE4_PID}" 2>/dev/null
     set -e
 
-phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    phase4_stats="$(count_lines "Statistics:" "${PHASE4_LOG}")"
 
     if [[ "${phase4_stats}" -ge 2 ]]; then
         echo "  ✓ Phase 4: SIGUSR1 统计信息输出 (${phase4_stats} lines)"

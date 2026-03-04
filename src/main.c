@@ -993,20 +993,20 @@ static OPENUPS_COLD bool shutdown_execute_command(char* argv[], logger_t* restri
     }
 
     if (child_pid == 0) {
-        /* Redirect stdin/stdout to /dev/null */
+        /* Redirect stdin/stdout/stderr to /dev/null */
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) {
             (void)dup2(devnull, STDIN_FILENO);
             (void)dup2(devnull, STDOUT_FILENO);
-            /* Only close devnull if it was not dup2'd into stdin or stdout */
-            if (devnull != STDIN_FILENO && devnull != STDOUT_FILENO) {
+            (void)dup2(devnull, STDERR_FILENO);
+            /* Only close devnull if it was not dup2'd into any std fd */
+            if (devnull != STDIN_FILENO && devnull != STDOUT_FILENO && devnull != STDERR_FILENO) {
                 close(devnull);
             }
         }
 
         execvp(argv[0], argv);
-
-        fprintf(stderr, "exec failed: %s\n", strerror(errno));
+        /* execvp failed; stderr is /dev/null — parent detects failure via waitpid */
         _exit(127);
     }
 
@@ -1631,17 +1631,13 @@ static OPENUPS_HOT int openups_reactor_run(openups_ctx_t* restrict ctx)
                  ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
                  handle_ping_failure(ctx, &fail_res);
                  if (trigger_shutdown(ctx)) break;
-
-                 next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
-                 if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
             } else {
                  current_ping_send_time = now;
                  waiting_for_reply = true;
                  reply_deadline_ms = now + (uint64_t)config->timeout_ms;
-
-                 next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
-                 if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
             }
+            next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
+            if (next_ping_ms < now) next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
         }
 
         /* 3: Compute exact timeout bounds for poll */
