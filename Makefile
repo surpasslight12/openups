@@ -50,9 +50,19 @@ SRCS := $(SRC_DIR)/main.c
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean
+.PHONY: all clean release install uninstall
 
 all: $(TARGET)
+
+release: $(TARGET)
+	strip --strip-all $(TARGET)
+	@echo "Release build complete (stripped): $(TARGET)"
+
+install: $(TARGET)
+	@./install.sh install
+
+uninstall:
+	@./install.sh uninstall
 
 -include $(DEPS)
 

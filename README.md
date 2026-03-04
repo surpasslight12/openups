@@ -57,10 +57,19 @@ sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-l
 | 检测间隔     | `-i, --interval`      | `OPENUPS_INTERVAL`    | `10`（秒）   | 两次 ping 之间的间隔     |
 | 失败阈值     | `-n, --threshold`     | `OPENUPS_THRESHOLD`   | `5`          | 连续失败多少次触发关机   |
 | 超时时间     | `-w, --timeout`       | `OPENUPS_TIMEOUT`     | `2000`（ms） | 单次 ping 等待回包的超时 |
+| 数据包大小   | `-s, --payload-size`  | `OPENUPS_PAYLOAD_SIZE`| `56`（字节） | ICMP 探测的数据包大小    |
 | 关机模式     | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
 | 演习模式     | `-d, --dry-run`       | `OPENUPS_DRY_RUN`     | `true`       | 不执行实际关机（安全默认值） |
-| 状态报告     | `-F, --state-file`    | `OPENUPS_STATE_FILE`  | `(空)`       | 原子写入运行时状态的 JSON 路径 |
 
-## 📄 许可证
+## � `log-only` 与 `dry-run` 的区别
+
+尽管两者都不会真正执行关机操作，但它们在设计用途上完全不同：
+
+- **`--dry-run=true`（演习模式）**：
+  它是 `immediate` 或 `delayed` 模式的安全测试开关。当网络失败次数达到阈值时，程序会打印“模拟触发了关机”的消息，**并直接退出监控运行**。这用于测试触发链路的可用性（就像电脑真的关机了一样）。
+- **`--shutdown-mode log-only`（纯日志监视模式）**：
+  当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 Systemd 持续监控网络。
+
+## �📄 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。

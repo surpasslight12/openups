@@ -70,7 +70,6 @@ typedef struct {
     int  fail_threshold;
     int  timeout_ms;
     int  payload_size;
-    int  max_retries;
 
     /* Shutdown */
     shutdown_mode_t shutdown_mode;
@@ -79,7 +78,6 @@ typedef struct {
 
     /* Logging */
     bool        enable_timestamp;
-    char        state_file[256];
     log_level_t log_level;
 
     /* Integration */
@@ -525,12 +523,10 @@ static void config_init_default(config_t* restrict config)
     config->fail_threshold = 5;
     config->timeout_ms = 2000;
     config->payload_size = 56;
-    config->max_retries = 2;
     config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;
     config->delay_minutes = 1;
     config->dry_run = true;
     config->enable_timestamp = true;
-    config->state_file[0] = '\0';
     config->log_level = LOG_LEVEL_INFO;
     config->enable_systemd = true;
     config->enable_watchdog = true;
@@ -551,7 +547,6 @@ static void config_load_from_env(config_t* restrict config)
     config->fail_threshold = get_env_int("OPENUPS_THRESHOLD", config->fail_threshold);
     config->timeout_ms = get_env_int("OPENUPS_TIMEOUT", config->timeout_ms);
     config->payload_size = get_env_int("OPENUPS_PAYLOAD_SIZE", config->payload_size);
-    config->max_retries = get_env_int("OPENUPS_RETRIES", config->max_retries);
     value = getenv("OPENUPS_SHUTDOWN_MODE");
     if (value != NULL) {
         shutdown_mode_t parsed_mode;
@@ -568,9 +563,6 @@ static void config_load_from_env(config_t* restrict config)
     config->enable_systemd = get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
     config->enable_watchdog = get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
     config->enable_timestamp = get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
-    if ((value = getenv("OPENUPS_STATE_FILE")) != NULL) {
-        snprintf(config->state_file, sizeof(config->state_file), "%s", value);
-    }
 }
 
 /* Parse command-line arguments (highest priority); returns false on parse error. */
@@ -585,13 +577,11 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
         {"threshold", required_argument, 0, 'n'},
         {"timeout", required_argument, 0, 'w'},
         {"payload-size", required_argument, 0, 's'},
-        {"retries", required_argument, 0, 'r'},
         {"shutdown-mode", required_argument, 0, 'S'},
         {"delay", required_argument, 0, 'D'},
         {"dry-run", optional_argument, 0, 'd'},
         {"log-level", required_argument, 0, 'L'},
         {"timestamp", optional_argument, 0, 'T'},
-        {"state-file", required_argument, 0, 'F'},
         {"systemd", optional_argument, 0, 'M'},
         {"watchdog", optional_argument, 0, 'W'},
         {"version", no_argument, 0, 'v'},
@@ -600,7 +590,7 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
     };
     int c;
     int option_index = 0;
-    const char* optstring = "t:i:n:w:s:r:S:D:d::L:T::F:M::W::vh";
+    const char* optstring = "t:i:n:w:s:S:D:d::L:T::M::W::vh";
     while ((c = getopt_long(argc, argv, optstring, long_options, &option_index)) != -1) {
         switch (c) {
             case 't': snprintf(config->target, sizeof(config->target), "%s", optarg); break;
@@ -615,9 +605,6 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
                 break;
             case 's':
                 if (!parse_int_arg(optarg, &config->payload_size, 0, 65507, "--payload-size")) return false;
-                break;
-            case 'r':
-                if (!parse_int_arg(optarg, &config->max_retries, 0, INT_MAX, "--retries")) return false;
                 break;
             case 'S': {
                 shutdown_mode_t parsed_mode;
@@ -643,9 +630,6 @@ static bool config_load_from_cmdline(config_t* restrict config, int argc, char**
                     fprintf(stderr, "Invalid value for --timestamp: %s (use true|false)\n", optarg ? optarg : "<empty>");
                     return false;
                 }
-                break;
-            case 'F':
-                if (optarg) snprintf(config->state_file, sizeof(config->state_file), "%s", optarg);
                 break;
             case 'M':
                 if (!parse_bool_arg(optarg, &config->enable_systemd)) {
@@ -703,10 +687,6 @@ static bool config_validate(const config_t* restrict config, char* restrict erro
         snprintf(error_msg, error_size, "Payload size must be between 0 and %d", max_payload);
         return false;
     }
-    if (config->max_retries < 0) {
-        snprintf(error_msg, error_size, "Max retries cannot be negative");
-        return false;
-    }
     if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
         if (config->delay_minutes <= 0) {
             snprintf(error_msg, error_size, "Delay minutes must be positive for delayed mode");
@@ -732,7 +712,6 @@ OPENUPS_COLD static void config_print(const config_t* restrict config)
     printf("  Threshold: %d\n", config->fail_threshold);
     printf("  Timeout: %d ms\n", config->timeout_ms);
     printf("  Payload Size: %d bytes\n", config->payload_size);
-    printf("  Max Retries: %d\n", config->max_retries);
     printf("  Shutdown Mode: %s\n", shutdown_mode_to_string(config->shutdown_mode));
     printf("  Dry Run: %s\n", config->dry_run ? "true" : "false");
     printf("  Log Level: %s\n", log_level_to_string(config->log_level));
@@ -749,8 +728,7 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("  -i, --interval <sec>        Ping interval in seconds (default: 10)\n");
     printf("  -n, --threshold <num>       Consecutive failures threshold (default: 5)\n");
     printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: 2000)\n");
-    printf("  -s, --payload-size <bytes>  ICMP payload size (default: 56)\n");
-    printf("  -r, --retries <num>         Retry attempts per ping (default: 2)\n\n");
+    printf("  -s, --payload-size <bytes>  ICMP payload size (default: 56)\n\n");
     printf("Shutdown Options:\n");
     printf("  -S, --shutdown-mode <mode>  Shutdown mode: immediate|delayed|log-only\n");
     printf("                              (default: immediate)\n");
@@ -763,7 +741,6 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("                              (default: info)\n");
     printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps (default: true)\n");
     printf("                              ARG format: true|false\n");
-    printf("  -F, --state-file <path>     Write state and metrics to JSON file atomically\n\n");
     printf("System Integration:\n");
     printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration (default: true)\n");
     printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog (default: true)\n");
@@ -773,10 +750,9 @@ OPENUPS_COLD static void config_print_usage(void)
     printf("  -h, --help                  Show this help message\n\n");
     printf("Environment Variables (lower priority than CLI args):\n");
     printf("  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
-    printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE, OPENUPS_RETRIES\n");
+    printf("                OPENUPS_TIMEOUT, OPENUPS_PAYLOAD_SIZE\n");
     printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
     printf("                OPENUPS_DRY_RUN\n");
-    printf("  Logging:      OPENUPS_LOG_LEVEL, OPENUPS_TIMESTAMP, OPENUPS_STATE_FILE\n");
     printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n");
     printf("\n");
     printf("Examples:\n");
@@ -876,8 +852,6 @@ static bool resolve_target(const char* restrict target,
     return true;
 }
 
-
-
 /* Write a repeating 0x00..0xFF byte pattern into the payload region; skips if already filled. */
 static void fill_payload_pattern(icmp_pinger_t* restrict pinger, size_t header_size,
                                  size_t payload_size)
@@ -916,16 +890,6 @@ static uint16_t next_sequence(icmp_pinger_t* restrict pinger)
     }
     return pinger->sequence;
 }
-
-/* Poll fd until readable, deadline passes, or should_stop fires.
- * Fires tick callback periodically (every ~1 s) while waiting.
- * Returns 0 on readable, -1 on timeout/error (errno set), -2 on stop request. */
-
-
-
-
-
-
 
 
 /* Split command string into an argv array for execvp (no shell); rejects unsafe characters. */
@@ -1441,54 +1405,6 @@ static void openups_ctx_destroy(openups_ctx_t* restrict ctx)
 }
 
 /* Atomically write the current operational state and metrics to a JSON file. */
-static OPENUPS_COLD void openups_ctx_dump_state(openups_ctx_t* restrict ctx)
-{
-    if (ctx == NULL || ctx->config.state_file[0] == '\0') {
-        return;
-    }
-
-    char tmp_file[512];
-    snprintf(tmp_file, sizeof(tmp_file), "%s.tmp", ctx->config.state_file);
-
-    FILE* fp = fopen(tmp_file, "w");
-    if (!fp) {
-        logger_error(&ctx->logger, "Failed to open state file for writing: %s", strerror(errno));
-        return;
-    }
-
-    const metrics_t* metrics = &ctx->metrics;
-
-    fprintf(fp, "{\n");
-    fprintf(fp, "  \"target\": \"%s\",\n", ctx->config.target);
-    fprintf(fp, "  \"status\": \"%s\",\n", ctx->consecutive_fails >= ctx->config.fail_threshold ? "down" : "up");
-    fprintf(fp, "  \"failures_current\": %d,\n", ctx->consecutive_fails);
-    fprintf(fp, "  \"failures_threshold\": %d,\n", ctx->config.fail_threshold);
-    fprintf(fp, "  \"metrics\": {\n");
-    fprintf(fp, "    \"total_pings\": %" PRIu64 ",\n", metrics->total_pings);
-    fprintf(fp, "    \"successful_pings\": %" PRIu64 ",\n", metrics->successful_pings);
-    fprintf(fp, "    \"failed_pings\": %" PRIu64 ",\n", metrics->failed_pings);
-    fprintf(fp, "    \"success_rate\": %.2f,\n", metrics->total_pings > 0 ? metrics_success_rate(metrics) : 0.0);
-    fprintf(fp, "    \"uptime_seconds\": %" PRIu64 ",\n", metrics_uptime_seconds(metrics));
-
-    if (metrics->successful_pings > 0) {
-        fprintf(fp, "    \"latency_min_ms\": %.2f,\n", metrics->min_latency);
-        fprintf(fp, "    \"latency_max_ms\": %.2f,\n", metrics->max_latency);
-        fprintf(fp, "    \"latency_avg_ms\": %.2f\n", metrics_avg_latency(metrics));
-    } else {
-        fprintf(fp, "    \"latency_min_ms\": 0.0,\n");
-        fprintf(fp, "    \"latency_max_ms\": 0.0,\n");
-        fprintf(fp, "    \"latency_avg_ms\": 0.0\n");
-    }
-
-    fprintf(fp, "  }\n");
-    fprintf(fp, "}\n");
-
-    fclose(fp);
-
-    if (rename(tmp_file, ctx->config.state_file) != 0) {
-        logger_error(&ctx->logger, "Failed to rename state file to %s: %s", ctx->config.state_file, strerror(errno));
-    }
-}
 
 /* Emit a one-line statistics summary to the logger (triggered by SIGUSR1 or at shutdown). */
 static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
@@ -1516,10 +1432,6 @@ static OPENUPS_COLD void openups_ctx_print_stats(openups_ctx_t* restrict ctx)
     }
 }
 
-
-
-
-
 /* Handle a successful ping: reset fail counter, record metrics, update systemd status. */
 static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const ping_result_t* restrict result)
 {
@@ -1543,7 +1455,6 @@ static OPENUPS_HOT void handle_ping_success(openups_ctx_t* restrict ctx, const p
                               result->latency_ms);
     }
 
-    openups_ctx_dump_state(ctx);
 }
 
 /* Handle a failed ping: increment fail counter, record metrics, update systemd status. */
@@ -1565,7 +1476,6 @@ static OPENUPS_COLD void handle_ping_failure(openups_ctx_t* restrict ctx, const 
                               ctx->consecutive_fails, ctx->config.fail_threshold);
     }
 
-    openups_ctx_dump_state(ctx);
 }
 
 /* Check threshold; if reached, invoke shutdown_trigger and return true to break the loop. */
@@ -1586,11 +1496,6 @@ static OPENUPS_COLD bool trigger_shutdown(openups_ctx_t* restrict ctx)
     logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
     return true;
 }
-
-
-
-
-
 
 /* ============================================================ */
 /* ============================================================ */

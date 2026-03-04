@@ -23,10 +23,12 @@ jobs:
           sudo apt-get install -y gcc-14
 
       - name: Build
-        run: make CC=gcc-14
+        run: |
+          make CC=gcc-14
+          make release
 
-      - name: Run tests
-        run: CC=gcc-14 ./test.sh
+      - name: Run tests (with Gray testing)
+        run: sudo env CC=gcc-14 ./test.sh --gray
 
       - name: Upload binary
         if: always()
