@@ -13,7 +13,6 @@
 #include <netinet/ip_icmp.h>
 #include <poll.h>
 #include <signal.h>
-#include <spawn.h>
 #include <stdarg.h>
 
 #include <stdbool.h>
@@ -30,14 +29,11 @@
 #include <time.h>
 #include <unistd.h>
 
-#define OPENUPS_VERSION "1.0.0"
+#define OPENUPS_VERSION "1.1.0"
 #define OPENUPS_PROGRAM_NAME "openups"
 
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define OPENUPS_HOT __attribute__((hot))
 #define OPENUPS_COLD __attribute__((cold))
-#define OPENUPS_PURE __attribute__((pure))
-#define OPENUPS_CONST __attribute__((const))
 
 typedef enum {
   LOG_LEVEL_SILENT = -1, /* completely silent, suitable for systemd */
@@ -101,9 +97,7 @@ typedef struct {
   uint16_t sequence;
 
   /* Send buffer (stack-allocated, zero-alloc model) */
-  uint8_t send_buf[4096];
-  size_t send_buf_capacity;
-  size_t payload_filled_size;
+  uint8_t send_buf[256];
 } icmp_pinger_t;
 
 typedef struct {
@@ -168,8 +162,6 @@ bool resolve_target(const char *restrict target,
                     socklen_t *restrict addr_len, char *restrict error_msg,
                     size_t error_size);
 
-#endif // OPENUPS_H
-
 #define DEFINE_LOGGER(name, lvl, attrs)                                        \
   static inline void attrs name(const logger_t *restrict logger,               \
                                 const char *restrict fmt, ...) {               \
@@ -198,3 +190,5 @@ uint16_t calculate_checksum(const void *data, size_t len);
 void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
                           size_t payload_size);
 uint16_t next_sequence(icmp_pinger_t *restrict pinger);
+
+#endif // OPENUPS_H

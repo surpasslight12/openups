@@ -1,4 +1,5 @@
 #include "openups.h"
+#include <spawn.h>
 
 static bool build_shutdown_argv(const char *command, char *buffer,
                                 size_t buffer_size, char *argv[],
@@ -416,7 +417,7 @@ static uint64_t systemd_notifier_watchdog_interval_ms(
 }
 
 /* Format and forward a status string to systemd (printf-style). */
-[[gnu::format(printf, 2, 3)]]
+__attribute__((format(printf, 2, 3)))
 static void notify_systemd_status(openups_ctx_t *restrict ctx,
                                   const char *restrict fmt, ...) {
   if (ctx == NULL || !ctx->systemd_enabled || fmt == NULL) {
@@ -517,8 +518,6 @@ static void openups_ctx_destroy(openups_ctx_t *restrict ctx) {
 
   memset(ctx, 0, sizeof(*ctx));
 }
-
-/* Atomically write the current operational state and metrics to a JSON file. */
 
 /* Emit a one-line statistics summary to the logger (triggered by SIGUSR1 or at
  * shutdown). */
@@ -761,7 +760,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   size_t packet_len = 64;
   size_t calculated_payload_size =
       packet_len > header_len ? packet_len - header_len : 0;
-  if (packet_len > ctx->pinger.send_buf_capacity) {
+  if (packet_len > sizeof(ctx->pinger.send_buf)) {
     logger_error(&ctx->logger, "Buffer error: %zu exceeds capacity",
                  packet_len);
     return -1;

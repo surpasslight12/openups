@@ -26,8 +26,6 @@ bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
   pinger->sockfd = -1;
   pinger->family = family;
   pinger->sequence = 0;
-  pinger->send_buf_capacity = sizeof(pinger->send_buf);
-  pinger->payload_filled_size = 0;
 
   int proto = (family == AF_INET6) ? IPPROTO_ICMPV6 : IPPROTO_ICMP;
 
@@ -89,9 +87,6 @@ void icmp_pinger_destroy(icmp_pinger_t *restrict pinger) {
     close(pinger->sockfd);
     pinger->sockfd = -1;
   }
-
-  pinger->send_buf_capacity = sizeof(pinger->send_buf);
-  pinger->payload_filled_size = 0;
 }
 
 bool resolve_target(const char *restrict target,
@@ -126,24 +121,13 @@ bool resolve_target(const char *restrict target,
 
 void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
                           size_t payload_size) {
-  if (pinger == NULL) {
-    return;
-  }
-
-  if (payload_size == 0) {
-    pinger->payload_filled_size = 0;
-    return;
-  }
-
-  if (pinger->payload_filled_size == payload_size) {
+  if (pinger == NULL || payload_size == 0) {
     return;
   }
 
   for (size_t i = 0; i < payload_size; i++) {
     pinger->send_buf[header_size + i] = (uint8_t)(i & 0xFFU);
   }
-
-  pinger->payload_filled_size = payload_size;
 }
 
 uint16_t next_sequence(icmp_pinger_t *restrict pinger) {
