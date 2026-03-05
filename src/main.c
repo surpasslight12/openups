@@ -67,8 +67,13 @@ static bool shutdown_select_command(const config_t *restrict config,
   }
 
   if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    snprintf(command_buf, command_size, "/sbin/shutdown -h +%d",
-             config->delay_minutes);
+    if (use_systemctl_poweroff) {
+      snprintf(command_buf, command_size, "systemctl --when=+%dmin poweroff",
+               config->delay_minutes);
+    } else {
+      snprintf(command_buf, command_size, "/sbin/shutdown -h +%d",
+               config->delay_minutes);
+    }
     return true;
   }
 
@@ -351,7 +356,7 @@ static bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
   bool same = (strncmp(notifier->last_status, status,
                        sizeof(notifier->last_status)) == 0);
   if (same && notifier->last_status_ms != 0 &&
-      now_ms - notifier->last_status_ms < 2000) {
+      now_ms != UINT64_MAX && now_ms - notifier->last_status_ms < 2000) {
     return true;
   }
 
@@ -459,8 +464,9 @@ static bool openups_ctx_init(openups_ctx_t *restrict ctx, int argc,
 
   /* Cache PID for hot-path ICMP id matching (avoid repeated getpid syscall) */
   ctx->cached_pid = (uint16_t)(getpid() & 0xFFFF);
-  if (ctx->cached_pid == 0)
+  if (ctx->cached_pid == 0) {
     ctx->cached_pid = 1;
+  }
 
   /* Logger */
   logger_init(&ctx->logger, ctx->config.log_level,
@@ -491,9 +497,9 @@ static bool openups_ctx_init(openups_ctx_t *restrict ctx, int argc,
 
     if (ctx->systemd_enabled) {
       logger_debug(&ctx->logger, "systemd integration enabled");
-      if (ctx->config.enable_watchdog) {
-        ctx->watchdog_interval_ms =
-            systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+      ctx->watchdog_interval_ms =
+          systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+      if (ctx->watchdog_interval_ms > 0) {
         logger_debug(&ctx->logger, "watchdog interval: %" PRIu64 "ms",
                      ctx->watchdog_interval_ms);
       }
@@ -603,9 +609,7 @@ static bool trigger_shutdown(openups_ctx_t *restrict ctx) {
     return false;
   }
 
-  const bool use_systemctl_poweroff =
-      ctx->config.enable_systemd && ctx->systemd_enabled;
-  shutdown_trigger(&ctx->config, &ctx->logger, use_systemctl_poweroff);
+  shutdown_trigger(&ctx->config, &ctx->logger, ctx->systemd_enabled);
 
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
     ctx->consecutive_fails =
@@ -649,50 +653,63 @@ static int parse_icmp_reply(const openups_ctx_t *restrict ctx,
   if (dest_addr->ss_family == AF_INET) {
     const struct sockaddr_in *d = (const struct sockaddr_in *)dest_addr;
     const struct sockaddr_in *r = (const struct sockaddr_in *)&recv_addr;
-    if (d->sin_addr.s_addr != r->sin_addr.s_addr)
+    if (d->sin_addr.s_addr != r->sin_addr.s_addr) {
       return 0;
+    }
 
     /* Validate minimum IP header size */
-    if (received < (ssize_t)sizeof(struct ip))
+    if (received < (ssize_t)sizeof(struct ip)) {
       return 0;
+    }
 
     const struct ip *ip_hdr = (const struct ip *)recv_buf;
-    if (ip_hdr->ip_p != IPPROTO_ICMP)
+    if (ip_hdr->ip_p != IPPROTO_ICMP) {
       return 0;
+    }
 
     size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
-    if (ip_hdr_len < sizeof(struct ip) || ip_hdr_len > (size_t)received)
+    if (ip_hdr_len < sizeof(struct ip) || ip_hdr_len > (size_t)received) {
       return 0;
-    if (ip_hdr_len + sizeof(struct icmphdr) > (size_t)received)
+    }
+    if (ip_hdr_len + sizeof(struct icmphdr) > (size_t)received) {
       return 0;
+    }
 
     const struct icmphdr *recv_icmp =
         (const struct icmphdr *)(recv_buf + ip_hdr_len);
 
-    if (recv_icmp->type != ICMP_ECHOREPLY)
+    if (recv_icmp->type != ICMP_ECHOREPLY) {
       return 0;
-    if (recv_icmp->un.echo.id != ctx->cached_pid)
+    }
+    if (recv_icmp->un.echo.id != ctx->cached_pid) {
       return 0;
-    if (recv_icmp->un.echo.sequence != ctx->pinger.sequence)
+    }
+    if (recv_icmp->un.echo.sequence != ctx->pinger.sequence) {
       return 0;
+    }
   } else if (dest_addr->ss_family == AF_INET6) {
     const struct sockaddr_in6 *d = (const struct sockaddr_in6 *)dest_addr;
     const struct sockaddr_in6 *r = (const struct sockaddr_in6 *)&recv_addr;
-    if (memcmp(&d->sin6_addr, &r->sin6_addr, sizeof(struct in6_addr)) != 0)
+    if (memcmp(&d->sin6_addr, &r->sin6_addr, sizeof(struct in6_addr)) != 0) {
       return 0;
+    }
 
     /* For open IPv6 raw sockets, we only get the ICMPv6 header, no IP header */
-    if (received < (ssize_t)sizeof(struct icmp6_hdr))
+    if (received < (ssize_t)sizeof(struct icmp6_hdr)) {
       return 0;
+    }
 
     const struct icmp6_hdr *recv_icmp6 = (const struct icmp6_hdr *)recv_buf;
 
-    if (recv_icmp6->icmp6_type != ICMP6_ECHO_REPLY)
+    if (recv_icmp6->icmp6_type != ICMP6_ECHO_REPLY) {
       return 0;
-    if (recv_icmp6->icmp6_id != ctx->cached_pid)
+    }
+    if (recv_icmp6->icmp6_id != ctx->cached_pid) {
       return 0;
-    if (recv_icmp6->icmp6_seq != ctx->pinger.sequence)
+    }
+    if (recv_icmp6->icmp6_seq != ctx->pinger.sequence) {
       return 0;
+    }
   } else {
     return 0;
   }
@@ -704,8 +721,9 @@ static int parse_icmp_reply(const openups_ctx_t *restrict ctx,
 }
 
 static int openups_reactor_run(openups_ctx_t *restrict ctx) {
-  if (ctx == NULL)
+  if (ctx == NULL) {
     return -1;
+  }
   const config_t *config = &ctx->config;
 
   /* Setup signalfd */
@@ -768,7 +786,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   fill_payload_pattern(&ctx->pinger, header_len, calculated_payload_size);
 
   while (!ctx->stop_flag) {
-    if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
+    if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0) {
       if (now - last_watchdog_ms >= ctx->watchdog_interval_ms) {
         (void)systemd_notifier_watchdog(&ctx->systemd);
         last_watchdog_ms = now;
@@ -780,8 +798,9 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       ping_result_t fail_res = {false, -1.0, "Timeout waiting for ICMP reply"};
       handle_ping_failure(ctx, &fail_res);
       waiting_for_reply = false;
-      if (trigger_shutdown(ctx))
+      if (trigger_shutdown(ctx)) {
         break;
+      }
     }
 
     /* 2: Check if it is time to send the next ping */
@@ -813,16 +832,18 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       if (sent < 0) {
         ping_result_t fail_res = {false, -1.0, "Failed to send packet"};
         handle_ping_failure(ctx, &fail_res);
-        if (trigger_shutdown(ctx))
+        if (trigger_shutdown(ctx)) {
           break;
+        }
       } else {
         current_ping_send_time = now;
         waiting_for_reply = true;
         reply_deadline_ms = now + (uint64_t)config->timeout_ms;
       }
       next_ping_ms += (uint64_t)config->interval_sec * 1000ULL;
-      if (next_ping_ms < now)
+      if (next_ping_ms < now) {
         next_ping_ms = now + (uint64_t)config->interval_sec * 1000ULL;
+      }
     }
 
     /* 3: Compute exact timeout bounds for poll */
@@ -835,10 +856,11 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       wait_timeout_ms = next_ping_ms > now ? (int)(next_ping_ms - now) : 0;
     }
 
-    if (ctx->config.enable_watchdog && ctx->systemd_enabled) {
-      int wd_wait = (int)(last_watchdog_ms + ctx->watchdog_interval_ms - now);
+    if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0) {
+      uint64_t wd_deadline = last_watchdog_ms + ctx->watchdog_interval_ms;
+      int wd_wait = (now >= wd_deadline) ? 0 : (int)(wd_deadline - now);
       if (wait_timeout_ms == -1 || wd_wait < wait_timeout_ms) {
-        wait_timeout_ms = wd_wait < 0 ? 0 : wd_wait;
+        wait_timeout_ms = wd_wait;
       }
     }
 

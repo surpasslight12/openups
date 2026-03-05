@@ -58,8 +58,10 @@ bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
     struct sock_fprog fprog = {
         .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
         .filter = filter};
-    setsockopt(pinger->sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &fprog,
-               sizeof(fprog));
+    if (setsockopt(pinger->sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &fprog,
+                   sizeof(fprog)) != 0) {
+      /* Non-fatal: BPF filter improves performance but is not required */
+    }
   } else if (family == AF_INET6) {
     struct sock_filter filter[] = {
         BPF_STMT(BPF_LD | BPF_B | BPF_ABS, 0), /* A = icmp6[0] (ICMPv6 Type) */
@@ -71,8 +73,10 @@ bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
     struct sock_fprog fprog = {
         .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
         .filter = filter};
-    setsockopt(pinger->sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &fprog,
-               sizeof(fprog));
+    if (setsockopt(pinger->sockfd, SOL_SOCKET, SO_ATTACH_FILTER, &fprog,
+                   sizeof(fprog)) != 0) {
+      /* Non-fatal: BPF filter improves performance but is not required */
+    }
   }
 
   return true;

@@ -29,7 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define OPENUPS_VERSION "1.1.0"
+#define OPENUPS_VERSION "1.2.0"
 #define OPENUPS_PROGRAM_NAME "openups"
 
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
@@ -82,7 +82,6 @@ typedef struct {
 
   /* Integration */
   bool enable_systemd;
-  bool enable_watchdog;
 } config_t;
 
 typedef struct {

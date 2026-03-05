@@ -69,10 +69,12 @@ const char *shutdown_mode_to_string(shutdown_mode_t mode) {
 
 static bool shutdown_mode_parse(const char *restrict str,
                                 shutdown_mode_t *restrict out_mode) {
-  if (out_mode == NULL)
+  if (out_mode == NULL) {
     return false;
-  if (str == NULL)
+  }
+  if (str == NULL) {
     return false;
+  }
   if (strcasecmp(str, "immediate") == 0) {
     *out_mode = SHUTDOWN_MODE_IMMEDIATE;
     return true;
@@ -102,7 +104,6 @@ void config_init_default(config_t *restrict config) {
   config->enable_timestamp = true;
   config->log_level = LOG_LEVEL_INFO;
   config->enable_systemd = true;
-  config->enable_watchdog = true;
 }
 
 void config_load_from_env(config_t *restrict config) {
@@ -134,8 +135,6 @@ void config_load_from_env(config_t *restrict config) {
   }
   config->enable_systemd =
       get_env_bool("OPENUPS_SYSTEMD", config->enable_systemd);
-  config->enable_watchdog =
-      get_env_bool("OPENUPS_WATCHDOG", config->enable_watchdog);
   config->enable_timestamp =
       get_env_bool("OPENUPS_TIMESTAMP", config->enable_timestamp);
 }
@@ -156,13 +155,12 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
       {"log-level", required_argument, 0, 'L'},
       {"timestamp", optional_argument, 0, 'T'},
       {"systemd", optional_argument, 0, 'M'},
-      {"watchdog", optional_argument, 0, 'W'},
       {"version", no_argument, 0, 'v'},
       {"help", no_argument, 0, 'h'},
       {0, 0, 0, 0}};
   int c;
   int option_index = 0;
-  const char *optstring = "t:i:n:w:S:D:d::L:T::M::W::vh";
+  const char *optstring = "t:i:n:w:S:D:d::L:T::M::vh";
   while ((c = getopt_long(argc, argv, optstring, long_options,
                           &option_index)) != -1) {
     switch (c) {
@@ -218,13 +216,6 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
     case 'M':
       if (!parse_bool_arg(optarg, &config->enable_systemd)) {
         fprintf(stderr, "Invalid value for --systemd: %s (use true|false)\n",
-                optarg ? optarg : "<empty>");
-        return false;
-      }
-      break;
-    case 'W':
-      if (!parse_bool_arg(optarg, &config->enable_watchdog)) {
-        fprintf(stderr, "Invalid value for --watchdog: %s (use true|false)\n",
                 optarg ? optarg : "<empty>");
         return false;
       }
@@ -307,8 +298,6 @@ void config_print(const config_t *restrict config,
                config->enable_timestamp ? "true" : "false");
   logger_debug(logger, "  Systemd: %s",
                config->enable_systemd ? "true" : "false");
-  logger_debug(logger, "  Watchdog: %s",
-               config->enable_watchdog ? "true" : "false");
 }
 
 void config_print_usage(void) {
@@ -343,8 +332,8 @@ void config_print_usage(void) {
   printf("System Integration:\n");
   printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration "
          "(default: true)\n");
-  printf("  -W[ARG], --watchdog[=ARG]   Enable/disable systemd watchdog "
-         "(default: true)\n");
+  printf("                              Watchdog is auto-enabled with "
+         "systemd\n");
   printf("                              ARG format: true|false\n\n");
   printf("General Options:\n");
   printf("  -v, --version               Show version information\n");
@@ -355,7 +344,7 @@ void config_print_usage(void) {
   printf("                OPENUPS_TIMEOUT\n");
   printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
   printf("                OPENUPS_DRY_RUN\n");
-  printf("  Integration:  OPENUPS_SYSTEMD, OPENUPS_WATCHDOG\n");
+  printf("  Integration:  OPENUPS_SYSTEMD\n");
   printf("\n");
   printf("Examples:\n");
   printf("  # Basic monitoring with dry-run\n");

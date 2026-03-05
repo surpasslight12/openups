@@ -127,10 +127,6 @@ expect_output_match "注入式 target 被拒绝" \
     "Target must be a valid|DNS is disabled" \
     ./bin/openups --target "1.1.1.1;rm -rf /"
 
-expect_output_match "超大包大小被拒绝" \
-    "Payload size must be between|Invalid value for --payload-size" \
-    ./bin/openups --target 127.0.0.1 --payload-size 99999
-
 # ---- 代码质量检查 ----
 echo ""
 echo "--- 代码质量 ---"
@@ -524,7 +520,6 @@ Environment="OPENUPS_SHUTDOWN_MODE=${shutdown_mode}"
 Environment="OPENUPS_DRY_RUN=${dry_run}"
 Environment="OPENUPS_LOG_LEVEL=${log_level}"
 Environment="OPENUPS_SYSTEMD=true"
-Environment="OPENUPS_WATCHDOG=false"
 Environment="OPENUPS_TIMESTAMP=false"
 DROPIN_EOF
     }

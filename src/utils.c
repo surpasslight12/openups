@@ -110,13 +110,17 @@ log_level_t string_to_log_level(const char *restrict str) {
   if (strcasecmp(str, "silent") == 0 || strcasecmp(str, "none") == 0) {
     return LOG_LEVEL_SILENT;
   }
-  if (strcasecmp(str, "error") == 0)
+  if (strcasecmp(str, "error") == 0) {
     return LOG_LEVEL_ERROR;
-  if (strcasecmp(str, "warn") == 0)
+  }
+  if (strcasecmp(str, "warn") == 0) {
     return LOG_LEVEL_WARN;
-  if (strcasecmp(str, "info") == 0)
+  }
+  if (strcasecmp(str, "info") == 0) {
     return LOG_LEVEL_INFO;
-  if (strcasecmp(str, "debug") == 0)
+  }
+  if (strcasecmp(str, "debug") == 0) {
     return LOG_LEVEL_DEBUG;
+  }
   return LOG_LEVEL_INFO;
 }

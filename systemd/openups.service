@@ -28,7 +28,7 @@ Environment="OPENUPS_SHUTDOWN_MODE=immediate"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_TIMESTAMP=false"
 Environment="OPENUPS_SYSTEMD=true"
-Environment="OPENUPS_WATCHDOG=false"
+WatchdogSec=30
 
 # Base Security Hardening
 User=root

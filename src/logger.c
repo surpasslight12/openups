@@ -31,8 +31,7 @@ static void log_message(const logger_t *restrict logger, log_level_t level,
   if (OPENUPS_UNLIKELY(logger == NULL || msg == NULL)) {
     return;
   }
-  if (OPENUPS_UNLIKELY(logger->level == LOG_LEVEL_SILENT ||
-                       level > logger->level)) {
+  if (OPENUPS_UNLIKELY(logger->level == LOG_LEVEL_SILENT)) {
     return;
   }
   char timestamp[64];

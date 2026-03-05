@@ -6,19 +6,19 @@
 
 **OpenUPS** 是一个轻量级、高性能的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
 
-## ✨ 核心特性
+## 核心特性
 
-- **原生 ICMP 实现**：使用 raw socket，无需依赖系统 `ping` 命令。
-- **灵活的关机策略**：支持 immediate、delayed、log-only 三种模式。
-- **systemd 深度集成**：支持 `sd_notify`、watchdog、状态通知。
-- **高性能**：单一二进制文件，内存占用 < 5 MB，CPU 占用 < 1%。
-- **安全加固**：10/10 安全评级，支持 Full RELRO、PIE、Stack Canary 等。
+- **原生 ICMP 实现**：使用 raw socket，无需依赖系统 `ping` 命令
+- **灵活的关机策略**：支持 immediate、delayed、log-only 三种模式
+- **systemd 深度集成**：支持 `sd_notify`、watchdog、状态通知（watchdog 随 systemd 自动启用）
+- **高性能**：单一二进制文件，内存占用 < 5 MB，CPU 占用 < 1%
+- **安全加固**：Full RELRO、PIE、Stack Canary、NX、FORTIFY_SOURCE
 
-## 🚀 快速开始
+## 快速开始
 
 ### 安装与管理服务
 
-快速、方便地一键安装（自动完成编译和 systemd 服务注册）；安装后直接编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
+一键安装（自动完成编译和 systemd 服务注册）；安装后编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
 
 ```bash
 # 安装（编译 + 二进制 + systemd 服务注册）
@@ -33,8 +33,6 @@ sudo make uninstall
 
 ### 手动调试运行
 
-如果你只想编译并在前台测试：
-
 ```bash
 # 编译
 make
@@ -46,36 +44,47 @@ make
 sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
 ```
 
-## ⚙️ 默认参数
+## 参数一览
 
-| 参数         | CLI 选项              | 环境变量              | 默认值       | 说明                     |
-|--------------|-----------------------|-----------------------|--------------|--------------------------|
-| 监控目标     | `-t, --target`        | `OPENUPS_TARGET`      | `1.1.1.1`    | 目标 IP 字面量（不支持域名） |
-| 检测间隔     | `-i, --interval`      | `OPENUPS_INTERVAL`    | `10`（秒）   | 两次 ping 之间的间隔     |
-| 失败阈值     | `-n, --threshold`     | `OPENUPS_THRESHOLD`   | `5`          | 连续失败多少次触发关机   |
-| 超时时间     | `-w, --timeout`       | `OPENUPS_TIMEOUT`     | `2000`（ms） | 单次 ping 等待回包的超时 |
-| 关机模式     | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
-| 演习模式     | `-d, --dry-run`       | `OPENUPS_DRY_RUN`     | `true`       | 不执行实际关机（安全默认值） |
+| 参数 | CLI 选项 | 环境变量 | 默认值 | 说明 |
+|------|----------|----------|--------|------|
+| 监控目标 | `-t, --target` | `OPENUPS_TARGET` | `1.1.1.1` | 目标 IP 字面量（不支持域名） |
+| 检测间隔 | `-i, --interval` | `OPENUPS_INTERVAL` | `10`（秒） | 两次 ping 之间的间隔 |
+| 失败阈值 | `-n, --threshold` | `OPENUPS_THRESHOLD` | `5` | 连续失败多少次触发关机 |
+| 超时时间 | `-w, --timeout` | `OPENUPS_TIMEOUT` | `2000`（ms） | 单次 ping 等待回包的超时 |
+| 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
+| 延迟分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式下的关机等待分钟 |
+| 演习模式 | `-d, --dry-run` | `OPENUPS_DRY_RUN` | `true` | 不执行实际关机（安全默认值） |
+| 日志级别 | `-L, --log-level` | `OPENUPS_LOG_LEVEL` | `info` | `silent` / `error` / `warn` / `info` / `debug` |
+| 时间戳 | `-T, --timestamp` | `OPENUPS_TIMESTAMP` | `true` | 日志是否包含时间戳 |
+| systemd 集成 | `-M, --systemd` | `OPENUPS_SYSTEMD` | `true` | 启用 sd_notify 和 watchdog |
 
-## � `log-only` 与 `dry-run` 的区别
+## `log-only` 与 `dry-run` 的区别
 
 尽管两者都不会真正执行关机操作，但它们在设计用途上完全不同：
 
 - **`--dry-run=true`（演习模式）**：
-  它是 `immediate` 或 `delayed` 模式的安全测试开关。当网络失败次数达到阈值时，程序会打印“模拟触发了关机”的消息，**并直接退出监控运行**。这用于测试触发链路的可用性（就像电脑真的关机了一样）。
+  它是 `immediate` 或 `delayed` 模式的安全测试开关。当网络失败次数达到阈值时，程序会打印"模拟触发了关机"的消息，**并直接退出监控运行**。这用于测试触发链路的可用性（就像电脑真的关机了一样）。
 - **`--shutdown-mode log-only`（纯日志监视模式）**：
-  当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 Systemd 持续监控网络。
+  当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 systemd 持续监控网络。
 
-## �📄 许可证
+## 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
-## 🚀 更新日志 (Changelog)
+## 更新日志
+
+### v1.2.0 配置精简与风格统一
+
+- **关机策略优化**：systemd 环境下自动使用 `systemctl poweroff`（含 `--when` 延迟支持），非 systemd 回退到 `/sbin/shutdown`
+- **watchdog 合并**：移除独立的 `--watchdog` 选项和 `OPENUPS_WATCHDOG` 环境变量，watchdog 随 systemd 集成自动启用
+- **代码风格统一**：全项目统一为 always-braces 风格
 
 ### v1.1.0 架构升级与内核优化
-- ⚡️ **内核级优化**：引入 `eBPF` `SO_ATTACH_FILTER` 静默过滤无关的传入 ICMP 返回流量。做到高噪声网络环境下的 CPU 绝对零占用。
-- ⚡️ **系统调用削减**：将高频探测事件的主循环时钟重构切换至 `CLOCK_MONOTONIC_COARSE` 提供的大幅度 vDSO 免陷入开销优化，删除了单次循环不必要的重复 syscall 时间抓取。
-- 🛡️ **灾变抗性**：彻底删除了触发关机逻辑中传统的 `fork/exec` 的高内存碎片耦合方案，引入 POSIX 最新的 `posix_spawn` + fd redirect，应对主机在网络瘫痪合并极端内核 OOM (内存溢出) 下无法衍生进程拉起命令的安全盲点。
-- ♻️ **配置精简缩量**：移除了需要用户暴露配置和调试的心智负担项 `PAYLOAD_SIZE`，现在通过全自动化推导 `struct icmphdr` 来生成固定 `64 bytes` 数据包，匹配无分片的高效物理探测帧，彻底闭环了底层构造逻辑。
-- 📂 **架构重写**：将从前的巨石单文件 (`main.c`) 代码拆成了多核心模块 (`icmp.c`, `config.c`, `utils.c` 等) 极大地加强了项目的长期维护弹性。
+
+- **内核级优化**：引入 BPF `SO_ATTACH_FILTER` 过滤无关 ICMP 流量，高噪声环境下零 CPU 占用
+- **系统调用削减**：主循环时钟切换至 `CLOCK_MONOTONIC_COARSE`，利用 vDSO 免陷入优化
+- **灾变抗性**：关机逻辑改用 `posix_spawn` + fd redirect，替代传统 `fork/exec`，应对 OOM 场景
+- **配置精简**：移除 `PAYLOAD_SIZE`，自动推导 64 字节固定探测包
+- **架构重写**：单文件拆分为多模块（`icmp.c`、`config.c`、`utils.c` 等）
 
