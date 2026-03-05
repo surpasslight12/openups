@@ -51,8 +51,8 @@ BIN_DIR := bin
 SRC_DIR := src
 TARGET := $(BIN_DIR)/openups
 
-# 源文件（单文件架构）
-SRCS := $(SRC_DIR)/main.c
+# 源文件
+SRCS := $(wildcard $(SRC_DIR)/*.c)
 
 # 对象文件：保持子目录结构
 OBJS := $(patsubst $(SRC_DIR)/%.c,$(BIN_DIR)/%.o,$(SRCS))
@@ -64,7 +64,7 @@ SERVICE_NAME         := openups.service
 SERVICE_INSTALL_PATH := /etc/systemd/system/$(SERVICE_NAME)
 ENV_FILE             := /etc/default/openups
 
-.PHONY: all clean release install update uninstall test
+.PHONY: all clean release install update uninstall test format lint
 
 all: $(TARGET)
 
@@ -86,12 +86,8 @@ install: release
 	@cp systemd/$(SERVICE_NAME) $(SERVICE_INSTALL_PATH)
 	@systemctl daemon-reload
 	@systemctl enable $(SERVICE_NAME)
-	@printf "Start service now? (y/n) [y]: "; read ans; \
-	  ans=$${ans:-y}; \
-	  if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-	    systemctl start $(SERVICE_NAME) && systemctl status $(SERVICE_NAME) --no-pager; \
-	  fi
 	@echo "==> Installation complete!"
+	@echo "==> Please edit $(SERVICE_INSTALL_PATH) to configure, then start the service using 'sudo systemctl start $(SERVICE_NAME)'"
 
 # ---- 更新 ----
 # 重新编译并替换二进制 + 服务文件；不重置配置
@@ -132,6 +128,15 @@ $(TARGET): $(OBJS)
 
 test:
 	@bash test.sh
+
+format:
+	@echo "==> Formatting code..."
+	@clang-format -i $(SRC_DIR)/*.c
+
+lint:
+	@echo "==> Linting code..."
+	@cppcheck --enable=all --suppress=missingIncludeSystem $(SRC_DIR)/*.c
+	@clang-tidy $(SRC_DIR)/*.c -- $(CFLAGS) $(REQUIRED_CFLAGS)
 
 clean:
 	rm -rf $(BIN_DIR)

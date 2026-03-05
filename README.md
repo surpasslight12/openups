@@ -54,7 +54,6 @@ sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-l
 | 检测间隔     | `-i, --interval`      | `OPENUPS_INTERVAL`    | `10`（秒）   | 两次 ping 之间的间隔     |
 | 失败阈值     | `-n, --threshold`     | `OPENUPS_THRESHOLD`   | `5`          | 连续失败多少次触发关机   |
 | 超时时间     | `-w, --timeout`       | `OPENUPS_TIMEOUT`     | `2000`（ms） | 单次 ping 等待回包的超时 |
-| 数据包大小   | `-s, --payload-size`  | `OPENUPS_PAYLOAD_SIZE`| `56`（字节） | ICMP 探测的数据包大小    |
 | 关机模式     | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
 | 演习模式     | `-d, --dry-run`       | `OPENUPS_DRY_RUN`     | `true`       | 不执行实际关机（安全默认值） |
 
