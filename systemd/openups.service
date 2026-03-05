@@ -32,7 +32,7 @@ WatchdogSec=30
 
 # Base Security Hardening
 User=root
-CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT CAP_KILL CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT CAP_KILL
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -40,7 +40,15 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
 
 # Resource Limits
 MemoryMax=50M

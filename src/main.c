@@ -269,7 +269,6 @@ static void systemd_notifier_init(systemd_notifier_t *restrict notifier) {
   notifier->enabled = false;
   notifier->sockfd = -1;
   notifier->watchdog_usec = 0;
-  notifier->last_watchdog_ms = 0;
   notifier->last_status_ms = 0;
   notifier->last_status[0] = '\0';
 
@@ -376,34 +375,13 @@ static bool systemd_notifier_stopping(systemd_notifier_t *restrict notifier) {
   return send_notify(notifier, "STOPPING=1");
 }
 
-/* Send WATCHDOG=1 when the kick interval has elapsed; no-op if watchdog is
- * unconfigured. */
+/* Send WATCHDOG=1 unconditionally; the reactor loop handles timing. */
 static bool systemd_notifier_watchdog(systemd_notifier_t *restrict notifier) {
-  if (OPENUPS_UNLIKELY(notifier == NULL || !notifier->enabled)) {
+  if (OPENUPS_UNLIKELY(notifier == NULL || !notifier->enabled ||
+                       notifier->watchdog_usec == 0)) {
     return false;
   }
-
-  /* Skip if WatchdogSec is not configured (watchdog_usec == 0) */
-  if (OPENUPS_UNLIKELY(notifier->watchdog_usec == 0)) {
-    return true;
-  }
-
-  uint64_t now_ms = get_monotonic_ms();
-  uint64_t interval_ms = notifier->watchdog_usec / 2000ULL; /* usec/2 → ms */
-  if (interval_ms == 0) {
-    interval_ms = 1;
-  }
-
-  if (notifier->last_watchdog_ms != 0 &&
-      now_ms - notifier->last_watchdog_ms < interval_ms) {
-    return true;
-  }
-
-  bool ok = send_notify(notifier, "WATCHDOG=1");
-  if (ok) {
-    notifier->last_watchdog_ms = now_ms;
-  }
-  return ok;
+  return send_notify(notifier, "WATCHDOG=1");
 }
 
 /* Return the recommended watchdog kick interval in milliseconds (WATCHDOG_USEC
@@ -763,6 +741,11 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   fds[1].events = POLLIN;
 
   uint64_t now = get_monotonic_ms();
+  if (now == UINT64_MAX) {
+    logger_error(&ctx->logger, "Failed to get monotonic clock");
+    close(sig_fd);
+    return -1;
+  }
   uint64_t next_ping_ms = now;
   uint64_t reply_deadline_ms = 0;
   bool waiting_for_reply = false;
@@ -781,6 +764,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   if (packet_len > sizeof(ctx->pinger.send_buf)) {
     logger_error(&ctx->logger, "Buffer error: %zu exceeds capacity",
                  packet_len);
+    close(sig_fd);
     return -1;
   }
   fill_payload_pattern(&ctx->pinger, header_len, calculated_payload_size);
@@ -870,7 +854,12 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       break;
     }
 
-    now = get_monotonic_ms();
+    {
+      uint64_t new_now = get_monotonic_ms();
+      if (new_now != UINT64_MAX) {
+        now = new_now;
+      }
+    }
 
     if (fds[0].revents & POLLIN) {
       struct signalfd_siginfo sfd_info;

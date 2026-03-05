@@ -103,7 +103,6 @@ typedef struct {
   bool enabled;
   int sockfd;
   uint64_t watchdog_usec;
-  uint64_t last_watchdog_ms;
   uint64_t last_status_ms;
   char last_status[256];
 } systemd_notifier_t;
