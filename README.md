@@ -69,3 +69,13 @@ sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-l
 ## �📄 许可证
 
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+
+## 🚀 更新日志 (Changelog)
+
+### v1.1.0 架构升级与内核优化
+- ⚡️ **内核级优化**：引入 `eBPF` `SO_ATTACH_FILTER` 静默过滤无关的传入 ICMP 返回流量。做到高噪声网络环境下的 CPU 绝对零占用。
+- ⚡️ **系统调用削减**：将高频探测事件的主循环时钟重构切换至 `CLOCK_MONOTONIC_COARSE` 提供的大幅度 vDSO 免陷入开销优化，删除了单次循环不必要的重复 syscall 时间抓取。
+- 🛡️ **灾变抗性**：彻底删除了触发关机逻辑中传统的 `fork/exec` 的高内存碎片耦合方案，引入 POSIX 最新的 `posix_spawn` + fd redirect，应对主机在网络瘫痪合并极端内核 OOM (内存溢出) 下无法衍生进程拉起命令的安全盲点。
+- ♻️ **配置精简缩量**：移除了需要用户暴露配置和调试的心智负担项 `PAYLOAD_SIZE`，现在通过全自动化推导 `struct icmphdr` 来生成固定 `64 bytes` 数据包，匹配无分片的高效物理探测帧，彻底闭环了底层构造逻辑。
+- 📂 **架构重写**：将从前的巨石单文件 (`main.c`) 代码拆成了多核心模块 (`icmp.c`, `config.c`, `utils.c` 等) 极大地加强了项目的长期维护弹性。
+
