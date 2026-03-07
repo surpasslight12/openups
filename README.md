@@ -48,6 +48,30 @@ make
 sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
 ```
 
+### 测试与灰度验证
+
+```bash
+# 基础测试
+./test.sh
+
+# 进程级灰度测试（需要 root 或 CAP_NET_RAW）
+./test.sh --gray
+
+# systemd 级灰度测试（需要先安装服务）
+make release
+sudo make install
+./test.sh --gray-systemd
+
+# 测试完成后清理 systemd 安装
+sudo make uninstall
+```
+
+灰度测试会把日志输出到仓库根目录下的 `graylogs/`。systemd 级灰度测试会临时创建 drop-in 覆盖服务环境变量，并在测试结束后自动回滚；如果只想清理日志文件，执行：
+
+```bash
+rm -rf graylogs
+```
+
 ## 参数一览
 
 | 参数 | CLI 选项 | 环境变量 | 默认值 | 说明 |
