@@ -64,7 +64,7 @@ SERVICE_NAME         := openups.service
 SERVICE_INSTALL_PATH := /etc/systemd/system/$(SERVICE_NAME)
 ENV_FILE             := /etc/default/openups
 
-.PHONY: all clean release install update uninstall test format lint
+.PHONY: all clean release install update uninstall test format lint check-built-binary
 
 all: $(TARGET)
 
@@ -75,10 +75,14 @@ release: $(TARGET)
 # ---- 安装 ----
 # 完整安装：编译 → 安装二进制 → 注册 systemd 服务
 # 安装后编辑 /etc/systemd/system/openups.service 中的 Environment= 行来调整参数
-install: release
+check-built-binary:
+	@test -x $(TARGET) || { echo "ERROR: Build $(TARGET) first as a regular user (make or make release)"; exit 1; }
+
+install: check-built-binary
 	@[ "$$(id -u)" -eq 0 ] || { echo "ERROR: Run as root (sudo make install)"; exit 1; }
 	@echo "==> Installing binary to $(BIN_INSTALL_PATH)..."
 	@cp $(TARGET) $(BIN_INSTALL_PATH)
+	@strip --strip-all $(BIN_INSTALL_PATH)
 	@chmod 755 $(BIN_INSTALL_PATH)
 	@echo "==> Assigning CAP_NET_RAW capability..."
 	@setcap cap_net_raw+ep $(BIN_INSTALL_PATH) || echo "WARNING: setcap failed (install libcap2-bin)"
@@ -91,10 +95,11 @@ install: release
 
 # ---- 更新 ----
 # 重新编译并替换二进制 + 服务文件；不重置配置
-update: release
+update: check-built-binary
 	@[ "$$(id -u)" -eq 0 ] || { echo "ERROR: Run as root (sudo make update)"; exit 1; }
 	@echo "==> Updating binary..."
 	@cp $(TARGET) $(BIN_INSTALL_PATH)
+	@strip --strip-all $(BIN_INSTALL_PATH)
 	@chmod 755 $(BIN_INSTALL_PATH)
 	@setcap cap_net_raw+ep $(BIN_INSTALL_PATH) || echo "WARNING: setcap failed"
 	@echo "==> Updating service file..."

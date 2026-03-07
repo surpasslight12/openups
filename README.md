@@ -4,7 +4,7 @@
 [![C23](https://img.shields.io/badge/C-23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![systemd](https://img.shields.io/badge/systemd-integrated-green.svg)](https://systemd.io/)
 
-**OpenUPS** 是一个轻量级、高性能的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机或自定义脚本。
+**OpenUPS** 是一个轻量级、高性能的 Linux 网络监控工具，通过周期性 ICMP ping 检测网络可达性，并在连续失败达到阈值后自动执行关机。
 
 ## 核心特性
 
@@ -18,13 +18,17 @@
 
 ### 安装与管理服务
 
-一键安装（自动完成编译和 systemd 服务注册）；安装后编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
+先以普通用户完成构建，再以 root 安装 systemd 服务；这样可以避免源码目录里的构建产物被 root 接管。安装后编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
 
 ```bash
-# 安装（编译 + 二进制 + systemd 服务注册）
+# 先构建
+make release
+
+# 再安装 systemd 服务
 sudo make install
 
 # 更新构建并重启服务
+make release
 sudo make update
 
 # 卸载系统服务

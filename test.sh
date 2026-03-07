@@ -69,7 +69,10 @@ echo
 echo "--- 编译 ---"
 TESTS_TOTAL=$((TESTS_TOTAL + 1))
 echo "[${TESTS_TOTAL}] 编译检查（无警告无错误）..."
-make clean > /dev/null 2>&1
+if ! make clean > /dev/null 2>&1; then
+    echo "  ❌ make clean 失败（常见原因：此前用 sudo 构建，导致 bin/ 目录产物归 root 所有）"
+    exit 1
+fi
 if make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):" > /dev/null; then
     echo "  ❌ 编译有警告或错误"
     make 2>&1 | grep -E "^[^:]+:[0-9]+:[0-9]+: (warning|error):"
@@ -98,11 +101,30 @@ run_test "openups.service 启动超时覆盖启动延迟" \
 # ---- 参数解析 ----
 echo ""
 echo "--- 参数解析 ---"
-run_test "布尔参数 --dry-run=true" ./bin/openups --help --dry-run=true
-run_test "布尔参数 --dry-run=false" ./bin/openups --help --dry-run=false
-run_test "短选项 -dfalse" ./bin/openups --help -dfalse
-run_test "环境变量配置" env OPENUPS_TARGET=127.0.0.1 OPENUPS_INTERVAL=5 OPENUPS_THRESHOLD=3 ./bin/openups --help
-run_test "CLI 优先级高于环境变量" env OPENUPS_TARGET=127.0.0.1 ./bin/openups --target 8.8.8.8 --help
+run_test "布尔参数 --dry-run=true" ./bin/openups --dry-run=true --help
+run_test "布尔参数 --dry-run=false" ./bin/openups --dry-run=false --help
+run_test "短选项 -dfalse" ./bin/openups -dfalse --help
+expect_output_match "环境变量配置生效" \
+    "Target host cannot be empty" \
+    env OPENUPS_TARGET= ./bin/openups
+expect_output_match "CLI 优先级高于环境变量" \
+    "Timeout must be positive|Invalid value for --timeout" \
+    env OPENUPS_TARGET= ./bin/openups --target 8.8.8.8 --timeout 0
+expect_output_match "非法日志级别被拒绝" \
+    "Invalid value for --log-level" \
+    ./bin/openups --log-level garbage --help
+expect_output_match "非法环境日志级别被拒绝" \
+    "Invalid value for OPENUPS_LOG_LEVEL" \
+    env OPENUPS_LOG_LEVEL=garbage ./bin/openups --help
+expect_output_match "非法关机模式被拒绝" \
+    "Invalid value for --shutdown-mode" \
+    ./bin/openups --shutdown-mode garbage
+expect_output_match "非法环境关机模式被拒绝" \
+    "Invalid value for OPENUPS_SHUTDOWN_MODE" \
+    env OPENUPS_SHUTDOWN_MODE=garbage ./bin/openups
+expect_output_match "非法环境布尔值被拒绝" \
+    "Invalid value for OPENUPS_DRY_RUN" \
+    env OPENUPS_DRY_RUN=maybe ./bin/openups
 
 # ---- 输入验证 ----
 echo ""

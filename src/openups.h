@@ -90,6 +90,19 @@ typedef struct {
   char error_msg[256];
 } ping_result_t;
 
+typedef enum {
+  ICMP_RECEIVE_NO_MORE = -1,
+  ICMP_RECEIVE_IGNORED = 0,
+  ICMP_RECEIVE_MATCHED = 1,
+  ICMP_RECEIVE_ERROR = 2,
+} icmp_receive_status_t;
+
+typedef enum {
+  SHUTDOWN_RESULT_NO_ACTION = 0,
+  SHUTDOWN_RESULT_TRIGGERED = 1,
+  SHUTDOWN_RESULT_FAILED = 2,
+} shutdown_result_t;
+
 typedef struct {
   int sockfd;
   int family;
@@ -132,8 +145,6 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
               "sig_atomic_t must be at least int size");
 
 char *get_timestamp_str(char *restrict buffer, size_t size);
-bool get_env_bool(const char *restrict name, bool default_value);
-int get_env_int(const char *restrict name, int default_value);
 void logger_init(logger_t *restrict logger, log_level_t level,
                  bool enable_timestamp);
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
@@ -145,9 +156,15 @@ double metrics_success_rate(const metrics_t *metrics);
 double metrics_avg_latency(const metrics_t *metrics);
 uint64_t metrics_uptime_seconds(const metrics_t *metrics);
 void config_init_default(config_t *restrict config);
-void config_load_from_env(config_t *restrict config);
+bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
+                          size_t error_size);
 bool config_load_from_cmdline(config_t *restrict config, int argc,
-                              char **restrict argv);
+                              char **restrict argv,
+                              bool *restrict exit_requested,
+                              char *restrict error_msg, size_t error_size);
+bool config_resolve(config_t *restrict config, int argc, char **restrict argv,
+                    bool *restrict exit_requested,
+                    char *restrict error_msg, size_t error_size);
 bool config_validate(const config_t *restrict config, char *restrict error_msg,
                      size_t error_size);
 void config_print(const config_t *restrict config,
@@ -155,10 +172,33 @@ void config_print(const config_t *restrict config,
 bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
                       char *restrict error_msg, size_t error_size);
 void icmp_pinger_destroy(icmp_pinger_t *restrict pinger);
+bool icmp_pinger_send_echo(icmp_pinger_t *restrict pinger,
+                           const struct sockaddr_storage *restrict dest_addr,
+                           socklen_t dest_addr_len, uint16_t identifier,
+                           size_t packet_len, char *restrict error_msg,
+                           size_t error_size);
+icmp_receive_status_t icmp_pinger_receive_reply(
+    const icmp_pinger_t *restrict pinger,
+    const struct sockaddr_storage *restrict dest_addr, uint16_t identifier,
+    uint16_t expected_sequence, uint64_t send_time_ms, uint64_t now_ms,
+    ping_result_t *restrict out_result);
 bool resolve_target(const char *restrict target,
                     struct sockaddr_storage *restrict addr,
                     socklen_t *restrict addr_len, char *restrict error_msg,
                     size_t error_size);
+shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
+                                   bool use_systemctl_poweroff);
+void systemd_notifier_init(systemd_notifier_t *restrict notifier);
+void systemd_notifier_destroy(systemd_notifier_t *restrict notifier);
+bool systemd_notifier_is_enabled(
+    const systemd_notifier_t *restrict notifier);
+bool systemd_notifier_ready(systemd_notifier_t *restrict notifier);
+bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
+                             const char *restrict status);
+bool systemd_notifier_stopping(systemd_notifier_t *restrict notifier);
+bool systemd_notifier_watchdog(systemd_notifier_t *restrict notifier);
+uint64_t systemd_notifier_watchdog_interval_ms(
+    const systemd_notifier_t *restrict notifier);
 
 #define DEFINE_LOGGER(name, lvl, attrs)                                        \
   static inline void attrs name(const logger_t *restrict logger,               \
@@ -175,11 +215,9 @@ DEFINE_LOGGER(logger_error, LOG_LEVEL_ERROR, OPENUPS_COLD)
 DEFINE_LOGGER(logger_warn, LOG_LEVEL_WARN, OPENUPS_COLD)
 DEFINE_LOGGER(logger_info, LOG_LEVEL_INFO, )
 DEFINE_LOGGER(logger_debug, LOG_LEVEL_DEBUG, )
-log_level_t string_to_log_level(const char *restrict str);
 const char *log_level_to_string(log_level_t level);
 void config_print_version(void);
 void config_print_usage(void);
-bool is_safe_path(const char *restrict path);
 const char *shutdown_mode_to_string(shutdown_mode_t mode);
 void log_shutdown_plan(const logger_t *restrict logger, shutdown_mode_t mode,
                        int delay_minutes);
