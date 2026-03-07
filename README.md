@@ -16,15 +16,15 @@
 
 ## 快速开始
 
-### 安装与管理服务
+### 1. 安装
 
-先以普通用户完成构建，再以 root 安装 systemd 服务；这样可以避免源码目录里的构建产物被 root 接管。安装后编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行来调整参数，然后 `sudo systemctl daemon-reload && sudo systemctl restart openups`：
+推荐先以普通用户完成构建，再以 root 安装 systemd 服务，避免源码目录里的构建产物被 root 接管。
 
 ```bash
-# 先构建
+# 构建发布版本
 make release
 
-# 再安装 systemd 服务
+# 安装二进制和 systemd 服务
 sudo make install
 
 # 更新构建并重启服务
@@ -35,20 +35,27 @@ sudo make update
 sudo make uninstall
 ```
 
-### 手动调试运行
+安装后可编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行，然后执行：
 
 ```bash
-# 编译
+sudo systemctl daemon-reload
+sudo systemctl restart openups
+```
+
+### 2. 运行
+
+```bash
+# 本地编译
 make
 
 # 查看帮助
 ./bin/openups --help
 
-# 测试运行（干跑模式不关机）
+# 前台调试运行（干跑模式，不实际关机）
 sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
 ```
 
-### 测试与灰度验证
+### 3. 测试
 
 ```bash
 # 基础测试
@@ -62,15 +69,14 @@ make release
 sudo make install
 ./test.sh --gray-systemd
 
-# 测试完成后清理 systemd 安装
+# 测试完成后移除 systemd 安装
 sudo make uninstall
-```
 
-灰度测试会把日志输出到仓库根目录下的 `graylogs/`。systemd 级灰度测试会临时创建 drop-in 覆盖服务环境变量，并在测试结束后自动回滚；如果只想清理日志文件，执行：
-
-```bash
+# 清理灰度测试日志
 rm -rf graylogs
 ```
+
+灰度测试会把日志输出到仓库根目录下的 `graylogs/`。systemd 级灰度测试会临时创建 drop-in 覆盖服务环境变量，并在测试结束后自动回滚。
 
 ## 参数一览
 
