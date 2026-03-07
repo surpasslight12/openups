@@ -90,12 +90,10 @@ run_test "版本信息 (--version)" ./bin/openups --version
 # ---- systemd 服务配置 ----
 echo ""
 echo "--- systemd 服务配置 ---"
-SERVICE_START_DELAY_SEC=60
-SERVICE_STARTUP_BUDGET_SEC=30
-SERVICE_START_TIMEOUT_SEC=$((SERVICE_START_DELAY_SEC + SERVICE_STARTUP_BUDGET_SEC))
-run_test "openups.service 启动前延迟 60 秒" \
-    grep -Eq "^ExecStartPre=/usr/bin/sleep ${SERVICE_START_DELAY_SEC}$" "${ROOT_DIR}/systemd/openups.service"
-run_test "openups.service 启动超时覆盖启动延迟" \
+SERVICE_START_TIMEOUT_SEC=30
+run_test "openups.service 不使用固定启动睡眠" \
+    bash -c '! grep -Eq "^ExecStartPre=/usr/bin/sleep [0-9]+$" "$1"' _ "${ROOT_DIR}/systemd/openups.service"
+run_test "openups.service 启动超时为 30 秒" \
     grep -Eq "^TimeoutStartSec=${SERVICE_START_TIMEOUT_SEC}$" "${ROOT_DIR}/systemd/openups.service"
 
 # ---- 参数解析 ----
@@ -125,6 +123,9 @@ expect_output_match "非法环境关机模式被拒绝" \
 expect_output_match "非法环境布尔值被拒绝" \
     "Invalid value for OPENUPS_DRY_RUN" \
     env OPENUPS_DRY_RUN=maybe ./bin/openups
+expect_output_match "帮助选项不会掩盖后续非法参数" \
+    "Invalid value for --log-level" \
+    ./bin/openups --help --log-level garbage
 
 # ---- 输入验证 ----
 echo ""
@@ -294,6 +295,44 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         echo "[INFO] ${phase_name} finished (exit_code=${exit_code})"
     }
 
+    launch_background_monitor() {
+        local pid_file="$1"
+        local out_log="$2"
+        shift 2
+
+        rm -f "${pid_file}"
+
+        if [[ -n "${SUDO}" ]]; then
+            ${SUDO} bash -c 'printf "%s\n" "$$" > "$1"; shift; exec "$@"' bash "${pid_file}" "${BIN_PATH}" "$@" >"${out_log}" 2>&1 &
+        else
+            "${BIN_PATH}" "$@" >"${out_log}" 2>&1 &
+            printf "%s\n" "$!" >"${pid_file}"
+        fi
+
+        local wrapper_pid=$!
+        local wait_count=0
+        while [[ ! -s "${pid_file}" && ${wait_count} -lt 20 ]]; do
+            sleep 0.1
+            wait_count=$((wait_count + 1))
+        done
+
+        printf "%s\n" "${wrapper_pid}"
+    }
+
+    signal_monitor() {
+        local pid_file="$1"
+        local signal_number="$2"
+        local monitor_pid
+
+        monitor_pid="$(cat "${pid_file}" 2>/dev/null || true)"
+        if [[ -z "${monitor_pid}" ]]; then
+            return 1
+        fi
+
+        ${SUDO} kill "-${signal_number}" "${monitor_pid}" 2>/dev/null || true
+        return 0
+    }
+
     count_lines() {
         local pattern="$1"
         local file="$2"
@@ -330,17 +369,17 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
 
     # Phase 3: SIGTERM 优雅关闭测试
     echo "[INFO] Phase 3: 连续运行 + SIGTERM 优雅关闭"
+    PHASE3_PID_FILE="${LOG_DIR}/phase3.pid"
     set +e
-    ${SUDO} "${BIN_PATH}" \
+    PHASE3_WRAPPER_PID="$(launch_background_monitor "${PHASE3_PID_FILE}" "${PHASE3_LOG}" \
         --target 127.0.0.1 \
         --interval 1 \
         --threshold 10 \
         --dry-run=true \
-        --log-level debug >"${PHASE3_LOG}" 2>&1 &
-    PHASE3_PID=$!
+        --log-level debug)"
     sleep "${SIGNAL_TEST_SEC}"
-    ${SUDO} kill -15 "${PHASE3_PID}" 2>/dev/null || true
-    wait "${PHASE3_PID}" 2>/dev/null
+    signal_monitor "${PHASE3_PID_FILE}" 15
+    wait "${PHASE3_WRAPPER_PID}" 2>/dev/null
     PHASE3_EXIT=$?
     set -e
 
@@ -359,19 +398,19 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
 
     # Phase 4: SIGUSR1 统计信息测试
     echo "[INFO] Phase 4: SIGUSR1 统计信息输出"
+    PHASE4_PID_FILE="${LOG_DIR}/phase4.pid"
     set +e
-    ${SUDO} "${BIN_PATH}" \
+    PHASE4_WRAPPER_PID="$(launch_background_monitor "${PHASE4_PID_FILE}" "${PHASE4_LOG}" \
         --target 127.0.0.1 \
         --interval 1 \
         --threshold 10 \
         --dry-run=true \
-        --log-level debug >"${PHASE4_LOG}" 2>&1 &
-    PHASE4_PID=$!
+        --log-level debug)"
     sleep "${SIGNAL_TEST_SEC}"
-    ${SUDO} kill -10 "${PHASE4_PID}" 2>/dev/null || true
+    signal_monitor "${PHASE4_PID_FILE}" 10
     sleep 1
-    ${SUDO} kill -15 "${PHASE4_PID}" 2>/dev/null || true
-    wait "${PHASE4_PID}" 2>/dev/null
+    signal_monitor "${PHASE4_PID_FILE}" 15
+    wait "${PHASE4_WRAPPER_PID}" 2>/dev/null
     set -e
 
     TESTS_TOTAL=$((TESTS_TOTAL + 1))

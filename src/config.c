@@ -316,6 +316,7 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
   error_msg[0] = '\0';
   optind = 1;
   opterr = 0;
+  int requested_exit_option = 0;
 
   int option_index = 0;
   int option = 0;
@@ -409,13 +410,11 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
       break;
     }
     case 'v':
-      config_print_version();
-      *exit_requested = true;
-      return true;
+      requested_exit_option = 'v';
+      break;
     case 'h':
-      config_print_usage();
-      *exit_requested = true;
-      return true;
+      requested_exit_option = 'h';
+      break;
     case '?':
       if (optopt != 0) {
         return set_error(error_msg, error_size,
@@ -434,6 +433,14 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
   if (optind < argc) {
     return set_error(error_msg, error_size, "Unexpected argument: %s",
                      argv[optind]);
+  }
+
+  if (requested_exit_option == 'v') {
+    config_print_version();
+    *exit_requested = true;
+  } else if (requested_exit_option == 'h') {
+    config_print_usage();
+    *exit_requested = true;
   }
 
   return true;

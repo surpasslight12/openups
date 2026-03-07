@@ -42,6 +42,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart openups
 ```
 
+当前服务单元不会再通过固定 `sleep` 人为延迟启动；启动超时默认是 30 秒，失败后按 systemd 的重启策略恢复。
+
 ### 2. 运行
 
 ```bash
@@ -77,6 +79,8 @@ rm -rf graylogs
 ```
 
 灰度测试会把日志输出到仓库根目录下的 `graylogs/`。systemd 级灰度测试会临时创建 drop-in 覆盖服务环境变量，并在测试结束后自动回滚。
+
+基础测试还会校验 systemd 单元不包含固定启动睡眠，并验证启动超时配置与当前服务定义一致。
 
 ## 参数一览
 

@@ -10,11 +10,9 @@ StartLimitBurst=3
 Type=notify
 NotifyAccess=main
 
-# Allow network stack to fully come up
-ExecStartPre=/usr/bin/sleep 60
 ExecStart=/usr/local/bin/openups
 
-TimeoutStartSec=90
+TimeoutStartSec=30
 TimeoutStopSec=10
 Restart=on-failure
 RestartSec=10
