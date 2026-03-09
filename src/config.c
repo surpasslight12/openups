@@ -60,6 +60,9 @@ static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
    offsetof(config_t, enable_timestamp)},
 };
 
+static bool shutdown_mode_parse(const char *restrict str,
+                shutdown_mode_t *restrict out_mode);
+
 static bool set_error(char *restrict error_msg, size_t error_size,
                       const char *restrict fmt, ...) {
   if (error_msg == NULL || error_size == 0 || fmt == NULL) {
@@ -167,6 +170,87 @@ static bool parse_int_value(const char *restrict arg, int min_value,
   }
 
   *out_value = (int)value;
+  return true;
+}
+
+static const char *optarg_or_empty(const char *restrict arg) {
+  return arg != NULL ? arg : "<empty>";
+}
+
+static bool parse_cmdline_int_option(const char *restrict option_name,
+                                     const char *restrict arg, int min_value,
+                                     int max_value, int *restrict out_value,
+                                     char *restrict error_msg,
+                                     size_t error_size) {
+  if (option_name == NULL || out_value == NULL || error_msg == NULL ||
+      error_size == 0) {
+    return false;
+  }
+
+  if (!parse_int_value(arg, min_value, max_value, out_value)) {
+    return set_error(error_msg, error_size,
+                     "Invalid value for %s: %s (range %d..%d)", option_name,
+                     optarg_or_empty(arg), min_value, max_value);
+  }
+
+  return true;
+}
+
+static bool parse_cmdline_bool_option(const char *restrict option_name,
+                                      const char *restrict arg,
+                                      bool implicit_true_when_null,
+                                      bool *restrict out_value,
+                                      char *restrict error_msg,
+                                      size_t error_size) {
+  if (option_name == NULL || out_value == NULL || error_msg == NULL ||
+      error_size == 0) {
+    return false;
+  }
+
+  if (!parse_bool_value(arg, implicit_true_when_null, out_value)) {
+    return set_error(error_msg, error_size,
+                     "Invalid value for %s: %s (use true|false)",
+                     option_name, optarg_or_empty(arg));
+  }
+
+  return true;
+}
+
+static bool parse_cmdline_log_level_option(const char *restrict option_name,
+                                           const char *restrict arg,
+                                           log_level_t *restrict out_value,
+                                           char *restrict error_msg,
+                                           size_t error_size) {
+  if (option_name == NULL || out_value == NULL || error_msg == NULL ||
+      error_size == 0) {
+    return false;
+  }
+
+  if (!parse_log_level_value(arg, out_value)) {
+    return set_error(error_msg, error_size,
+                     "Invalid value for %s: %s (use silent|error|warn|info|debug)",
+                     option_name, optarg_or_empty(arg));
+  }
+
+  return true;
+}
+
+static bool parse_cmdline_shutdown_mode_option(
+    const char *restrict option_name, const char *restrict arg,
+    shutdown_mode_t *restrict out_mode, char *restrict error_msg,
+    size_t error_size) {
+  if (option_name == NULL || out_mode == NULL || error_msg == NULL ||
+      error_size == 0) {
+    return false;
+  }
+
+  if (!shutdown_mode_parse(arg, out_mode)) {
+    return set_error(
+        error_msg, error_size,
+        "Invalid value for %s: %s (use immediate|delayed|log-only)",
+        option_name, optarg_or_empty(arg));
+  }
+
   return true;
 }
 
@@ -421,83 +505,71 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
       }
       break;
     case 'i':
-      if (!parse_int_value(optarg, 1, INT_MAX, &config->interval_sec)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --interval: %s (range 1..%d)",
-                         optarg ? optarg : "<empty>", INT_MAX);
+      if (!parse_cmdline_int_option("--interval", optarg, 1, INT_MAX,
+                                    &config->interval_sec, error_msg,
+                                    error_size)) {
+        return false;
       }
       break;
     case 'n':
-      if (!parse_int_value(optarg, 1, INT_MAX, &config->fail_threshold)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --threshold: %s (range 1..%d)",
-                         optarg ? optarg : "<empty>", INT_MAX);
+      if (!parse_cmdline_int_option("--threshold", optarg, 1, INT_MAX,
+                                    &config->fail_threshold, error_msg,
+                                    error_size)) {
+        return false;
       }
       break;
     case 'w':
-      if (!parse_int_value(optarg, 1, INT_MAX, &config->timeout_ms)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --timeout: %s (range 1..%d)",
-                         optarg ? optarg : "<empty>", INT_MAX);
+      if (!parse_cmdline_int_option("--timeout", optarg, 1, INT_MAX,
+                                    &config->timeout_ms, error_msg,
+                                    error_size)) {
+        return false;
       }
       break;
     case 'S': {
-      shutdown_mode_t parsed_mode;
-      if (!shutdown_mode_parse(optarg, &parsed_mode)) {
-        return set_error(
-            error_msg, error_size,
-            "Invalid value for --shutdown-mode: %s (use immediate|delayed|log-only)",
-            optarg ? optarg : "<empty>");
+      if (!parse_cmdline_shutdown_mode_option("--shutdown-mode", optarg,
+                                              &config->shutdown_mode,
+                                              error_msg, error_size)) {
+        return false;
       }
-      config->shutdown_mode = parsed_mode;
       break;
     }
     case 'D':
-      if (!parse_int_value(optarg, 1, INT_MAX, &config->delay_minutes)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --delay: %s (range 1..%d)",
-                         optarg ? optarg : "<empty>", INT_MAX);
+      if (!parse_cmdline_int_option("--delay", optarg, 1, INT_MAX,
+                                    &config->delay_minutes, error_msg,
+                                    error_size)) {
+        return false;
       }
       break;
     case 'd': {
-      bool parsed_value = false;
-      if (!parse_bool_value(optarg, true, &parsed_value)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --dry-run: %s (use true|false)",
-                         optarg ? optarg : "<empty>");
+      if (!parse_cmdline_bool_option("--dry-run", optarg, true,
+                                     &config->dry_run, error_msg,
+                                     error_size)) {
+        return false;
       }
-      config->dry_run = parsed_value;
       break;
     }
     case 'L': {
-      log_level_t parsed_level;
-      if (!parse_log_level_value(optarg, &parsed_level)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --log-level: %s (use silent|error|warn|info|debug)",
-                         optarg ? optarg : "<empty>");
+      if (!parse_cmdline_log_level_option("--log-level", optarg,
+                                          &config->log_level, error_msg,
+                                          error_size)) {
+        return false;
       }
-      config->log_level = parsed_level;
       break;
     }
     case 'T': {
-      bool parsed_value = false;
-      if (!parse_bool_value(optarg, true, &parsed_value)) {
-        return set_error(
-            error_msg, error_size,
-            "Invalid value for --timestamp: %s (use true|false)",
-            optarg ? optarg : "<empty>");
+      if (!parse_cmdline_bool_option("--timestamp", optarg, true,
+                                     &config->enable_timestamp, error_msg,
+                                     error_size)) {
+        return false;
       }
-      config->enable_timestamp = parsed_value;
       break;
     }
     case 'M': {
-      bool parsed_value = false;
-      if (!parse_bool_value(optarg, true, &parsed_value)) {
-        return set_error(error_msg, error_size,
-                         "Invalid value for --systemd: %s (use true|false)",
-                         optarg ? optarg : "<empty>");
+      if (!parse_cmdline_bool_option("--systemd", optarg, true,
+                                     &config->enable_systemd, error_msg,
+                                     error_size)) {
+        return false;
       }
-      config->enable_systemd = parsed_value;
       break;
     }
     case 'v':
