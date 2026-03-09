@@ -14,8 +14,10 @@ typedef struct {
   uint64_t reply_deadline_ms;
   uint64_t send_time_ms;
   uint64_t last_watchdog_ms;
+  uint64_t delayed_shutdown_deadline_ms;
   uint16_t expected_sequence;
   bool waiting_for_reply;
+  bool delayed_shutdown_pending;
 } monitor_state_t;
 
 static uint64_t monotonic_add_ms(uint64_t base_ms, uint64_t delta_ms) {
@@ -53,6 +55,20 @@ static uint64_t config_interval_ms(const config_t *restrict config) {
   return interval_ms;
 }
 
+static uint64_t config_delay_ms(const config_t *restrict config) {
+  if (config == NULL || config->delay_minutes <= 0) {
+    return 0;
+  }
+
+  uint64_t delay_ms = 0;
+  if (OPENUPS_UNLIKELY(ckd_mul(&delay_ms, (uint64_t)config->delay_minutes,
+                               UINT64_C(60000)))) {
+    return UINT64_MAX;
+  }
+
+  return delay_ms;
+}
+
 static uint64_t next_ping_deadline(uint64_t current_deadline_ms,
                                    uint64_t now_ms,
                                    uint64_t interval_ms) {
@@ -73,6 +89,14 @@ static int compute_wait_timeout_ms(const openups_ctx_t *restrict ctx,
   int timeout_ms = state->waiting_for_reply
                        ? deadline_timeout_ms(now_ms, state->reply_deadline_ms)
                        : deadline_timeout_ms(now_ms, state->next_ping_ms);
+
+  if (state->delayed_shutdown_pending) {
+    int delayed_shutdown_timeout_ms =
+        deadline_timeout_ms(now_ms, state->delayed_shutdown_deadline_ms);
+    if (delayed_shutdown_timeout_ms < timeout_ms) {
+      timeout_ms = delayed_shutdown_timeout_ms;
+    }
+  }
 
   if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0) {
     uint64_t watchdog_deadline_ms =
@@ -98,6 +122,15 @@ static void monitor_reply_cleared(monitor_state_t *restrict state) {
   state->reply_deadline_ms = 0;
   state->send_time_ms = 0;
   state->expected_sequence = 0;
+}
+
+static void monitor_clear_delayed_shutdown(monitor_state_t *restrict state) {
+  if (state == NULL) {
+    return;
+  }
+
+  state->delayed_shutdown_pending = false;
+  state->delayed_shutdown_deadline_ms = 0;
 }
 
 static bool pollfd_has_error(short revents) {
@@ -282,13 +315,123 @@ static void openups_ctx_print_stats(openups_ctx_t *restrict ctx) {
               metrics_uptime_seconds(metrics));
 }
 
+static void monitor_cancel_delayed_shutdown(openups_ctx_t *restrict ctx,
+                                            monitor_state_t *restrict state) {
+  if (ctx == NULL || state == NULL || !state->delayed_shutdown_pending) {
+    return;
+  }
+
+  monitor_clear_delayed_shutdown(state);
+  logger_info(&ctx->logger,
+              "Connectivity restored; cancelled pending delayed shutdown");
+  if (ctx->systemd_enabled) {
+    notify_systemd_status(ctx,
+                          "Recovery detected; delayed shutdown cancelled");
+  }
+}
+
+static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx,
+                                     shutdown_mode_t execute_mode) {
+  if (ctx == NULL) {
+    return false;
+  }
+
+  config_t shutdown_config = ctx->config;
+  shutdown_config.shutdown_mode = execute_mode;
+
+  shutdown_result_t result =
+      shutdown_trigger(&shutdown_config, &ctx->logger, ctx->systemd_enabled);
+
+  if (shutdown_config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
+    ctx->consecutive_fails = 0;
+    return false;
+  }
+
+  if (shutdown_config.dry_run) {
+    logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
+    return true;
+  }
+
+  if (result != SHUTDOWN_RESULT_TRIGGERED) {
+    logger_error(&ctx->logger,
+                 "Shutdown command failed; continuing monitoring after reset");
+    ctx->consecutive_fails = 0;
+    return false;
+  }
+
+  logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
+  return true;
+}
+
+static bool monitor_arm_delayed_shutdown(openups_ctx_t *restrict ctx,
+                                         monitor_state_t *restrict state,
+                                         uint64_t now_ms) {
+  if (ctx == NULL || state == NULL) {
+    return false;
+  }
+
+  if (state->delayed_shutdown_pending) {
+    return false;
+  }
+
+  uint64_t delay_ms = config_delay_ms(&ctx->config);
+  if (delay_ms == 0 || delay_ms == UINT64_MAX) {
+    logger_error(&ctx->logger,
+                 "Failed to compute delayed shutdown countdown duration");
+    ctx->consecutive_fails = 0;
+    return false;
+  }
+
+  uint64_t deadline_ms = monotonic_add_ms(now_ms, delay_ms);
+  if (deadline_ms == UINT64_MAX) {
+    logger_error(&ctx->logger,
+                 "Failed to compute delayed shutdown deadline");
+    ctx->consecutive_fails = 0;
+    return false;
+  }
+
+  state->delayed_shutdown_pending = true;
+  state->delayed_shutdown_deadline_ms = deadline_ms;
+  log_shutdown_plan(&ctx->logger, SHUTDOWN_MODE_DELAYED,
+                    ctx->config.delay_minutes);
+  if (ctx->systemd_enabled) {
+    notify_systemd_status(ctx,
+                          "Delayed shutdown countdown started: %d minutes",
+                          ctx->config.delay_minutes);
+  }
+  return false;
+}
+
+static bool monitor_handle_delayed_shutdown(openups_ctx_t *restrict ctx,
+                                            monitor_state_t *restrict state,
+                                            uint64_t now_ms) {
+  if (ctx == NULL || state == NULL || !state->delayed_shutdown_pending) {
+    return false;
+  }
+
+  if (now_ms < state->delayed_shutdown_deadline_ms) {
+    return false;
+  }
+
+  monitor_clear_delayed_shutdown(state);
+  logger_warn(&ctx->logger,
+              "Delayed shutdown countdown elapsed; executing shutdown now");
+  if (ctx->systemd_enabled) {
+    notify_systemd_status(ctx,
+                          "Delayed shutdown countdown elapsed; executing shutdown");
+  }
+  return monitor_execute_shutdown(ctx, SHUTDOWN_MODE_IMMEDIATE);
+}
+
 static void handle_ping_success(openups_ctx_t *restrict ctx,
+                                monitor_state_t *restrict state,
                                 const ping_result_t *restrict result) {
-  if (ctx == NULL || result == NULL) {
+  if (ctx == NULL || state == NULL || result == NULL) {
     return;
   }
 
   ctx->consecutive_fails = 0;
+  monitor_cancel_delayed_shutdown(ctx, state);
   metrics_record_success(&ctx->metrics, result->latency_ms);
   logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                ctx->config.target, result->latency_ms);
@@ -319,33 +462,24 @@ static void handle_ping_failure(openups_ctx_t *restrict ctx,
   }
 }
 
-static bool monitor_handle_threshold(openups_ctx_t *restrict ctx) {
-  if (ctx == NULL || ctx->consecutive_fails < ctx->config.fail_threshold) {
+static bool monitor_handle_threshold(openups_ctx_t *restrict ctx,
+                                     monitor_state_t *restrict state,
+                                     uint64_t now_ms) {
+  if (ctx == NULL || state == NULL ||
+      ctx->consecutive_fails < ctx->config.fail_threshold) {
     return false;
   }
-
-  shutdown_result_t result =
-      shutdown_trigger(&ctx->config, &ctx->logger, ctx->systemd_enabled);
 
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
     ctx->consecutive_fails = 0;
     return false;
   }
 
-  if (ctx->config.dry_run) {
-    logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
-    return true;
+  if (ctx->config.shutdown_mode == SHUTDOWN_MODE_DELAYED) {
+    return monitor_arm_delayed_shutdown(ctx, state, now_ms);
   }
 
-  if (result != SHUTDOWN_RESULT_TRIGGERED) {
-    logger_error(&ctx->logger,
-                 "Shutdown command failed; continuing monitoring after reset");
-    ctx->consecutive_fails = 0;
-    return false;
-  }
-
-  logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
-  return true;
+  return monitor_execute_shutdown(ctx, SHUTDOWN_MODE_IMMEDIATE);
 }
 
 static bool monitor_send_ping(openups_ctx_t *restrict ctx,
@@ -361,7 +495,7 @@ static bool monitor_send_ping(openups_ctx_t *restrict ctx,
                              error_result.error_msg,
                              sizeof(error_result.error_msg))) {
     handle_ping_failure(ctx, &error_result);
-    return !monitor_handle_threshold(ctx);
+    return !monitor_handle_threshold(ctx, state, now_ms);
   }
 
   uint64_t reply_deadline_ms =
@@ -370,7 +504,7 @@ static bool monitor_send_ping(openups_ctx_t *restrict ctx,
     ping_result_t overflow_error = {false, -1.0,
                                     "Failed to compute reply deadline"};
     handle_ping_failure(ctx, &overflow_error);
-    return !monitor_handle_threshold(ctx);
+    return !monitor_handle_threshold(ctx, state, now_ms);
   }
 
   state->waiting_for_reply = true;
@@ -407,7 +541,7 @@ static bool drain_icmp_replies(openups_ctx_t *restrict ctx, uint64_t now_ms,
       return true;
     }
     if (status == ICMP_RECEIVE_MATCHED && state->waiting_for_reply) {
-      handle_ping_success(ctx, &reply);
+      handle_ping_success(ctx, state, &reply);
       monitor_reply_cleared(state);
       return true;
     }
@@ -467,8 +601,10 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       .reply_deadline_ms = 0,
       .send_time_ms = 0,
       .last_watchdog_ms = now_ms,
+      .delayed_shutdown_deadline_ms = 0,
       .expected_sequence = 0,
       .waiting_for_reply = false,
+      .delayed_shutdown_pending = false,
   };
 
   logger_info(&ctx->logger, "Starting OpenUPS for target %s, every %ds",
@@ -488,6 +624,10 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   };
 
   while (!ctx->stop_flag) {
+    if (monitor_handle_delayed_shutdown(ctx, &state, now_ms)) {
+      break;
+    }
+
     if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0 &&
         now_ms - state.last_watchdog_ms >= ctx->watchdog_interval_ms) {
       if (systemd_notifier_watchdog(&ctx->systemd)) {
@@ -503,7 +643,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
                                       "Timeout waiting for ICMP reply"};
       handle_ping_failure(ctx, &timeout_result);
       monitor_reply_cleared(&state);
-      if (monitor_handle_threshold(ctx)) {
+      if (monitor_handle_threshold(ctx, &state, now_ms)) {
         break;
       }
     }

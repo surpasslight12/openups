@@ -19,39 +19,16 @@ static const char *shutdown_backend_command(shutdown_backend_t backend) {
                                                : "/sbin/shutdown";
 }
 
-static bool shutdown_build_delay_arg(shutdown_backend_t backend,
-                                     int delay_minutes,
-                                     char *restrict delay_arg,
-                                     size_t delay_arg_size) {
-  if (delay_arg == NULL || delay_arg_size == 0 || delay_minutes <= 0) {
-    return false;
-  }
-
-  int written = 0;
-  if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
-    written = snprintf(delay_arg, delay_arg_size, "+%dmin", delay_minutes);
-  } else {
-    written = snprintf(delay_arg, delay_arg_size, "+%d", delay_minutes);
-  }
-
-  return written > 0 && (size_t)written < delay_arg_size;
-}
-
 static bool shutdown_select_argv(const config_t *restrict config,
                                  bool use_systemctl_poweroff,
-                                 char *restrict delay_arg,
-                                 size_t delay_arg_size,
                                  char *argv[], size_t argv_size) {
-  if (config == NULL || delay_arg == NULL || delay_arg_size == 0 ||
-      argv == NULL || argv_size < 5) {
+  if (config == NULL || argv == NULL || argv_size < 4) {
     return false;
   }
 
   memset(argv, 0, sizeof(argv[0]) * argv_size);
-  delay_arg[0] = '\0';
 
-  shutdown_backend_t backend =
-      select_shutdown_backend(use_systemctl_poweroff);
+  shutdown_backend_t backend = select_shutdown_backend(use_systemctl_poweroff);
   argv[0] = (char *)shutdown_backend_command(backend);
 
   if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
@@ -60,23 +37,6 @@ static bool shutdown_select_argv(const config_t *restrict config,
     } else {
       argv[1] = "-h";
       argv[2] = "now";
-    }
-    return true;
-  }
-
-  if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    if (!shutdown_build_delay_arg(backend, config->delay_minutes, delay_arg,
-                                  delay_arg_size)) {
-      return false;
-    }
-
-    if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
-      argv[1] = "--when";
-      argv[2] = delay_arg;
-      argv[3] = "poweroff";
-    } else {
-      argv[1] = "-h";
-      argv[2] = delay_arg;
     }
     return true;
   }
@@ -232,6 +192,12 @@ shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
     return SHUTDOWN_RESULT_NO_ACTION;
   }
 
+  if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
+    logger_error(logger,
+                 "Delayed shutdown countdown must be handled by the monitor loop");
+    return SHUTDOWN_RESULT_FAILED;
+  }
+
   logger_warn(logger, "Shutdown threshold reached, mode is %s%s",
               shutdown_mode_to_string(config->shutdown_mode),
               config->dry_run ? " (dry-run enabled)" : "");
@@ -240,10 +206,8 @@ shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
     return SHUTDOWN_RESULT_NO_ACTION;
   }
 
-  char delay_arg[32];
-  char *argv[5] = {0};
-  if (!shutdown_select_argv(config, use_systemctl_poweroff, delay_arg,
-                            sizeof(delay_arg), argv,
+  char *argv[4] = {0};
+  if (!shutdown_select_argv(config, use_systemctl_poweroff, argv,
                             sizeof(argv) / sizeof(argv[0]))) {
     logger_error(logger, "Failed to build shutdown command arguments");
     return SHUTDOWN_RESULT_FAILED;

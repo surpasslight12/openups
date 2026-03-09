@@ -64,6 +64,7 @@ void log_shutdown_plan(const logger_t *restrict logger, shutdown_mode_t mode,
   if (mode == SHUTDOWN_MODE_IMMEDIATE) {
     logger_warn(logger, "Triggering immediate shutdown");
   } else if (mode == SHUTDOWN_MODE_DELAYED) {
-    logger_warn(logger, "Triggering shutdown in %d minutes", delay_minutes);
+    logger_warn(logger, "Starting delayed shutdown countdown for %d minutes",
+                delay_minutes);
   }
 }

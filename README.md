@@ -105,7 +105,7 @@ rm -rf graylogs
 | 失败阈值 | `-n, --threshold` | `OPENUPS_THRESHOLD` | `5` | 连续失败多少次触发关机 |
 | 超时时间 | `-w, --timeout` | `OPENUPS_TIMEOUT` | `2000`（ms） | 单次 ping 等待回包的超时 |
 | 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
-| 延迟分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式下的关机等待分钟 |
+| 延迟分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式下由程序内部倒计时的等待分钟 |
 | 演习模式 | `-d, --dry-run` | `OPENUPS_DRY_RUN` | `true` | 不执行实际关机（安全默认值） |
 | 日志级别 | `-L, --log-level` | `OPENUPS_LOG_LEVEL` | `info` | `silent` / `error` / `warn` / `info` / `debug` |
 | 时间戳 | `-T, --timestamp` | `OPENUPS_TIMESTAMP` | `true` | 日志是否包含时间戳 |
@@ -116,9 +116,11 @@ rm -rf graylogs
 尽管两者都不会真正执行关机操作，但它们在设计用途上完全不同：
 
 - **`--dry-run=true`（演习模式）**：
-  它是 `immediate` 或 `delayed` 模式的安全测试开关。当网络失败次数达到阈值时，程序会打印"模拟触发了关机"的消息，**并直接退出监控运行**。这用于测试触发链路的可用性（就像电脑真的关机了一样）。
+  它是 `immediate` 或 `delayed` 模式的安全测试开关。`immediate` 模式会在达到阈值后直接退出；`delayed` 模式会先进入程序内部倒计时，倒计时结束后再模拟触发关机并退出。如果倒计时期间网络恢复，待执行的延迟关机会被取消。
 - **`--shutdown-mode log-only`（纯日志监视模式）**：
   当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 systemd 持续监控网络。
+
+`--shutdown-mode delayed` 现在由 OpenUPS 进程自行维护倒计时，而不是调用带 `+N` 参数的外部关机命令；这样在倒计时期间如果网络恢复，程序可以主动取消本次延迟关机。
 
 ## 许可证
 

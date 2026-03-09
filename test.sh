@@ -108,6 +108,7 @@ echo "--- 参数解析 ---"
 run_test "布尔参数 --dry-run=true" ./bin/openups --dry-run=true --help
 run_test "布尔参数 --dry-run=false" ./bin/openups --dry-run=false --help
 run_test "短选项 -dfalse" ./bin/openups -dfalse --help
+run_test "延迟关机参数 --shutdown-mode delayed" ./bin/openups --shutdown-mode delayed --delay 1 --help
 expect_output_match "环境变量配置生效" \
     "Target host cannot be empty" \
     env OPENUPS_TARGET= ./bin/openups
@@ -372,6 +373,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     PHASE3_LOG="${LOG_DIR}/phase3_continuous_run.log"
     PHASE4_LOG="${LOG_DIR}/phase4_sigusr1_stats.log"
     PHASE5_LOG="${LOG_DIR}/phase5_log_only_continuous.log"
+    PHASE6_LOG="${LOG_DIR}/phase6_delayed_countdown.log"
 
     # Phase 3: SIGTERM 优雅关闭测试
     echo "[INFO] Phase 3: 连续运行 + SIGTERM 优雅关闭"
@@ -459,9 +461,38 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         exit 1
     fi
 
+    # Phase 6: delayed 模式由进程内部倒计时（不应立刻退出）
+    echo "[INFO] Phase 6: delayed 模式内部倒计时验证"
+    PHASE6_DURATION=8
+    set +e
+    ${SUDO} timeout "${PHASE6_DURATION}s" "${BIN_PATH}" \
+        --target "${TARGET_FAIL}" \
+        --interval 1 \
+        --threshold 2 \
+        --timeout "${TIMEOUT_MS}" \
+        --shutdown-mode delayed \
+        --delay 1 \
+        --dry-run=false \
+        --log-level debug >"${PHASE6_LOG}" 2>&1
+    PHASE6_EXIT=$?
+    set -e
+
+    phase6_countdown="$(count_lines "Starting delayed shutdown countdown|Delayed shutdown countdown" "${PHASE6_LOG}")"
+
+    TESTS_TOTAL=$((TESTS_TOTAL + 1))
+    if [[ "${PHASE6_EXIT}" -eq 124 && "${phase6_countdown}" -ge 1 ]]; then
+        echo "  ✓ Phase 6: delayed 模式由程序内部倒计时 (${phase6_countdown} countdown lines, kept running)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "  ❌ Phase 6: delayed 倒计时测试失败 (exit=${PHASE6_EXIT}, countdown=${phase6_countdown})"
+        tail -n 20 "${PHASE6_LOG}" || true
+        exit 1
+    fi
+
     phase1_trigger_count="$(count_lines "Would trigger shutdown|Shutdown triggered" "${PHASE1_LOG}")"
     phase2_log_only_count="$(count_lines "LOG-ONLY mode|mode is log-only|continuing monitoring without shutdown" "${PHASE2_LOG}")"
     phase2_fail_count="$(count_lines "Ping failed" "${PHASE2_LOG}")"
+    phase6_countdown_summary="${phase6_countdown}"
 
     {
         echo "OpenUPS 灰度验证摘要"
@@ -491,9 +522,14 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         echo "  Exit code: ${PHASE5_EXIT} (expected: 124)"
         echo "  Log file: ${PHASE5_LOG}"
         echo
+        echo "[Phase 6] delayed 内部倒计时"
+        echo "  Countdown lines: ${phase6_countdown_summary}"
+        echo "  Exit code: ${PHASE6_EXIT} (expected: 124)"
+        echo "  Log file: ${PHASE6_LOG}"
+        echo
         if [[ "${phase1_trigger_count}" -ge 1 && "${phase2_log_only_count}" -ge 1 && \
               "${phase3_ping_count}" -ge 2 && "${phase4_stats}" -ge 2 && \
-              "${phase5_log_only}" -ge 2 ]]; then
+              "${phase5_log_only}" -ge 2 && "${phase6_countdown_summary}" -ge 1 ]]; then
             echo "Result: PASS"
         else
             echo "Result: CHECK_REQUIRED"
