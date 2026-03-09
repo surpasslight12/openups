@@ -86,6 +86,12 @@ echo ""
 echo "--- 基本功能 ---"
 run_test "帮助信息 (--help)" ./bin/openups --help
 run_test "版本信息 (--version)" ./bin/openups --version
+expect_output_match "帮助信息包含默认目标" \
+    "default: 1\\.1\\.1\\.1" \
+    ./bin/openups --help
+expect_output_match "帮助信息包含默认间隔" \
+    "default: 10" \
+    ./bin/openups --help
 
 # ---- systemd 服务配置 ----
 echo ""
@@ -440,7 +446,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     PHASE5_EXIT=$?
     set -e
 
-    phase5_log_only="$(count_lines "LOG-ONLY mode" "${PHASE5_LOG}")"
+    phase5_log_only="$(count_lines "LOG-ONLY mode|continuing monitoring without shutdown" "${PHASE5_LOG}")"
 
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
     # exit code 124 = timeout killed it (expected: program kept running)
@@ -454,7 +460,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     fi
 
     phase1_trigger_count="$(count_lines "Would trigger shutdown|Shutdown triggered" "${PHASE1_LOG}")"
-    phase2_log_only_count="$(count_lines "LOG-ONLY mode|mode is log-only" "${PHASE2_LOG}")"
+    phase2_log_only_count="$(count_lines "LOG-ONLY mode|mode is log-only|continuing monitoring without shutdown" "${PHASE2_LOG}")"
     phase2_fail_count="$(count_lines "Ping failed" "${PHASE2_LOG}")"
 
     {
@@ -625,7 +631,7 @@ DROPIN_EOF
     capture_phase "Phase 2" "log-only" "false" "debug" "${SD_PHASE2_SEC}" "${SD_PHASE2_LOG}"
 
     sd_p1_trigger="$(sd_count_lines "Would trigger shutdown|Shutdown triggered, exiting monitor loop" "${SD_PHASE1_LOG}")"
-    sd_p2_log_only="$(sd_count_lines "mode is log-only|LOG-ONLY mode" "${SD_PHASE2_LOG}")"
+    sd_p2_log_only="$(sd_count_lines "mode is log-only|LOG-ONLY mode|continuing monitoring without shutdown" "${SD_PHASE2_LOG}")"
     sd_p2_fail="$(sd_count_lines "Ping failed" "${SD_PHASE2_LOG}")"
 
     {

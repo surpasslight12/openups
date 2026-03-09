@@ -2,18 +2,22 @@
 #include <linux/filter.h>
 
 uint16_t calculate_checksum(const void *data, size_t len) {
-  const uint16_t *buf = (const uint16_t *)data;
+  const uint8_t *bytes = (const uint8_t *)data;
   uint32_t sum = 0;
 
-  for (size_t i = 0; i < len / 2; i++) {
-    sum += buf[i];
+  for (size_t i = 0; i + 1 < len; i += 2) {
+    uint16_t word = (uint16_t)((uint16_t)bytes[i] << 8) | bytes[i + 1];
+    sum += word;
   }
+
   if (len % 2) {
-    sum += (uint32_t)((const uint8_t *)data)[len - 1] << 8;
+    sum += (uint32_t)bytes[len - 1] << 8;
   }
+
   while (sum >> 16) {
     sum = (sum & 0xFFFF) + (sum >> 16);
   }
+
   return (uint16_t)(~sum);
 }
 
