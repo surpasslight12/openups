@@ -16,26 +16,40 @@
 
 ## 快速开始
 
-### 1. 安装
-
-推荐先以普通用户完成构建，再以 root 安装 systemd 服务，避免源码目录里的构建产物被 root 接管。
+### 1. 构建
 
 ```bash
-# 构建发布版本
+make
 make release
-
-# 安装二进制和 systemd 服务
-sudo make install
-
-# 更新构建并重启服务
-make release
-sudo make update
-
-# 卸载系统服务
-sudo make uninstall
 ```
 
-安装后可编辑 `/etc/systemd/system/openups.service` 中的 `Environment=` 行，然后执行：
+当前 Makefile 只负责本地构建、测试和代码检查，不再处理系统安装/卸载。
+
+### 2. 运行
+
+```bash
+# 查看帮助
+./bin/openups --help
+
+# 前台调试运行（干跑模式，不实际关机）
+sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
+```
+
+### 3. 可选：手动注册 systemd 服务
+
+如果你需要常驻运行，再手动复制二进制和 service 文件即可：
+
+```bash
+sudo cp bin/openups /usr/local/bin/openups
+sudo chmod 755 /usr/local/bin/openups
+sudo setcap cap_net_raw+ep /usr/local/bin/openups
+
+sudo cp systemd/openups.service /etc/systemd/system/openups.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now openups
+```
+
+随后可编辑 `/etc/systemd/system/openups.service` 里的 `Environment=` 行，再执行：
 
 ```bash
 sudo systemctl daemon-reload
@@ -44,20 +58,18 @@ sudo systemctl restart openups
 
 当前服务单元不会再通过固定 `sleep` 人为延迟启动；启动超时默认是 30 秒，失败后按 systemd 的重启策略恢复。
 
-### 2. 运行
+### 4. Make 目标
 
 ```bash
-# 本地编译
-make
-
-# 查看帮助
-./bin/openups --help
-
-# 前台调试运行（干跑模式，不实际关机）
-sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
+make          # 构建 bin/openups
+make release  # 构建后 strip
+make test     # 运行 ./test.sh
+make format   # clang-format
+make lint     # cppcheck + clang-tidy
+make clean    # 清理 bin/
 ```
 
-### 3. 测试
+### 5. 测试
 
 ```bash
 # 基础测试
@@ -66,13 +78,15 @@ sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-l
 # 进程级灰度测试（需要 root 或 CAP_NET_RAW）
 ./test.sh --gray
 
-# systemd 级灰度测试（需要先安装服务）
-make release
-sudo make install
+# systemd 级灰度测试（需要先手动注册服务）
+sudo cp systemd/openups.service /etc/systemd/system/openups.service
+sudo systemctl daemon-reload
 ./test.sh --gray-systemd
 
-# 测试完成后移除 systemd 安装
-sudo make uninstall
+# 测试完成后如需清理，手动停用并删除服务文件
+sudo systemctl disable --now openups
+sudo rm -f /etc/systemd/system/openups.service
+sudo systemctl daemon-reload
 
 # 清理灰度测试日志
 rm -rf graylogs

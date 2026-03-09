@@ -538,7 +538,7 @@ if [[ "${RUN_GRAY_SYSTEMD}" -eq 1 ]]; then
 
     if ! ${SUDO} systemctl cat "${SERVICE_NAME}" >/dev/null 2>&1; then
         echo "[ERROR] Service not found: ${SERVICE_NAME}" >&2
-        echo "[HINT] Install/enable service first, e.g. sudo cp systemd/openups.service /etc/systemd/system/" >&2
+        echo "[HINT] Register the service file manually first, e.g. sudo cp systemd/openups.service /etc/systemd/system/" >&2
         exit 1
     fi
 
