@@ -31,6 +31,8 @@
 
 #define OPENUPS_VERSION "1.2.0"
 #define OPENUPS_PROGRAM_NAME "openups"
+#define OPENUPS_SYSTEMD_MESSAGE_SIZE 256U
+#define OPENUPS_SYSTEMD_STATUS_SIZE 240U
 
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define OPENUPS_COLD __attribute__((cold))
@@ -117,7 +119,7 @@ typedef struct {
   int sockfd;
   uint64_t watchdog_usec;
   uint64_t last_status_ms;
-  char last_status[256];
+  char last_status[OPENUPS_SYSTEMD_STATUS_SIZE];
 } systemd_notifier_t;
 
 typedef struct openups_context {

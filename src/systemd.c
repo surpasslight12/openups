@@ -1,5 +1,47 @@
 #include "openups.h"
 
+#define OPENUPS_NOTIFY_RETRY_COUNT 3
+#define OPENUPS_NOTIFY_RETRY_NS 10000000L
+
+static bool parse_uint64_value(const char *restrict value,
+                               uint64_t *restrict out_value) {
+  if (value == NULL || out_value == NULL) {
+    return false;
+  }
+
+  errno = 0;
+  char *endptr = NULL;
+  unsigned long long parsed = strtoull(value, &endptr, 10);
+  if (errno != 0 || endptr == value || *endptr != '\0') {
+    return false;
+  }
+
+  uint64_t converted = (uint64_t)parsed;
+  if (converted != parsed) {
+    return false;
+  }
+
+  *out_value = converted;
+  return true;
+}
+
+static bool watchdog_pid_matches_current_process(void) {
+  const char *watchdog_pid_str = getenv("WATCHDOG_PID");
+  if (watchdog_pid_str == NULL || watchdog_pid_str[0] == '\0') {
+    return true;
+  }
+
+  errno = 0;
+  char *endptr = NULL;
+  long parsed_pid = strtol(watchdog_pid_str, &endptr, 10);
+  if (errno != 0 || endptr == watchdog_pid_str || *endptr != '\0' ||
+      parsed_pid <= 0) {
+    return false;
+  }
+
+  return (pid_t)parsed_pid == getpid();
+}
+
 static bool build_systemd_addr(const char *restrict socket_path,
                                struct sockaddr_un *restrict addr,
                                socklen_t *restrict addr_len) {
@@ -41,11 +83,29 @@ static bool send_notify(systemd_notifier_t *restrict notifier,
     return false;
   }
 
-  ssize_t sent;
-  do {
-    sent = send(notifier->sockfd, message, strlen(message), MSG_NOSIGNAL);
-  } while (sent < 0 && errno == EINTR);
-  return sent >= 0;
+  size_t message_len = strlen(message);
+  for (int attempt = 0; attempt < OPENUPS_NOTIFY_RETRY_COUNT; attempt++) {
+    ssize_t sent = send(notifier->sockfd, message, message_len, MSG_NOSIGNAL);
+    if (sent >= 0) {
+      return true;
+    }
+
+    if (errno == EINTR) {
+      continue;
+    }
+
+    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS) {
+      struct timespec retry_sleep = {.tv_sec = 0,
+                                     .tv_nsec = OPENUPS_NOTIFY_RETRY_NS};
+      while (nanosleep(&retry_sleep, &retry_sleep) < 0 && errno == EINTR) {
+      }
+      continue;
+    }
+
+    break;
+  }
+
+  return false;
 }
 
 void systemd_notifier_init(systemd_notifier_t *restrict notifier) {
@@ -90,12 +150,10 @@ void systemd_notifier_init(systemd_notifier_t *restrict notifier) {
   notifier->enabled = true;
 
   const char *watchdog_str = getenv("WATCHDOG_USEC");
-  if (watchdog_str != NULL) {
-    errno = 0;
-    char *endptr = NULL;
-    unsigned long long val = strtoull(watchdog_str, &endptr, 10);
-    if (errno == 0 && endptr != watchdog_str && *endptr == '\0') {
-      notifier->watchdog_usec = (uint64_t)val;
+  if (watchdog_str != NULL && watchdog_pid_matches_current_process()) {
+    uint64_t parsed_watchdog_usec = 0;
+    if (parse_uint64_value(watchdog_str, &parsed_watchdog_usec)) {
+      notifier->watchdog_usec = parsed_watchdog_usec;
     }
   }
 }
@@ -137,8 +195,9 @@ bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
     return true;
   }
 
-  char message[256];
-  snprintf(message, sizeof(message), "STATUS=%s", status);
+  char message[OPENUPS_SYSTEMD_MESSAGE_SIZE];
+  snprintf(message, sizeof(message), "STATUS=%.*s",
+           (int)OPENUPS_SYSTEMD_STATUS_SIZE - 1, status);
   bool ok = send_notify(notifier, message);
   if (ok) {
     snprintf(notifier->last_status, sizeof(notifier->last_status), "%s",

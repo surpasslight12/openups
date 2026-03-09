@@ -1,6 +1,7 @@
 #include "openups.h"
 
 #define OPENUPS_PACKET_SIZE 64U
+#define OPENUPS_MAX_REPLY_DRAIN_PER_TICK 32U
 
 typedef struct {
   int fd;
@@ -110,7 +111,7 @@ static void notify_systemd_status(openups_ctx_t *restrict ctx,
     return;
   }
 
-  char status_msg[256];
+  char status_msg[OPENUPS_SYSTEMD_STATUS_SIZE];
   va_list args;
   va_start(args, fmt);
   vsnprintf(status_msg, sizeof(status_msg), fmt, args);
@@ -386,10 +387,17 @@ static bool drain_icmp_replies(openups_ctx_t *restrict ctx, uint64_t now_ms,
   }
 
   ping_result_t reply = {0};
-  while (true) {
+  for (size_t processed = 0; processed < OPENUPS_MAX_REPLY_DRAIN_PER_TICK;
+       processed++) {
+    uint64_t receive_time_ms = get_monotonic_ms();
+    if (receive_time_ms == UINT64_MAX) {
+      receive_time_ms = now_ms;
+    }
+
     icmp_receive_status_t status = icmp_pinger_receive_reply(
         &ctx->pinger, &ctx->dest_addr, ctx->cached_pid,
-        state->expected_sequence, state->send_time_ms, now_ms, &reply);
+        state->expected_sequence, state->send_time_ms, receive_time_ms,
+        &reply);
     if (status == ICMP_RECEIVE_NO_MORE) {
       return true;
     }
@@ -404,6 +412,8 @@ static bool drain_icmp_replies(openups_ctx_t *restrict ctx, uint64_t now_ms,
       return true;
     }
   }
+
+  return true;
 }
 
 static void monitor_handle_signal(openups_ctx_t *restrict ctx,
@@ -465,7 +475,10 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
               ctx->config.target, ctx->config.interval_sec);
 
   if (ctx->systemd_enabled) {
-    (void)systemd_notifier_ready(&ctx->systemd);
+    if (!systemd_notifier_ready(&ctx->systemd)) {
+      logger_warn(&ctx->logger,
+                  "Failed to send systemd READY notification");
+    }
     notify_systemd_status(ctx, "Monitoring %s", ctx->config.target);
   }
 
@@ -477,8 +490,12 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   while (!ctx->stop_flag) {
     if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0 &&
         now_ms - state.last_watchdog_ms >= ctx->watchdog_interval_ms) {
-      (void)systemd_notifier_watchdog(&ctx->systemd);
-      state.last_watchdog_ms = now_ms;
+      if (systemd_notifier_watchdog(&ctx->systemd)) {
+        state.last_watchdog_ms = now_ms;
+      } else {
+        logger_warn(&ctx->logger,
+                    "Failed to send systemd WATCHDOG notification");
+      }
     }
 
     if (state.waiting_for_reply && now_ms >= state.reply_deadline_ms) {

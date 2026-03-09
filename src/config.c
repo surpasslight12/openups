@@ -1,5 +1,28 @@
 #include "openups.h"
 
+#define OPENUPS_DEFAULT_TARGET "1.1.1.1"
+#define OPENUPS_DEFAULT_INTERVAL_SEC 10
+#define OPENUPS_DEFAULT_FAIL_THRESHOLD 5
+#define OPENUPS_DEFAULT_TIMEOUT_MS 2000
+#define OPENUPS_DEFAULT_DELAY_MINUTES 1
+#define OPENUPS_DEFAULT_DRY_RUN true
+#define OPENUPS_DEFAULT_TIMESTAMP true
+#define OPENUPS_DEFAULT_SYSTEMD true
+
+typedef struct {
+  const char *env_name;
+  const char *label;
+  size_t offset;
+  int min_value;
+  int max_value;
+} config_env_int_option_t;
+
+typedef struct {
+  const char *env_name;
+  const char *label;
+  size_t offset;
+} config_env_bool_option_t;
+
 static const struct option CONFIG_LONG_OPTIONS[] = {
     {"target", required_argument, 0, 't'},
     {"interval", required_argument, 0, 'i'},
@@ -17,6 +40,25 @@ static const struct option CONFIG_LONG_OPTIONS[] = {
 };
 
 static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:d::L:T::M::vh";
+
+static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
+  {"OPENUPS_INTERVAL", "OPENUPS_INTERVAL", offsetof(config_t, interval_sec),
+   1, INT_MAX},
+  {"OPENUPS_THRESHOLD", "OPENUPS_THRESHOLD",
+   offsetof(config_t, fail_threshold), 1, INT_MAX},
+  {"OPENUPS_TIMEOUT", "OPENUPS_TIMEOUT", offsetof(config_t, timeout_ms), 1,
+   INT_MAX},
+  {"OPENUPS_DELAY_MINUTES", "OPENUPS_DELAY_MINUTES",
+   offsetof(config_t, delay_minutes), 1, INT_MAX},
+};
+
+static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
+  {"OPENUPS_DRY_RUN", "OPENUPS_DRY_RUN", offsetof(config_t, dry_run)},
+  {"OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
+   offsetof(config_t, enable_systemd)},
+  {"OPENUPS_TIMESTAMP", "OPENUPS_TIMESTAMP",
+   offsetof(config_t, enable_timestamp)},
+};
 
 static bool set_error(char *restrict error_msg, size_t error_size,
                       const char *restrict fmt, ...) {
@@ -176,6 +218,67 @@ static bool load_env_bool(const char *restrict env_name,
   return true;
 }
 
+static int *config_int_field(config_t *restrict config, size_t offset) {
+  if (config == NULL || offset > sizeof(*config) - sizeof(int)) {
+    return NULL;
+  }
+
+  return (int *)((char *)config + offset);
+}
+
+static bool *config_bool_field(config_t *restrict config, size_t offset) {
+  if (config == NULL || offset > sizeof(*config) - sizeof(bool)) {
+    return NULL;
+  }
+
+  return (bool *)((char *)config + offset);
+}
+
+static bool load_env_int_options(config_t *restrict config,
+                                 char *restrict error_msg,
+                                 size_t error_size) {
+  if (config == NULL || error_msg == NULL || error_size == 0) {
+    return false;
+  }
+
+  for (size_t i = 0;
+       i < sizeof(CONFIG_ENV_INT_OPTIONS) / sizeof(CONFIG_ENV_INT_OPTIONS[0]);
+       i++) {
+    const config_env_int_option_t *option = &CONFIG_ENV_INT_OPTIONS[i];
+    int *field = config_int_field(config, option->offset);
+    if (field == NULL ||
+        !load_env_int(option->env_name, option->label, option->min_value,
+                      option->max_value, field, error_msg, error_size)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool load_env_bool_options(config_t *restrict config,
+                                  char *restrict error_msg,
+                                  size_t error_size) {
+  if (config == NULL || error_msg == NULL || error_size == 0) {
+    return false;
+  }
+
+  for (size_t i = 0;
+       i < sizeof(CONFIG_ENV_BOOL_OPTIONS) /
+               sizeof(CONFIG_ENV_BOOL_OPTIONS[0]);
+       i++) {
+    const config_env_bool_option_t *option = &CONFIG_ENV_BOOL_OPTIONS[i];
+    bool *field = config_bool_field(config, option->offset);
+    if (field == NULL ||
+        !load_env_bool(option->env_name, option->label, field, error_msg,
+                       error_size)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 static bool is_valid_ip_literal(const char *restrict target) {
   if (target == NULL || target[0] == '\0') {
     return false;
@@ -232,16 +335,17 @@ void config_init_default(config_t *restrict config) {
   }
 
   memset(config, 0, sizeof(*config));
-  (void)snprintf(config->target, sizeof(config->target), "1.1.1.1");
-  config->interval_sec = 10;
-  config->fail_threshold = 5;
-  config->timeout_ms = 2000;
+  (void)snprintf(config->target, sizeof(config->target), "%s",
+                 OPENUPS_DEFAULT_TARGET);
+  config->interval_sec = OPENUPS_DEFAULT_INTERVAL_SEC;
+  config->fail_threshold = OPENUPS_DEFAULT_FAIL_THRESHOLD;
+  config->timeout_ms = OPENUPS_DEFAULT_TIMEOUT_MS;
   config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;
-  config->delay_minutes = 1;
-  config->dry_run = true;
-  config->enable_timestamp = true;
+  config->delay_minutes = OPENUPS_DEFAULT_DELAY_MINUTES;
+  config->dry_run = OPENUPS_DEFAULT_DRY_RUN;
+  config->enable_timestamp = OPENUPS_DEFAULT_TIMESTAMP;
   config->log_level = LOG_LEVEL_INFO;
-  config->enable_systemd = true;
+  config->enable_systemd = OPENUPS_DEFAULT_SYSTEMD;
 }
 
 bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
@@ -259,21 +363,8 @@ bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
     return false;
   }
 
-  if (!load_env_int("OPENUPS_INTERVAL", "OPENUPS_INTERVAL", 1, INT_MAX,
-                    &config->interval_sec, error_msg, error_size) ||
-      !load_env_int("OPENUPS_THRESHOLD", "OPENUPS_THRESHOLD", 1, INT_MAX,
-                    &config->fail_threshold, error_msg, error_size) ||
-      !load_env_int("OPENUPS_TIMEOUT", "OPENUPS_TIMEOUT", 1, INT_MAX,
-                    &config->timeout_ms, error_msg, error_size) ||
-      !load_env_int("OPENUPS_DELAY_MINUTES", "OPENUPS_DELAY_MINUTES", 1,
-                    INT_MAX, &config->delay_minutes, error_msg,
-                    error_size) ||
-      !load_env_bool("OPENUPS_DRY_RUN", "OPENUPS_DRY_RUN",
-                     &config->dry_run, error_msg, error_size) ||
-      !load_env_bool("OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
-                     &config->enable_systemd, error_msg, error_size) ||
-      !load_env_bool("OPENUPS_TIMESTAMP", "OPENUPS_TIMESTAMP",
-                     &config->enable_timestamp, error_msg, error_size)) {
+  if (!load_env_int_options(config, error_msg, error_size) ||
+      !load_env_bool_options(config, error_msg, error_size)) {
     return false;
   }
 
@@ -538,21 +629,26 @@ void config_print_usage(void) {
   printf("Usage: %s [options]\n\n", OPENUPS_PROGRAM_NAME);
   printf("Network Options:\n");
   printf("  -t, --target <ip>           Target IP literal to monitor (DNS "
-         "disabled, default: 1.1.1.1)\n");
-  printf(
-      "  -i, --interval <sec>        Ping interval in seconds (default: 10)\n");
+      "disabled, default: %s)\n",
+      OPENUPS_DEFAULT_TARGET);
+    printf("  -i, --interval <sec>        Ping interval in seconds (default: %d)\n",
+      OPENUPS_DEFAULT_INTERVAL_SEC);
   printf("  -n, --threshold <num>       Consecutive failures threshold "
-         "(default: 5)\n");
+      "(default: %d)\n",
+      OPENUPS_DEFAULT_FAIL_THRESHOLD);
   printf("  -w, --timeout <ms>          Ping timeout in milliseconds (default: "
-         "2000)\n\n");
+      "%d)\n\n",
+      OPENUPS_DEFAULT_TIMEOUT_MS);
   printf("Shutdown Options:\n");
   printf("  -S, --shutdown-mode <mode>  Shutdown mode: "
          "immediate|delayed|log-only\n");
   printf("                              (default: immediate)\n");
   printf("  -D, --delay <min>           Shutdown delay in minutes for delayed "
-         "mode (default: 1)\n");
+      "mode (default: %d)\n",
+      OPENUPS_DEFAULT_DELAY_MINUTES);
   printf("  -d[ARG], --dry-run[=ARG]    Dry-run mode, no actual shutdown "
-         "(default: true)\n");
+      "(default: %s)\n",
+      OPENUPS_DEFAULT_DRY_RUN ? "true" : "false");
   printf("                              ARG: true|false\n");
   printf("                              Note: Use -dfalse or --dry-run=false "
          "(no space)\n\n");
@@ -561,11 +657,13 @@ void config_print_usage(void) {
          "silent|error|warn|info|debug\n");
   printf("                              (default: info)\n");
   printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps "
-         "(default: true)\n");
+      "(default: %s)\n",
+      OPENUPS_DEFAULT_TIMESTAMP ? "true" : "false");
   printf("                              ARG format: true|false\n");
   printf("System Integration:\n");
   printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration "
-         "(default: true)\n");
+      "(default: %s)\n",
+      OPENUPS_DEFAULT_SYSTEMD ? "true" : "false");
   printf("                              Watchdog is auto-enabled with "
          "systemd\n");
   printf("                              ARG format: true|false\n\n");

@@ -1,25 +1,63 @@
 #include "openups.h"
 #include <spawn.h>
 
+#define OPENUPS_SHUTDOWN_STARTUP_GRACE_MS 1000U
+#define OPENUPS_SHUTDOWN_POLL_INTERVAL_NS 50000000L
+
+typedef enum {
+  SHUTDOWN_BACKEND_SYSTEMCTL = 0,
+  SHUTDOWN_BACKEND_SHUTDOWN = 1,
+} shutdown_backend_t;
+
+static shutdown_backend_t select_shutdown_backend(bool use_systemctl_poweroff) {
+  return use_systemctl_poweroff ? SHUTDOWN_BACKEND_SYSTEMCTL
+                                : SHUTDOWN_BACKEND_SHUTDOWN;
+}
+
+static const char *shutdown_backend_command(shutdown_backend_t backend) {
+  return backend == SHUTDOWN_BACKEND_SYSTEMCTL ? "/usr/bin/systemctl"
+                                               : "/sbin/shutdown";
+}
+
+static bool shutdown_build_delay_arg(shutdown_backend_t backend,
+                                     int delay_minutes,
+                                     char *restrict delay_arg,
+                                     size_t delay_arg_size) {
+  if (delay_arg == NULL || delay_arg_size == 0 || delay_minutes <= 0) {
+    return false;
+  }
+
+  int written = 0;
+  if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
+    written = snprintf(delay_arg, delay_arg_size, "+%dmin", delay_minutes);
+  } else {
+    written = snprintf(delay_arg, delay_arg_size, "+%d", delay_minutes);
+  }
+
+  return written > 0 && (size_t)written < delay_arg_size;
+}
+
 static bool shutdown_select_argv(const config_t *restrict config,
                                  bool use_systemctl_poweroff,
                                  char *restrict delay_arg,
                                  size_t delay_arg_size,
                                  char *argv[], size_t argv_size) {
   if (config == NULL || delay_arg == NULL || delay_arg_size == 0 ||
-      argv == NULL || argv_size < 4) {
+      argv == NULL || argv_size < 5) {
     return false;
   }
 
   memset(argv, 0, sizeof(argv[0]) * argv_size);
   delay_arg[0] = '\0';
 
+  shutdown_backend_t backend =
+      select_shutdown_backend(use_systemctl_poweroff);
+  argv[0] = (char *)shutdown_backend_command(backend);
+
   if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
-    if (use_systemctl_poweroff) {
-      argv[0] = "/usr/bin/systemctl";
+    if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
       argv[1] = "poweroff";
     } else {
-      argv[0] = "/sbin/shutdown";
       argv[1] = "-h";
       argv[2] = "now";
     }
@@ -27,23 +65,16 @@ static bool shutdown_select_argv(const config_t *restrict config,
   }
 
   if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    if (use_systemctl_poweroff) {
-      int written = snprintf(delay_arg, delay_arg_size, "+%dmin",
-                             config->delay_minutes);
-      if (written <= 0 || (size_t)written >= delay_arg_size) {
-        return false;
-      }
-      argv[0] = "/usr/bin/systemctl";
+    if (!shutdown_build_delay_arg(backend, config->delay_minutes, delay_arg,
+                                  delay_arg_size)) {
+      return false;
+    }
+
+    if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
       argv[1] = "--when";
       argv[2] = delay_arg;
       argv[3] = "poweroff";
     } else {
-      int written = snprintf(delay_arg, delay_arg_size, "+%d",
-                             config->delay_minutes);
-      if (written <= 0 || (size_t)written >= delay_arg_size) {
-        return false;
-      }
-      argv[0] = "/sbin/shutdown";
       argv[1] = "-h";
       argv[2] = delay_arg;
     }
@@ -65,14 +96,80 @@ static bool shutdown_should_execute(const config_t *restrict config,
     return false;
   }
 
-  if (config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-    logger_error(
-        logger,
-        "LOG-ONLY mode: Network connectivity lost, would trigger shutdown");
-    return false;
+  return true;
+}
+
+static bool shutdown_sleep_retry_window(void) {
+  struct timespec remaining = {.tv_sec = 0,
+                               .tv_nsec = OPENUPS_SHUTDOWN_POLL_INTERVAL_NS};
+  while (nanosleep(&remaining, &remaining) < 0) {
+    if (errno != EINTR) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static shutdown_result_t shutdown_observe_startup(
+    pid_t child_pid, const char *restrict command_path,
+    const logger_t *restrict logger) {
+  if (child_pid <= 0 || command_path == NULL || logger == NULL) {
+    return SHUTDOWN_RESULT_FAILED;
   }
 
-  return true;
+  uint64_t start_ms = get_monotonic_ms();
+  if (start_ms == UINT64_MAX) {
+    logger_info(logger, "Shutdown command started successfully");
+    return SHUTDOWN_RESULT_TRIGGERED;
+  }
+
+  uint64_t deadline_ms = start_ms + OPENUPS_SHUTDOWN_STARTUP_GRACE_MS;
+  int status = 0;
+  while (true) {
+    pid_t result = waitpid(child_pid, &status, WNOHANG);
+    if (result == child_pid) {
+      if (WIFEXITED(status)) {
+        int exit_code = WEXITSTATUS(status);
+        if (exit_code == 0) {
+          logger_info(logger, "Shutdown command executed successfully");
+          return SHUTDOWN_RESULT_TRIGGERED;
+        }
+
+        logger_error(logger, "Shutdown command failed with exit code %d: %s",
+                     exit_code, command_path);
+        return SHUTDOWN_RESULT_FAILED;
+      }
+
+      if (WIFSIGNALED(status)) {
+        logger_error(logger, "Shutdown command terminated by signal %d",
+                     WTERMSIG(status));
+        return SHUTDOWN_RESULT_FAILED;
+      }
+
+      logger_error(logger, "Shutdown command exited unexpectedly");
+      return SHUTDOWN_RESULT_FAILED;
+    }
+
+    if (result < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+
+      logger_error(logger, "waitpid() failed: %s", strerror(errno));
+      return SHUTDOWN_RESULT_FAILED;
+    }
+
+    uint64_t now_ms = get_monotonic_ms();
+    if (now_ms == UINT64_MAX || now_ms >= deadline_ms) {
+      logger_info(logger, "Shutdown command started successfully");
+      return SHUTDOWN_RESULT_TRIGGERED;
+    }
+
+    if (!shutdown_sleep_retry_window()) {
+      logger_info(logger, "Shutdown command started successfully");
+      return SHUTDOWN_RESULT_TRIGGERED;
+    }
+  }
 }
 
 static shutdown_result_t shutdown_execute_command(
@@ -120,56 +217,19 @@ static shutdown_result_t shutdown_execute_command(
     return SHUTDOWN_RESULT_FAILED;
   }
 
-  int status = 0;
-  for (int poll_count = 0; poll_count < 50; poll_count++) {
-    pid_t result = waitpid(child_pid, &status, WNOHANG);
-    if (result == child_pid) {
-      if (WIFEXITED(status)) {
-        int exit_code = WEXITSTATUS(status);
-        if (exit_code == 0) {
-          logger_info(logger, "Shutdown command executed successfully");
-          return SHUTDOWN_RESULT_TRIGGERED;
-        }
-
-        logger_error(logger, "Shutdown command failed with exit code %d: %s",
-                     exit_code, argv[0]);
-        return SHUTDOWN_RESULT_FAILED;
-      }
-
-      if (WIFSIGNALED(status)) {
-        logger_error(logger, "Shutdown command terminated by signal %d: %s",
-                     WTERMSIG(status), argv[0]);
-        return SHUTDOWN_RESULT_FAILED;
-      }
-
-      logger_error(logger, "Shutdown command exited unexpectedly: %s",
-                   argv[0]);
-      return SHUTDOWN_RESULT_FAILED;
-    }
-
-    if (result < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-
-      logger_error(logger, "waitpid() failed: %s", strerror(errno));
-      return SHUTDOWN_RESULT_FAILED;
-    }
-
-    struct timespec poll_ts = {.tv_sec = 0, .tv_nsec = 100000000L};
-    (void)nanosleep(&poll_ts, NULL);
-  }
-
-  logger_warn(logger, "Shutdown command timeout, killing process");
-  kill(child_pid, SIGKILL);
-  (void)waitpid(child_pid, &status, 0);
-  return SHUTDOWN_RESULT_FAILED;
+  return shutdown_observe_startup(child_pid, argv[0], logger);
 }
 
 shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
                                    bool use_systemctl_poweroff) {
   if (config == NULL || logger == NULL) {
     return SHUTDOWN_RESULT_FAILED;
+  }
+
+  if (config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
+    logger_warn(logger,
+                "Failure threshold reached in LOG-ONLY mode; continuing monitoring without shutdown");
+    return SHUTDOWN_RESULT_NO_ACTION;
   }
 
   logger_warn(logger, "Shutdown threshold reached, mode is %s%s",
