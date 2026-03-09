@@ -55,16 +55,17 @@ void logger_log_va(const logger_t *restrict logger, log_level_t level,
   log_message(logger, level, buffer);
 }
 
-void log_shutdown_plan(const logger_t *restrict logger, shutdown_mode_t mode,
-                       int delay_minutes) {
+void log_shutdown_countdown(const logger_t *restrict logger,
+                            shutdown_mode_t mode, int delay_minutes) {
   if (logger == NULL) {
     return;
   }
 
-  if (mode == SHUTDOWN_MODE_IMMEDIATE) {
-    logger_warn(logger, "Triggering immediate shutdown");
-  } else if (mode == SHUTDOWN_MODE_DELAYED) {
-    logger_warn(logger, "Starting delayed shutdown countdown for %d minutes",
+  if (mode == SHUTDOWN_MODE_DRY_RUN) {
+    logger_warn(logger, "Starting dry-run countdown for %d minutes",
+                delay_minutes);
+  } else if (mode == SHUTDOWN_MODE_TRUE_OFF) {
+    logger_warn(logger, "Starting true-off countdown for %d minutes",
                 delay_minutes);
   }
 }

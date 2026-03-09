@@ -61,8 +61,8 @@ typedef struct {
 } metrics_t;
 
 typedef enum {
-  SHUTDOWN_MODE_IMMEDIATE,
-  SHUTDOWN_MODE_DELAYED,
+  SHUTDOWN_MODE_DRY_RUN,
+  SHUTDOWN_MODE_TRUE_OFF,
   SHUTDOWN_MODE_LOG_ONLY
 } shutdown_mode_t;
 
@@ -76,7 +76,6 @@ typedef struct {
   /* Shutdown */
   shutdown_mode_t shutdown_mode;
   int delay_minutes;
-  bool dry_run;
 
   /* Logging */
   bool enable_timestamp;
@@ -221,8 +220,8 @@ const char *log_level_to_string(log_level_t level);
 void config_print_version(void);
 void config_print_usage(void);
 const char *shutdown_mode_to_string(shutdown_mode_t mode);
-void log_shutdown_plan(const logger_t *restrict logger, shutdown_mode_t mode,
-                       int delay_minutes);
+void log_shutdown_countdown(const logger_t *restrict logger,
+                            shutdown_mode_t mode, int delay_minutes);
 uint64_t get_monotonic_ms(void);
 uint16_t calculate_checksum(const void *data, size_t len);
 void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,

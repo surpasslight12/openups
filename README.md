@@ -9,7 +9,7 @@
 ## 核心特性
 
 - **原生 ICMP 实现**：使用 raw socket，无需依赖系统 `ping` 命令
-- **灵活的关机策略**：支持 immediate、delayed、log-only 三种模式
+- **灵活的关机策略**：支持 dry-run、true-off、log-only 三种模式
 - **systemd 深度集成**：支持 `sd_notify`、watchdog、状态通知（watchdog 随 systemd 自动启用）
 - **高性能**：单一二进制文件，内存占用 < 5 MB，CPU 占用 < 1%
 - **安全加固**：Full RELRO、PIE、Stack Canary、NX、FORTIFY_SOURCE
@@ -32,7 +32,7 @@ make release
 ./bin/openups --help
 
 # 前台调试运行（干跑模式，不实际关机）
-sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --dry-run --log-level debug
+sudo ./bin/openups --target 1.1.1.1 --interval 1 --threshold 3 --shutdown-mode dry-run --log-level debug
 ```
 
 ### 3. 可选：手动注册 systemd 服务
@@ -104,23 +104,24 @@ rm -rf graylogs
 | 检测间隔 | `-i, --interval` | `OPENUPS_INTERVAL` | `10`（秒） | 两次 ping 之间的间隔 |
 | 失败阈值 | `-n, --threshold` | `OPENUPS_THRESHOLD` | `5` | 连续失败多少次触发关机 |
 | 超时时间 | `-w, --timeout` | `OPENUPS_TIMEOUT` | `2000`（ms） | 单次 ping 等待回包的超时 |
-| 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `immediate` | `immediate` / `delayed` / `log-only` |
-| 延迟分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `1` | delayed 模式下由程序内部倒计时的等待分钟 |
-| 演习模式 | `-d, --dry-run` | `OPENUPS_DRY_RUN` | `true` | 不执行实际关机（安全默认值） |
+| 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `dry-run` | `dry-run` / `true-off` / `log-only` |
+| 倒计时分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `0` | `dry-run` / `true-off` 模式下的程序内倒计时，`0` 表示立即执行 |
 | 日志级别 | `-L, --log-level` | `OPENUPS_LOG_LEVEL` | `info` | `silent` / `error` / `warn` / `info` / `debug` |
 | 时间戳 | `-T, --timestamp` | `OPENUPS_TIMESTAMP` | `true` | 日志是否包含时间戳 |
 | systemd 集成 | `-M, --systemd` | `OPENUPS_SYSTEMD` | `true` | 启用 sd_notify 和 watchdog |
 
-## `log-only` 与 `dry-run` 的区别
+## 模式说明
 
-尽管两者都不会真正执行关机操作，但它们在设计用途上完全不同：
+三种模式现在是互斥的，倒计时由 `--delay` 单独控制：
 
-- **`--dry-run=true`（演习模式）**：
-  它是 `immediate` 或 `delayed` 模式的安全测试开关。`immediate` 模式会在达到阈值后直接退出；`delayed` 模式会先进入程序内部倒计时，倒计时结束后再模拟触发关机并退出。如果倒计时期间网络恢复，待执行的延迟关机会被取消。
-- **`--shutdown-mode log-only`（纯日志监视模式）**：
+- **`--shutdown-mode dry-run`**：
+  达到阈值后只模拟关机动作，不执行真正关机。若 `--delay` 大于 `0`，会先进入程序内部倒计时；倒计时期间网络恢复会取消本次计划动作。
+- **`--shutdown-mode true-off`**：
+  达到阈值后执行真正关机。若 `--delay` 大于 `0`，同样先由程序内部倒计时，再在到点时执行立即关机。
+- **`--shutdown-mode log-only`**：
   当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 systemd 持续监控网络。
 
-`--shutdown-mode delayed` 现在由 OpenUPS 进程自行维护倒计时，而不是调用带 `+N` 参数的外部关机命令；这样在倒计时期间如果网络恢复，程序可以主动取消本次延迟关机。
+`--delay` 现在只控制 `dry-run` 和 `true-off` 的程序内倒计时，不再作为独立关机模式存在。
 
 ## 许可证
 

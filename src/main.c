@@ -14,10 +14,10 @@ typedef struct {
   uint64_t reply_deadline_ms;
   uint64_t send_time_ms;
   uint64_t last_watchdog_ms;
-  uint64_t delayed_shutdown_deadline_ms;
+  uint64_t shutdown_countdown_deadline_ms;
   uint16_t expected_sequence;
   bool waiting_for_reply;
-  bool delayed_shutdown_pending;
+  bool shutdown_countdown_pending;
 } monitor_state_t;
 
 static uint64_t monotonic_add_ms(uint64_t base_ms, uint64_t delta_ms) {
@@ -90,9 +90,9 @@ static int compute_wait_timeout_ms(const openups_ctx_t *restrict ctx,
                        ? deadline_timeout_ms(now_ms, state->reply_deadline_ms)
                        : deadline_timeout_ms(now_ms, state->next_ping_ms);
 
-  if (state->delayed_shutdown_pending) {
+  if (state->shutdown_countdown_pending) {
     int delayed_shutdown_timeout_ms =
-        deadline_timeout_ms(now_ms, state->delayed_shutdown_deadline_ms);
+        deadline_timeout_ms(now_ms, state->shutdown_countdown_deadline_ms);
     if (delayed_shutdown_timeout_ms < timeout_ms) {
       timeout_ms = delayed_shutdown_timeout_ms;
     }
@@ -124,13 +124,13 @@ static void monitor_reply_cleared(monitor_state_t *restrict state) {
   state->expected_sequence = 0;
 }
 
-static void monitor_clear_delayed_shutdown(monitor_state_t *restrict state) {
+static void monitor_clear_shutdown_countdown(monitor_state_t *restrict state) {
   if (state == NULL) {
     return;
   }
 
-  state->delayed_shutdown_pending = false;
-  state->delayed_shutdown_deadline_ms = 0;
+  state->shutdown_countdown_pending = false;
+  state->shutdown_countdown_deadline_ms = 0;
 }
 
 static bool pollfd_has_error(short revents) {
@@ -315,39 +315,35 @@ static void openups_ctx_print_stats(openups_ctx_t *restrict ctx) {
               metrics_uptime_seconds(metrics));
 }
 
-static void monitor_cancel_delayed_shutdown(openups_ctx_t *restrict ctx,
-                                            monitor_state_t *restrict state) {
-  if (ctx == NULL || state == NULL || !state->delayed_shutdown_pending) {
+static void monitor_cancel_shutdown_countdown(openups_ctx_t *restrict ctx,
+                                              monitor_state_t *restrict state) {
+  if (ctx == NULL || state == NULL || !state->shutdown_countdown_pending) {
     return;
   }
 
-  monitor_clear_delayed_shutdown(state);
+  monitor_clear_shutdown_countdown(state);
   logger_info(&ctx->logger,
-              "Connectivity restored; cancelled pending delayed shutdown");
+              "Connectivity restored; cancelled pending shutdown countdown");
   if (ctx->systemd_enabled) {
     notify_systemd_status(ctx,
-                          "Recovery detected; delayed shutdown cancelled");
+                          "Recovery detected; shutdown countdown cancelled");
   }
 }
 
-static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx,
-                                     shutdown_mode_t execute_mode) {
+static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx) {
   if (ctx == NULL) {
     return false;
   }
 
-  config_t shutdown_config = ctx->config;
-  shutdown_config.shutdown_mode = execute_mode;
-
   shutdown_result_t result =
-      shutdown_trigger(&shutdown_config, &ctx->logger, ctx->systemd_enabled);
+      shutdown_trigger(&ctx->config, &ctx->logger, ctx->systemd_enabled);
 
-  if (shutdown_config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
+  if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
     ctx->consecutive_fails = 0;
     return false;
   }
 
-  if (shutdown_config.dry_run) {
+  if (ctx->config.shutdown_mode == SHUTDOWN_MODE_DRY_RUN) {
     logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
     return true;
   }
@@ -363,14 +359,14 @@ static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx,
   return true;
 }
 
-static bool monitor_arm_delayed_shutdown(openups_ctx_t *restrict ctx,
-                                         monitor_state_t *restrict state,
-                                         uint64_t now_ms) {
+static bool monitor_arm_shutdown_countdown(openups_ctx_t *restrict ctx,
+                                           monitor_state_t *restrict state,
+                                           uint64_t now_ms) {
   if (ctx == NULL || state == NULL) {
     return false;
   }
 
-  if (state->delayed_shutdown_pending) {
+  if (state->shutdown_countdown_pending) {
     return false;
   }
 
@@ -385,42 +381,44 @@ static bool monitor_arm_delayed_shutdown(openups_ctx_t *restrict ctx,
   uint64_t deadline_ms = monotonic_add_ms(now_ms, delay_ms);
   if (deadline_ms == UINT64_MAX) {
     logger_error(&ctx->logger,
-                 "Failed to compute delayed shutdown deadline");
+                 "Failed to compute shutdown countdown deadline");
     ctx->consecutive_fails = 0;
     return false;
   }
 
-  state->delayed_shutdown_pending = true;
-  state->delayed_shutdown_deadline_ms = deadline_ms;
-  log_shutdown_plan(&ctx->logger, SHUTDOWN_MODE_DELAYED,
-                    ctx->config.delay_minutes);
+  state->shutdown_countdown_pending = true;
+  state->shutdown_countdown_deadline_ms = deadline_ms;
+  log_shutdown_countdown(&ctx->logger, ctx->config.shutdown_mode,
+                         ctx->config.delay_minutes);
   if (ctx->systemd_enabled) {
-    notify_systemd_status(ctx,
-                          "Delayed shutdown countdown started: %d minutes",
-                          ctx->config.delay_minutes);
+    notify_systemd_status(
+        ctx, "%s countdown started: %d minutes",
+        shutdown_mode_to_string(ctx->config.shutdown_mode),
+        ctx->config.delay_minutes);
   }
   return false;
 }
 
-static bool monitor_handle_delayed_shutdown(openups_ctx_t *restrict ctx,
-                                            monitor_state_t *restrict state,
-                                            uint64_t now_ms) {
-  if (ctx == NULL || state == NULL || !state->delayed_shutdown_pending) {
+static bool monitor_handle_shutdown_countdown(openups_ctx_t *restrict ctx,
+                                              monitor_state_t *restrict state,
+                                              uint64_t now_ms) {
+  if (ctx == NULL || state == NULL || !state->shutdown_countdown_pending) {
     return false;
   }
 
-  if (now_ms < state->delayed_shutdown_deadline_ms) {
+  if (now_ms < state->shutdown_countdown_deadline_ms) {
     return false;
   }
 
-  monitor_clear_delayed_shutdown(state);
+  monitor_clear_shutdown_countdown(state);
   logger_warn(&ctx->logger,
-              "Delayed shutdown countdown elapsed; executing shutdown now");
+              "%s countdown elapsed; executing shutdown now",
+              shutdown_mode_to_string(ctx->config.shutdown_mode));
   if (ctx->systemd_enabled) {
-    notify_systemd_status(ctx,
-                          "Delayed shutdown countdown elapsed; executing shutdown");
+    notify_systemd_status(ctx, "%s countdown elapsed; executing shutdown",
+                          shutdown_mode_to_string(ctx->config.shutdown_mode));
   }
-  return monitor_execute_shutdown(ctx, SHUTDOWN_MODE_IMMEDIATE);
+  return monitor_execute_shutdown(ctx);
 }
 
 static void handle_ping_success(openups_ctx_t *restrict ctx,
@@ -431,7 +429,7 @@ static void handle_ping_success(openups_ctx_t *restrict ctx,
   }
 
   ctx->consecutive_fails = 0;
-  monitor_cancel_delayed_shutdown(ctx, state);
+  monitor_cancel_shutdown_countdown(ctx, state);
   metrics_record_success(&ctx->metrics, result->latency_ms);
   logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                ctx->config.target, result->latency_ms);
@@ -475,11 +473,11 @@ static bool monitor_handle_threshold(openups_ctx_t *restrict ctx,
     return false;
   }
 
-  if (ctx->config.shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    return monitor_arm_delayed_shutdown(ctx, state, now_ms);
+  if (ctx->config.delay_minutes > 0) {
+    return monitor_arm_shutdown_countdown(ctx, state, now_ms);
   }
 
-  return monitor_execute_shutdown(ctx, SHUTDOWN_MODE_IMMEDIATE);
+  return monitor_execute_shutdown(ctx);
 }
 
 static bool monitor_send_ping(openups_ctx_t *restrict ctx,
@@ -601,10 +599,10 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       .reply_deadline_ms = 0,
       .send_time_ms = 0,
       .last_watchdog_ms = now_ms,
-      .delayed_shutdown_deadline_ms = 0,
+        .shutdown_countdown_deadline_ms = 0,
       .expected_sequence = 0,
       .waiting_for_reply = false,
-      .delayed_shutdown_pending = false,
+        .shutdown_countdown_pending = false,
   };
 
   logger_info(&ctx->logger, "Starting OpenUPS for target %s, every %ds",
@@ -624,7 +622,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   };
 
   while (!ctx->stop_flag) {
-    if (monitor_handle_delayed_shutdown(ctx, &state, now_ms)) {
+    if (monitor_handle_shutdown_countdown(ctx, &state, now_ms)) {
       break;
     }
 

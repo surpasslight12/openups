@@ -105,10 +105,9 @@ run_test "openups.service 启动超时为 30 秒" \
 # ---- 参数解析 ----
 echo ""
 echo "--- 参数解析 ---"
-run_test "布尔参数 --dry-run=true" ./bin/openups --dry-run=true --help
-run_test "布尔参数 --dry-run=false" ./bin/openups --dry-run=false --help
-run_test "短选项 -dfalse" ./bin/openups -dfalse --help
-run_test "延迟关机参数 --shutdown-mode delayed" ./bin/openups --shutdown-mode delayed --delay 1 --help
+run_test "模式参数 --shutdown-mode dry-run" ./bin/openups --shutdown-mode dry-run --help
+run_test "模式参数 --shutdown-mode true-off" ./bin/openups --shutdown-mode true-off --help
+run_test "延迟倒计时参数 --shutdown-mode true-off --delay 1" ./bin/openups --shutdown-mode true-off --delay 1 --help
 expect_output_match "环境变量配置生效" \
     "Target host cannot be empty" \
     env OPENUPS_TARGET= ./bin/openups
@@ -127,9 +126,6 @@ expect_output_match "非法关机模式被拒绝" \
 expect_output_match "非法环境关机模式被拒绝" \
     "Invalid value for OPENUPS_SHUTDOWN_MODE" \
     env OPENUPS_SHUTDOWN_MODE=garbage ./bin/openups
-expect_output_match "非法环境布尔值被拒绝" \
-    "Invalid value for OPENUPS_DRY_RUN" \
-    env OPENUPS_DRY_RUN=maybe ./bin/openups
 expect_output_match "帮助选项不会掩盖后续非法参数" \
     "Invalid value for --log-level" \
     ./bin/openups --help --log-level garbage
@@ -346,24 +342,22 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         grep -cE "${pattern}" "${file}" 2>/dev/null || true
     }
 
-    echo "== Phase 1: dry-run=true + immediate（验证触发路径，不执行关机） =="
+    echo "== Phase 1: dry-run（验证触发路径，不执行关机） =="
     run_phase "Phase 1" "${PHASE1_SEC}" "${PHASE1_LOG}" \
         --target "${TARGET_FAIL}" \
         --interval "${INTERVAL_SEC}" \
         --threshold "${THRESHOLD}" \
         --timeout "${TIMEOUT_MS}" \
-        --shutdown-mode immediate \
-        --dry-run=true \
+        --shutdown-mode dry-run \
         --log-level debug
 
-    echo "== Phase 2: dry-run=false + log-only（验证非 dry-run 下安全分支） =="
+    echo "== Phase 2: log-only（验证安全分支） =="
     run_phase "Phase 2" "${PHASE2_SEC}" "${PHASE2_LOG}" \
         --target "${TARGET_FAIL}" \
         --interval "${INTERVAL_SEC}" \
         --threshold "${THRESHOLD}" \
         --timeout "${TIMEOUT_MS}" \
         --shutdown-mode log-only \
-        --dry-run=false \
         --log-level debug
 
     # ---- 连续运行测试 ----
@@ -383,7 +377,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --target 127.0.0.1 \
         --interval 1 \
         --threshold 10 \
-        --dry-run=true \
+        --shutdown-mode dry-run \
         --log-level debug)"
     sleep "${SIGNAL_TEST_SEC}"
     signal_monitor "${PHASE3_PID_FILE}" 15
@@ -412,7 +406,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --target 127.0.0.1 \
         --interval 1 \
         --threshold 10 \
-        --dry-run=true \
+        --shutdown-mode dry-run \
         --log-level debug)"
     sleep "${SIGNAL_TEST_SEC}"
     signal_monitor "${PHASE4_PID_FILE}" 10
@@ -443,7 +437,6 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --threshold 2 \
         --timeout "${TIMEOUT_MS}" \
         --shutdown-mode log-only \
-        --dry-run=false \
         --log-level debug >"${PHASE5_LOG}" 2>&1
     PHASE5_EXIT=$?
     set -e
@@ -461,8 +454,8 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         exit 1
     fi
 
-    # Phase 6: delayed 模式由进程内部倒计时（不应立刻退出）
-    echo "[INFO] Phase 6: delayed 模式内部倒计时验证"
+    # Phase 6: true-off + delay 由进程内部倒计时（不应立刻退出）
+    echo "[INFO] Phase 6: true-off 模式内部倒计时验证"
     PHASE6_DURATION=8
     set +e
     ${SUDO} timeout "${PHASE6_DURATION}s" "${BIN_PATH}" \
@@ -470,21 +463,20 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         --interval 1 \
         --threshold 2 \
         --timeout "${TIMEOUT_MS}" \
-        --shutdown-mode delayed \
+        --shutdown-mode true-off \
         --delay 1 \
-        --dry-run=false \
         --log-level debug >"${PHASE6_LOG}" 2>&1
     PHASE6_EXIT=$?
     set -e
 
-    phase6_countdown="$(count_lines "Starting delayed shutdown countdown|Delayed shutdown countdown" "${PHASE6_LOG}")"
+    phase6_countdown="$(count_lines "Starting true-off countdown|true-off countdown" "${PHASE6_LOG}")"
 
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
     if [[ "${PHASE6_EXIT}" -eq 124 && "${phase6_countdown}" -ge 1 ]]; then
-        echo "  ✓ Phase 6: delayed 模式由程序内部倒计时 (${phase6_countdown} countdown lines, kept running)"
+        echo "  ✓ Phase 6: true-off 模式由程序内部倒计时 (${phase6_countdown} countdown lines, kept running)"
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
-        echo "  ❌ Phase 6: delayed 倒计时测试失败 (exit=${PHASE6_EXIT}, countdown=${phase6_countdown})"
+        echo "  ❌ Phase 6: true-off 倒计时测试失败 (exit=${PHASE6_EXIT}, countdown=${phase6_countdown})"
         tail -n 20 "${PHASE6_LOG}" || true
         exit 1
     fi
@@ -499,11 +491,11 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         echo "Run timestamp: ${RUN_TS}"
         echo "Binary: ${BIN_PATH}"
         echo
-        echo "[Phase 1] dry-run=true + immediate"
+        echo "[Phase 1] dry-run"
         echo "  Trigger-related lines: ${phase1_trigger_count}"
         echo "  Log file: ${PHASE1_LOG}"
         echo
-        echo "[Phase 2] dry-run=false + log-only"
+        echo "[Phase 2] log-only"
         echo "  LOG-ONLY lines: ${phase2_log_only_count}"
         echo "  Ping failed lines: ${phase2_fail_count}"
         echo "  Log file: ${PHASE2_LOG}"
@@ -522,7 +514,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
         echo "  Exit code: ${PHASE5_EXIT} (expected: 124)"
         echo "  Log file: ${PHASE5_LOG}"
         echo
-        echo "[Phase 6] delayed 内部倒计时"
+        echo "[Phase 6] true-off 内部倒计时"
         echo "  Countdown lines: ${phase6_countdown_summary}"
         echo "  Exit code: ${PHASE6_EXIT} (expected: 124)"
         echo "  Log file: ${PHASE6_LOG}"
@@ -609,8 +601,7 @@ if [[ "${RUN_GRAY_SYSTEMD}" -eq 1 ]]; then
 
     write_dropin() {
         local shutdown_mode="$1"
-        local dry_run="$2"
-        local log_level="$3"
+        local log_level="$2"
 
         ${SUDO} mkdir -p "${DROPIN_DIR}"
         cat <<DROPIN_EOF | ${SUDO} tee "${DROPIN_FILE}" >/dev/null
@@ -620,7 +611,6 @@ Environment="OPENUPS_INTERVAL=${INTERVAL_SEC}"
 Environment="OPENUPS_THRESHOLD=${THRESHOLD}"
 Environment="OPENUPS_TIMEOUT=${TIMEOUT_MS}"
 Environment="OPENUPS_SHUTDOWN_MODE=${shutdown_mode}"
-Environment="OPENUPS_DRY_RUN=${dry_run}"
 Environment="OPENUPS_LOG_LEVEL=${log_level}"
 Environment="OPENUPS_SYSTEMD=true"
 Environment="OPENUPS_TIMESTAMP=false"
@@ -630,14 +620,13 @@ DROPIN_EOF
     capture_phase() {
         local phase_name="$1"
         local shutdown_mode="$2"
-        local dry_run="$3"
-        local log_level="$4"
-        local duration_sec="$5"
-        local out_log="$6"
+        local log_level="$3"
+        local duration_sec="$4"
+        local out_log="$5"
 
-        echo "[INFO] ${phase_name}: mode=${shutdown_mode}, dry_run=${dry_run}, duration=${duration_sec}s"
+        echo "[INFO] ${phase_name}: mode=${shutdown_mode}, duration=${duration_sec}s"
 
-        write_dropin "${shutdown_mode}" "${dry_run}" "${log_level}"
+        write_dropin "${shutdown_mode}" "${log_level}"
         ${SUDO} systemctl daemon-reload
 
         local start_ts
@@ -663,8 +652,8 @@ DROPIN_EOF
     echo "日志目录: ${SD_LOG_DIR}"
     echo
 
-    capture_phase "Phase 1" "immediate" "true" "debug" "${SD_PHASE1_SEC}" "${SD_PHASE1_LOG}"
-    capture_phase "Phase 2" "log-only" "false" "debug" "${SD_PHASE2_SEC}" "${SD_PHASE2_LOG}"
+    capture_phase "Phase 1" "dry-run" "debug" "${SD_PHASE1_SEC}" "${SD_PHASE1_LOG}"
+    capture_phase "Phase 2" "log-only" "debug" "${SD_PHASE2_SEC}" "${SD_PHASE2_LOG}"
 
     sd_p1_trigger="$(sd_count_lines "Would trigger shutdown|Shutdown triggered, exiting monitor loop" "${SD_PHASE1_LOG}")"
     sd_p2_log_only="$(sd_count_lines "mode is log-only|LOG-ONLY mode|continuing monitoring without shutdown" "${SD_PHASE2_LOG}")"
@@ -675,11 +664,11 @@ DROPIN_EOF
         echo "Run timestamp: ${RUN_TS}"
         echo "Service: ${SERVICE_NAME}"
         echo
-        echo "[Phase 1] immediate + dry-run=true"
+        echo "[Phase 1] dry-run"
         echo "  Trigger-related lines: ${sd_p1_trigger}"
         echo "  Log file: ${SD_PHASE1_LOG}"
         echo
-        echo "[Phase 2] log-only + dry-run=false"
+        echo "[Phase 2] log-only"
         echo "  LOG-ONLY lines: ${sd_p2_log_only}"
         echo "  Ping failed lines: ${sd_p2_fail}"
         echo "  Log file: ${SD_PHASE2_LOG}"

@@ -4,8 +4,7 @@
 #define OPENUPS_DEFAULT_INTERVAL_SEC 10
 #define OPENUPS_DEFAULT_FAIL_THRESHOLD 5
 #define OPENUPS_DEFAULT_TIMEOUT_MS 2000
-#define OPENUPS_DEFAULT_DELAY_MINUTES 1
-#define OPENUPS_DEFAULT_DRY_RUN true
+#define OPENUPS_DEFAULT_DELAY_MINUTES 0
 #define OPENUPS_DEFAULT_TIMESTAMP true
 #define OPENUPS_DEFAULT_SYSTEMD true
 
@@ -30,7 +29,6 @@ static const struct option CONFIG_LONG_OPTIONS[] = {
     {"timeout", required_argument, 0, 'w'},
     {"shutdown-mode", required_argument, 0, 'S'},
     {"delay", required_argument, 0, 'D'},
-    {"dry-run", optional_argument, 0, 'd'},
     {"log-level", required_argument, 0, 'L'},
     {"timestamp", optional_argument, 0, 'T'},
     {"systemd", optional_argument, 0, 'M'},
@@ -39,7 +37,7 @@ static const struct option CONFIG_LONG_OPTIONS[] = {
     {0, 0, 0, 0},
 };
 
-static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:d::L:T::M::vh";
+static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:L:T::M::vh";
 
 static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
   {"OPENUPS_INTERVAL", "OPENUPS_INTERVAL", offsetof(config_t, interval_sec),
@@ -49,11 +47,10 @@ static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
   {"OPENUPS_TIMEOUT", "OPENUPS_TIMEOUT", offsetof(config_t, timeout_ms), 1,
    INT_MAX},
   {"OPENUPS_DELAY_MINUTES", "OPENUPS_DELAY_MINUTES",
-   offsetof(config_t, delay_minutes), 1, INT_MAX},
+  offsetof(config_t, delay_minutes), 0, INT_MAX},
 };
 
 static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
-  {"OPENUPS_DRY_RUN", "OPENUPS_DRY_RUN", offsetof(config_t, dry_run)},
   {"OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
    offsetof(config_t, enable_systemd)},
   {"OPENUPS_TIMESTAMP", "OPENUPS_TIMESTAMP",
@@ -247,7 +244,7 @@ static bool parse_cmdline_shutdown_mode_option(
   if (!shutdown_mode_parse(arg, out_mode)) {
     return set_error(
         error_msg, error_size,
-        "Invalid value for %s: %s (use immediate|delayed|log-only)",
+      "Invalid value for %s: %s (use dry-run|true-off|log-only)",
         option_name, optarg_or_empty(arg));
   }
 
@@ -380,10 +377,10 @@ static bool is_valid_ip_literal(const char *restrict target) {
 
 const char *shutdown_mode_to_string(shutdown_mode_t mode) {
   switch (mode) {
-  case SHUTDOWN_MODE_IMMEDIATE:
-    return "immediate";
-  case SHUTDOWN_MODE_DELAYED:
-    return "delayed";
+  case SHUTDOWN_MODE_DRY_RUN:
+    return "dry-run";
+  case SHUTDOWN_MODE_TRUE_OFF:
+    return "true-off";
   case SHUTDOWN_MODE_LOG_ONLY:
     return "log-only";
   default:
@@ -397,12 +394,12 @@ static bool shutdown_mode_parse(const char *restrict str,
     return false;
   }
 
-  if (strcasecmp(str, "immediate") == 0) {
-    *out_mode = SHUTDOWN_MODE_IMMEDIATE;
+  if (strcasecmp(str, "dry-run") == 0) {
+    *out_mode = SHUTDOWN_MODE_DRY_RUN;
     return true;
   }
-  if (strcasecmp(str, "delayed") == 0) {
-    *out_mode = SHUTDOWN_MODE_DELAYED;
+  if (strcasecmp(str, "true-off") == 0) {
+    *out_mode = SHUTDOWN_MODE_TRUE_OFF;
     return true;
   }
   if (strcasecmp(str, "log-only") == 0) {
@@ -424,9 +421,8 @@ void config_init_default(config_t *restrict config) {
   config->interval_sec = OPENUPS_DEFAULT_INTERVAL_SEC;
   config->fail_threshold = OPENUPS_DEFAULT_FAIL_THRESHOLD;
   config->timeout_ms = OPENUPS_DEFAULT_TIMEOUT_MS;
-  config->shutdown_mode = SHUTDOWN_MODE_IMMEDIATE;
+  config->shutdown_mode = SHUTDOWN_MODE_DRY_RUN;
   config->delay_minutes = OPENUPS_DEFAULT_DELAY_MINUTES;
-  config->dry_run = OPENUPS_DEFAULT_DRY_RUN;
   config->enable_timestamp = OPENUPS_DEFAULT_TIMESTAMP;
   config->log_level = LOG_LEVEL_INFO;
   config->enable_systemd = OPENUPS_DEFAULT_SYSTEMD;
@@ -458,7 +454,7 @@ bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
     if (!shutdown_mode_parse(value, &parsed_mode)) {
       return set_error(
           error_msg, error_size,
-          "Invalid value for OPENUPS_SHUTDOWN_MODE: %s (use immediate|delayed|log-only)",
+          "Invalid value for OPENUPS_SHUTDOWN_MODE: %s (use dry-run|true-off|log-only)",
           value);
     }
     config->shutdown_mode = parsed_mode;
@@ -534,20 +530,12 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
       break;
     }
     case 'D':
-      if (!parse_cmdline_int_option("--delay", optarg, 1, INT_MAX,
+      if (!parse_cmdline_int_option("--delay", optarg, 0, INT_MAX,
                                     &config->delay_minutes, error_msg,
                                     error_size)) {
         return false;
       }
       break;
-    case 'd': {
-      if (!parse_cmdline_bool_option("--dry-run", optarg, true,
-                                     &config->dry_run, error_msg,
-                                     error_size)) {
-        return false;
-      }
-      break;
-    }
     case 'L': {
       if (!parse_cmdline_log_level_option("--log-level", optarg,
                                           &config->log_level, error_msg,
@@ -660,15 +648,13 @@ bool config_validate(const config_t *restrict config, char *restrict error_msg,
   if (config->timeout_ms <= 0) {
     return set_error(error_msg, error_size, "Timeout must be positive");
   }
-  if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    if (config->delay_minutes <= 0) {
-      return set_error(error_msg, error_size,
-                       "Delay minutes must be positive for delayed mode");
-    }
-    if (config->delay_minutes > 60 * 24 * 365) {
-      return set_error(error_msg, error_size,
-                       "Delay minutes too large (max 525600)");
-    }
+  if (config->delay_minutes < 0) {
+    return set_error(error_msg, error_size,
+                     "Delay minutes cannot be negative");
+  }
+  if (config->delay_minutes > 60 * 24 * 365) {
+    return set_error(error_msg, error_size,
+                     "Delay minutes too large (max 525600)");
   }
 
   return true;
@@ -688,7 +674,6 @@ void config_print(const config_t *restrict config,
   logger_debug(logger, "  Shutdown Mode: %s",
                shutdown_mode_to_string(config->shutdown_mode));
   logger_debug(logger, "  Delay: %d minutes", config->delay_minutes);
-  logger_debug(logger, "  Dry Run: %s", config->dry_run ? "true" : "false");
   logger_debug(logger, "  Log Level: %s",
                log_level_to_string(config->log_level));
   logger_debug(logger, "  Timestamp: %s",
@@ -713,17 +698,12 @@ void config_print_usage(void) {
       OPENUPS_DEFAULT_TIMEOUT_MS);
   printf("Shutdown Options:\n");
   printf("  -S, --shutdown-mode <mode>  Shutdown mode: "
-         "immediate|delayed|log-only\n");
-  printf("                              (default: immediate)\n");
-  printf("  -D, --delay <min>           Shutdown delay in minutes for delayed "
+      "dry-run|true-off|log-only\n");
+    printf("                              (default: dry-run)\n");
+    printf("  -D, --delay <min>           Shutdown countdown in minutes for dry-run/true-off "
       "mode (default: %d)\n",
       OPENUPS_DEFAULT_DELAY_MINUTES);
-  printf("  -d[ARG], --dry-run[=ARG]    Dry-run mode, no actual shutdown "
-      "(default: %s)\n",
-      OPENUPS_DEFAULT_DRY_RUN ? "true" : "false");
-  printf("                              ARG: true|false\n");
-  printf("                              Note: Use -dfalse or --dry-run=false "
-         "(no space)\n\n");
+    printf("                              0 means immediate execution without countdown\n\n");
   printf("Logging Options:\n");
   printf("  -L, --log-level <level>     Log level: "
          "silent|error|warn|info|debug\n");
@@ -747,20 +727,22 @@ void config_print_usage(void) {
       "  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
   printf("                OPENUPS_TIMEOUT\n");
   printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
-  printf("                OPENUPS_DRY_RUN\n");
-  printf("  Integration:  OPENUPS_SYSTEMD\n");
+    printf("  Integration:  OPENUPS_SYSTEMD\n");
   printf("\n");
   printf("Examples:\n");
-  printf("  # Basic monitoring with dry-run\n");
+    printf("  # Basic monitoring with dry-run mode\n");
   printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", OPENUPS_PROGRAM_NAME);
-  printf("  # Production mode (actual shutdown)\n");
-  printf("  %s -t 192.168.1.1 -i 5 -n 3 --dry-run=false\n\n",
+    printf("  # Production mode (actual shutdown)\n");
+    printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off\n\n",
          OPENUPS_PROGRAM_NAME);
+    printf("  # Delayed countdown before shutdown\n");
+    printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off --delay 3\n\n",
+      OPENUPS_PROGRAM_NAME);
   printf("  # Debug mode without timestamp (for systemd)\n");
   printf("  %s -t 8.8.8.8 -L debug --timestamp=false\n\n",
          OPENUPS_PROGRAM_NAME);
   printf("  # Short options (values must connect directly, no space)\n");
-  printf("  %s -t 8.8.8.8 -i5 -n3 -dfalse -Tfalse -Ldebug\n\n",
+    printf("  %s -t 8.8.8.8 -i5 -n3 -Strue-off -D0 -Tfalse -Ldebug\n\n",
          OPENUPS_PROGRAM_NAME);
 }
 

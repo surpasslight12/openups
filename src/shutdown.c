@@ -31,7 +31,7 @@ static bool shutdown_select_argv(const config_t *restrict config,
   shutdown_backend_t backend = select_shutdown_backend(use_systemctl_poweroff);
   argv[0] = (char *)shutdown_backend_command(backend);
 
-  if (config->shutdown_mode == SHUTDOWN_MODE_IMMEDIATE) {
+  if (config->shutdown_mode == SHUTDOWN_MODE_TRUE_OFF) {
     if (backend == SHUTDOWN_BACKEND_SYSTEMCTL) {
       argv[1] = "poweroff";
     } else {
@@ -50,9 +50,8 @@ static bool shutdown_should_execute(const config_t *restrict config,
     return false;
   }
 
-  if (config->dry_run) {
-    logger_info(logger, "[DRY-RUN] Would trigger shutdown in %s mode",
-                shutdown_mode_to_string(config->shutdown_mode));
+  if (config->shutdown_mode == SHUTDOWN_MODE_DRY_RUN) {
+    logger_info(logger, "[DRY-RUN] Would trigger shutdown now");
     return false;
   }
 
@@ -192,15 +191,8 @@ shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
     return SHUTDOWN_RESULT_NO_ACTION;
   }
 
-  if (config->shutdown_mode == SHUTDOWN_MODE_DELAYED) {
-    logger_error(logger,
-                 "Delayed shutdown countdown must be handled by the monitor loop");
-    return SHUTDOWN_RESULT_FAILED;
-  }
-
-  logger_warn(logger, "Shutdown threshold reached, mode is %s%s",
-              shutdown_mode_to_string(config->shutdown_mode),
-              config->dry_run ? " (dry-run enabled)" : "");
+  logger_warn(logger, "Shutdown threshold reached, mode is %s",
+              shutdown_mode_to_string(config->shutdown_mode));
 
   if (!shutdown_should_execute(config, logger)) {
     return SHUTDOWN_RESULT_NO_ACTION;
@@ -213,6 +205,6 @@ shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
     return SHUTDOWN_RESULT_FAILED;
   }
 
-  log_shutdown_plan(logger, config->shutdown_mode, config->delay_minutes);
+  logger_warn(logger, "Triggering shutdown now");
   return shutdown_execute_command(argv, logger);
 }
