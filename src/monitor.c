@@ -107,6 +107,14 @@ static uint64_t ctx_watchdog_interval_ms(const openups_ctx_t *restrict ctx) {
   return systemd_notifier_watchdog_interval_ms(&ctx->systemd);
 }
 
+static void monitor_reset_failures(openups_ctx_t *restrict ctx) {
+  if (ctx == NULL) {
+    return;
+  }
+
+  ctx->consecutive_fails = 0;
+}
+
 static int compute_wait_timeout_ms(const openups_ctx_t *restrict ctx,
                                    const monitor_state_t *restrict state,
                                    uint64_t now_ms) {
@@ -288,10 +296,8 @@ static void monitor_cancel_shutdown_countdown(openups_ctx_t *restrict ctx,
   monitor_clear_shutdown_countdown(state);
   logger_info(&ctx->logger,
               "Connectivity restored; cancelled pending shutdown countdown");
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(ctx,
-                          "Recovery detected; shutdown countdown cancelled");
-  }
+  notify_systemd_status(ctx,
+                        "Recovery detected; shutdown countdown cancelled");
 }
 
 static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx) {
@@ -303,7 +309,7 @@ static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx) {
       shutdown_trigger(&ctx->config, &ctx->logger, ctx_systemd_enabled(ctx));
 
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-    ctx->consecutive_fails = 0;
+    monitor_reset_failures(ctx);
     return false;
   }
 
@@ -315,7 +321,7 @@ static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx) {
   if (result != SHUTDOWN_RESULT_TRIGGERED) {
     logger_error(&ctx->logger,
                  "Shutdown command failed; continuing monitoring after reset");
-    ctx->consecutive_fails = 0;
+    monitor_reset_failures(ctx);
     return false;
   }
 
@@ -338,7 +344,7 @@ static bool monitor_arm_shutdown_countdown(openups_ctx_t *restrict ctx,
   if (delay_ms == 0 || delay_ms == UINT64_MAX) {
     logger_error(&ctx->logger,
                  "Failed to compute delayed shutdown countdown duration");
-    ctx->consecutive_fails = 0;
+    monitor_reset_failures(ctx);
     return false;
   }
 
@@ -346,7 +352,7 @@ static bool monitor_arm_shutdown_countdown(openups_ctx_t *restrict ctx,
   if (deadline_ms == UINT64_MAX) {
     logger_error(&ctx->logger,
                  "Failed to compute shutdown countdown deadline");
-    ctx->consecutive_fails = 0;
+    monitor_reset_failures(ctx);
     return false;
   }
 
@@ -354,12 +360,9 @@ static bool monitor_arm_shutdown_countdown(openups_ctx_t *restrict ctx,
   state->shutdown_countdown_deadline_ms = deadline_ms;
   log_shutdown_countdown(&ctx->logger, ctx->config.shutdown_mode,
                          ctx->config.delay_minutes);
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(
-        ctx, "%s countdown started: %d minutes",
-        shutdown_mode_to_string(ctx->config.shutdown_mode),
-        ctx->config.delay_minutes);
-  }
+  notify_systemd_status(ctx, "%s countdown started: %d minutes",
+                        shutdown_mode_to_string(ctx->config.shutdown_mode),
+                        ctx->config.delay_minutes);
   return false;
 }
 
@@ -378,10 +381,8 @@ static bool monitor_handle_shutdown_countdown(openups_ctx_t *restrict ctx,
   logger_warn(&ctx->logger,
               "%s countdown elapsed; executing shutdown now",
               shutdown_mode_to_string(ctx->config.shutdown_mode));
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(ctx, "%s countdown elapsed; executing shutdown",
-                          shutdown_mode_to_string(ctx->config.shutdown_mode));
-  }
+  notify_systemd_status(ctx, "%s countdown elapsed; executing shutdown",
+                        shutdown_mode_to_string(ctx->config.shutdown_mode));
   return monitor_execute_shutdown(ctx);
 }
 
@@ -398,12 +399,12 @@ static void handle_ping_success(openups_ctx_t *restrict ctx,
   logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                ctx->config.target, result->latency_ms);
 
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(
-        ctx, "OK: %" PRIu64 "/%" PRIu64 " pings (%.1f%%), latency %.2fms",
-        ctx->metrics.successful_pings, ctx->metrics.total_pings,
-        metrics_success_rate(&ctx->metrics), result->latency_ms);
-  }
+  notify_systemd_status(ctx,
+                        "OK: %" PRIu64 "/%" PRIu64 " pings (%.1f%%), latency %.2fms",
+                        ctx->metrics.successful_pings,
+                        ctx->metrics.total_pings,
+                        metrics_success_rate(&ctx->metrics),
+                        result->latency_ms);
 }
 
 static void handle_ping_failure(openups_ctx_t *restrict ctx,
@@ -417,11 +418,9 @@ static void handle_ping_failure(openups_ctx_t *restrict ctx,
   logger_warn(&ctx->logger, "Ping failed to %s: %s (consecutive failures: %d)",
               ctx->config.target, result->error_msg, ctx->consecutive_fails);
 
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(ctx,
-                          "WARNING: %d consecutive failures, threshold is %d",
-                          ctx->consecutive_fails, ctx->config.fail_threshold);
-  }
+  notify_systemd_status(ctx,
+                        "WARNING: %d consecutive failures, threshold is %d",
+                        ctx->consecutive_fails, ctx->config.fail_threshold);
 }
 
 __attribute__((format(printf, 2, 3)))
@@ -438,9 +437,7 @@ static monitor_step_result_t monitor_runtime_error(
   va_end(args);
 
   logger_error(&ctx->logger, "%s", error_msg);
-  if (ctx_systemd_enabled(ctx)) {
-    notify_systemd_status(ctx, "ERROR: %s", error_msg);
-  }
+  notify_systemd_status(ctx, "ERROR: %s", error_msg);
 
   return MONITOR_STEP_ERROR;
 }
@@ -454,7 +451,7 @@ static bool monitor_handle_threshold(openups_ctx_t *restrict ctx,
   }
 
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-    ctx->consecutive_fails = 0;
+    monitor_reset_failures(ctx);
     return false;
   }
 
@@ -660,8 +657,8 @@ int openups_reactor_run(openups_ctx_t *restrict ctx) {
     if (!systemd_notifier_ready(&ctx->systemd)) {
       logger_warn(&ctx->logger, "Failed to send systemd READY notification");
     }
-    notify_systemd_status(ctx, "Monitoring %s", ctx->config.target);
   }
+  notify_systemd_status(ctx, "Monitoring %s", ctx->config.target);
 
   struct pollfd fds[2] = {
       {.fd = signals.fd, .events = POLLIN, .revents = 0},
