@@ -5,7 +5,6 @@
 #define OPENUPS_DEFAULT_FAIL_THRESHOLD 5
 #define OPENUPS_DEFAULT_TIMEOUT_MS 2000
 #define OPENUPS_DEFAULT_DELAY_MINUTES 0
-#define OPENUPS_DEFAULT_TIMESTAMP true
 #define OPENUPS_DEFAULT_SYSTEMD true
 
 typedef struct {
@@ -30,14 +29,13 @@ static const struct option CONFIG_LONG_OPTIONS[] = {
     {"shutdown-mode", required_argument, 0, 'S'},
     {"delay", required_argument, 0, 'D'},
     {"log-level", required_argument, 0, 'L'},
-    {"timestamp", optional_argument, 0, 'T'},
     {"systemd", optional_argument, 0, 'M'},
     {"version", no_argument, 0, 'v'},
     {"help", no_argument, 0, 'h'},
     {0, 0, 0, 0},
 };
 
-static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:L:T::M::vh";
+static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:L:M::vh";
 
 static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
   {"OPENUPS_INTERVAL", "OPENUPS_INTERVAL", offsetof(config_t, interval_sec),
@@ -53,8 +51,6 @@ static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
 static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
   {"OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
    offsetof(config_t, enable_systemd)},
-  {"OPENUPS_TIMESTAMP", "OPENUPS_TIMESTAMP",
-   offsetof(config_t, enable_timestamp)},
 };
 
 static bool shutdown_mode_parse(const char *restrict str,
@@ -423,9 +419,16 @@ void config_init_default(config_t *restrict config) {
   config->timeout_ms = OPENUPS_DEFAULT_TIMEOUT_MS;
   config->shutdown_mode = SHUTDOWN_MODE_DRY_RUN;
   config->delay_minutes = OPENUPS_DEFAULT_DELAY_MINUTES;
-  config->enable_timestamp = OPENUPS_DEFAULT_TIMESTAMP;
   config->log_level = LOG_LEVEL_INFO;
   config->enable_systemd = OPENUPS_DEFAULT_SYSTEMD;
+}
+
+bool config_log_timestamps_enabled(const config_t *restrict config) {
+  if (config == NULL) {
+    return false;
+  }
+
+  return !config->enable_systemd;
 }
 
 bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
@@ -540,14 +543,6 @@ bool config_load_from_cmdline(config_t *restrict config, int argc,
       if (!parse_cmdline_log_level_option("--log-level", optarg,
                                           &config->log_level, error_msg,
                                           error_size)) {
-        return false;
-      }
-      break;
-    }
-    case 'T': {
-      if (!parse_cmdline_bool_option("--timestamp", optarg, true,
-                                     &config->enable_timestamp, error_msg,
-                                     error_size)) {
         return false;
       }
       break;
@@ -677,7 +672,7 @@ void config_print(const config_t *restrict config,
   logger_debug(logger, "  Log Level: %s",
                log_level_to_string(config->log_level));
   logger_debug(logger, "  Timestamp: %s",
-               config->enable_timestamp ? "true" : "false");
+               config_log_timestamps_enabled(config) ? "true" : "false");
   logger_debug(logger, "  Systemd: %s",
                config->enable_systemd ? "true" : "false");
 }
@@ -708,16 +703,15 @@ void config_print_usage(void) {
   printf("  -L, --log-level <level>     Log level: "
          "silent|error|warn|info|debug\n");
   printf("                              (default: info)\n");
-  printf("  -T[ARG], --timestamp[=ARG]  Enable/disable log timestamps "
-      "(default: %s)\n",
-      OPENUPS_DEFAULT_TIMESTAMP ? "true" : "false");
-  printf("                              ARG format: true|false\n");
   printf("System Integration:\n");
   printf("  -M[ARG], --systemd[=ARG]    Enable/disable systemd integration "
       "(default: %s)\n",
       OPENUPS_DEFAULT_SYSTEMD ? "true" : "false");
   printf("                              Watchdog is auto-enabled with "
          "systemd\n");
+    printf("                              Log timestamps are auto-disabled when "
+      "systemd is enabled\n");
+    printf("                              Otherwise timestamps stay enabled\n");
   printf("                              ARG format: true|false\n\n");
   printf("General Options:\n");
   printf("  -v, --version               Show version information\n");
@@ -727,22 +721,23 @@ void config_print_usage(void) {
       "  Network:      OPENUPS_TARGET, OPENUPS_INTERVAL, OPENUPS_THRESHOLD,\n");
   printf("                OPENUPS_TIMEOUT\n");
   printf("  Shutdown:     OPENUPS_SHUTDOWN_MODE, OPENUPS_DELAY_MINUTES,\n");
-    printf("  Integration:  OPENUPS_SYSTEMD\n");
+  printf("  Logging:      OPENUPS_LOG_LEVEL\n");
+  printf("  Integration:  OPENUPS_SYSTEMD\n");
   printf("\n");
   printf("Examples:\n");
-    printf("  # Basic monitoring with dry-run mode\n");
+  printf("  # Basic monitoring with dry-run mode\n");
   printf("  %s -t 1.1.1.1 -i 10 -n 5\n\n", OPENUPS_PROGRAM_NAME);
-    printf("  # Production mode (actual shutdown)\n");
-    printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off\n\n",
+  printf("  # Production mode (actual shutdown)\n");
+  printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off\n\n",
          OPENUPS_PROGRAM_NAME);
-    printf("  # Delayed countdown before shutdown\n");
-    printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off --delay 3\n\n",
+  printf("  # Delayed countdown before shutdown\n");
+  printf("  %s -t 192.168.1.1 -i 5 -n 3 --shutdown-mode true-off --delay 3\n\n",
       OPENUPS_PROGRAM_NAME);
-  printf("  # Debug mode without timestamp (for systemd)\n");
-  printf("  %s -t 8.8.8.8 -L debug --timestamp=false\n\n",
+  printf("  # Foreground debug mode with local timestamps\n");
+  printf("  %s -t 8.8.8.8 -L debug --systemd=false\n\n",
          OPENUPS_PROGRAM_NAME);
   printf("  # Short options (values must connect directly, no space)\n");
-    printf("  %s -t 8.8.8.8 -i5 -n3 -Strue-off -D0 -Tfalse -Ldebug\n\n",
+  printf("  %s -t 8.8.8.8 -i5 -n3 -Strue-off -D0 -Mfalse -Ldebug\n\n",
          OPENUPS_PROGRAM_NAME);
 }
 

@@ -238,7 +238,7 @@ static bool openups_ctx_init(openups_ctx_t *restrict ctx,
   }
 
   logger_init(&ctx->logger, ctx->config.log_level,
-              ctx->config.enable_timestamp);
+              config_log_timestamps_enabled(&ctx->config));
   if (ctx->config.log_level == LOG_LEVEL_DEBUG) {
     config_print(&ctx->config, &ctx->logger);
   }

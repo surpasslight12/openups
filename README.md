@@ -107,7 +107,6 @@ rm -rf graylogs
 | 关机模式 | `-S, --shutdown-mode` | `OPENUPS_SHUTDOWN_MODE` | `dry-run` | `dry-run` / `true-off` / `log-only` |
 | 倒计时分钟 | `-D, --delay` | `OPENUPS_DELAY_MINUTES` | `0` | `dry-run` / `true-off` 模式下的程序内倒计时，`0` 表示立即执行 |
 | 日志级别 | `-L, --log-level` | `OPENUPS_LOG_LEVEL` | `info` | `silent` / `error` / `warn` / `info` / `debug` |
-| 时间戳 | `-T, --timestamp` | `OPENUPS_TIMESTAMP` | `true` | 日志是否包含时间戳 |
 | systemd 集成 | `-M, --systemd` | `OPENUPS_SYSTEMD` | `true` | 启用 sd_notify 和 watchdog |
 
 ## 模式说明
@@ -122,6 +121,15 @@ rm -rf graylogs
   当网络失败达到阈值时，它只记录失败警告并**将失败计数器清零，进程继续无限期监控下去**。这种模式使 OpenUPS 退化为一个纯粹的后台网络探针和服务状态采集器，适合配合 systemd 持续监控网络。
 
 `--delay` 现在只控制 `dry-run` 和 `true-off` 的程序内倒计时，不再作为独立关机模式存在。
+
+## 日志时间戳
+
+`OPENUPS_TIMESTAMP` 已并入 `OPENUPS_SYSTEMD` 的行为，不再单独暴露。
+
+- 当 `--systemd=true` 时，日志会进入 journald，OpenUPS 自动关闭前缀时间戳，避免和 systemd/journal 的时间字段重复。
+- 当 `--systemd=false` 时，OpenUPS 自动打开时间戳，便于前台运行、重定向文件和手工排障。
+
+也就是说，时间戳现在是派生行为，而不是单独的 CLI 或环境变量配置项。
 
 ## 许可证
 

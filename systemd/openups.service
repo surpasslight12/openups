@@ -24,7 +24,6 @@ Environment="OPENUPS_TIMEOUT=2000"
 Environment="OPENUPS_SHUTDOWN_MODE=dry-run"
 Environment="OPENUPS_DELAY_MINUTES=0"
 Environment="OPENUPS_LOG_LEVEL=info"
-Environment="OPENUPS_TIMESTAMP=false"
 Environment="OPENUPS_SYSTEMD=true"
 WatchdogSec=30
 

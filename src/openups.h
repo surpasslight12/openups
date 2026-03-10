@@ -78,7 +78,6 @@ typedef struct {
   int delay_minutes;
 
   /* Logging */
-  bool enable_timestamp;
   log_level_t log_level;
 
   /* Integration */
@@ -168,6 +167,7 @@ bool config_resolve(config_t *restrict config, int argc, char **restrict argv,
                     char *restrict error_msg, size_t error_size);
 bool config_validate(const config_t *restrict config, char *restrict error_msg,
                      size_t error_size);
+bool config_log_timestamps_enabled(const config_t *restrict config);
 void config_print(const config_t *restrict config,
                   const logger_t *restrict logger);
 bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,

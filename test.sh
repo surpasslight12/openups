@@ -108,6 +108,9 @@ echo "--- 参数解析 ---"
 run_test "模式参数 --shutdown-mode dry-run" ./bin/openups --shutdown-mode dry-run --help
 run_test "模式参数 --shutdown-mode true-off" ./bin/openups --shutdown-mode true-off --help
 run_test "延迟倒计时参数 --shutdown-mode true-off --delay 1" ./bin/openups --shutdown-mode true-off --delay 1 --help
+expect_output_match "帮助信息不再暴露独立时间戳参数" \
+    "System Integration:" \
+    bash -c '! "$1" --help 2>&1 | grep -q -- "--timestamp" && "$1" --help' _ ./bin/openups
 expect_output_match "环境变量配置生效" \
     "Target host cannot be empty" \
     env OPENUPS_TARGET= ./bin/openups
@@ -613,7 +616,6 @@ Environment="OPENUPS_TIMEOUT=${TIMEOUT_MS}"
 Environment="OPENUPS_SHUTDOWN_MODE=${shutdown_mode}"
 Environment="OPENUPS_LOG_LEVEL=${log_level}"
 Environment="OPENUPS_SYSTEMD=true"
-Environment="OPENUPS_TIMESTAMP=false"
 DROPIN_EOF
     }
 
