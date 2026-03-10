@@ -76,6 +76,17 @@ static bool shutdown_sleep_retry_window(void) {
   return true;
 }
 
+static shutdown_result_t shutdown_assume_started(
+    const logger_t *restrict logger, const char *restrict reason) {
+  if (logger != NULL && reason != NULL) {
+    logger_warn(logger,
+                "Unable to confirm shutdown command startup: %s; assuming command started",
+                reason);
+  }
+
+  return SHUTDOWN_RESULT_TRIGGERED;
+}
+
 static shutdown_result_t shutdown_consume_child_status(
     pid_t child_pid, pid_t wait_result, int status,
     const char *restrict command_path, const logger_t *restrict logger) {
@@ -118,9 +129,8 @@ static shutdown_result_t shutdown_observe_startup(
     pid_t result = waitpid(child_pid, &status, WNOHANG);
     if (result < 0) {
       if (errno == EINTR) {
-        logger_warn(logger,
-                    "Monotonic clock unavailable while observing shutdown startup; assuming command started");
-        return SHUTDOWN_RESULT_TRIGGERED;
+        return shutdown_assume_started(
+            logger, "monotonic clock unavailable during startup observation");
       }
 
       logger_error(logger, "waitpid() failed: %s", strerror(errno));
@@ -133,9 +143,8 @@ static shutdown_result_t shutdown_observe_startup(
       return immediate_result;
     }
 
-    logger_warn(logger,
-                "Monotonic clock unavailable while observing shutdown startup; assuming command started");
-    return SHUTDOWN_RESULT_TRIGGERED;
+    return shutdown_assume_started(
+        logger, "monotonic clock unavailable during startup observation");
   }
 
   uint64_t deadline_ms = start_ms + OPENUPS_SHUTDOWN_STARTUP_GRACE_MS;
@@ -159,13 +168,18 @@ static shutdown_result_t shutdown_observe_startup(
 
     uint64_t now_ms = get_monotonic_ms();
     if (now_ms == UINT64_MAX || now_ms >= deadline_ms) {
-      logger_info(logger, "Shutdown command started successfully");
+      if (now_ms == UINT64_MAX) {
+        return shutdown_assume_started(
+            logger, "monotonic clock unavailable before startup grace elapsed");
+      }
+
+      logger_info(logger, "Shutdown command startup grace elapsed; assuming it is running");
       return SHUTDOWN_RESULT_TRIGGERED;
     }
 
     if (!shutdown_sleep_retry_window()) {
-      logger_info(logger, "Shutdown command started successfully");
-      return SHUTDOWN_RESULT_TRIGGERED;
+      return shutdown_assume_started(
+          logger, "startup observation sleep interrupted by non-retryable error");
     }
   }
 }
