@@ -990,8 +990,7 @@ run_internal_c_test \
     "${MONITOR_RECEIVE_TEST_LOG}" \
     "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c" \
-    "${ROOT_DIR}/src/runtime_services.c"
+    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 MONITOR_SEND_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test.c"
 MONITOR_SEND_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test"
@@ -1005,8 +1004,7 @@ run_internal_c_test \
     "${MONITOR_SEND_TEST_LOG}" \
     "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c" \
-    "${ROOT_DIR}/src/runtime_services.c"
+    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 MONITOR_SHUTDOWN_FAILURE_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test.c"
 MONITOR_SHUTDOWN_FAILURE_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test"
@@ -1020,8 +1018,7 @@ run_internal_c_test \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_LOG}" \
     "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c" \
-    "${ROOT_DIR}/src/runtime_services.c"
+    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 SHUTDOWN_CLOCK_TEST_SRC="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test.c"
 SHUTDOWN_CLOCK_TEST_BIN="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test"

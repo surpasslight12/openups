@@ -1,7 +1,5 @@
 #include "shutdown_fsm.h"
 
-#include "runtime_services.h"
-
 #include <stdarg.h>
 
 static uint64_t shutdown_fsm_config_delay_ms(const config_t *restrict config) {

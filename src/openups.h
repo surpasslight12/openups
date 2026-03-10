@@ -5,6 +5,7 @@
 #include <netinet/ip_icmp.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 #include <stdbool.h>
 #include <stdckdint.h>
@@ -190,6 +191,50 @@ bool systemd_notifier_stopping(systemd_notifier_t *restrict notifier);
 bool systemd_notifier_watchdog(systemd_notifier_t *restrict notifier);
 uint64_t systemd_notifier_watchdog_interval_ms(
     const systemd_notifier_t *restrict notifier);
+
+static inline bool runtime_services_systemd_enabled(
+    const openups_ctx_t *restrict ctx) {
+  return ctx != NULL && systemd_notifier_is_enabled(&ctx->systemd);
+}
+
+static inline uint64_t runtime_services_watchdog_interval_ms(
+    const openups_ctx_t *restrict ctx) {
+  if (ctx == NULL) {
+    return 0;
+  }
+
+  return systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+}
+
+static inline void runtime_services_notify_statusf(
+    openups_ctx_t *restrict ctx, const char *restrict fmt, ...) {
+  if (ctx == NULL || !runtime_services_systemd_enabled(ctx) || fmt == NULL) {
+    return;
+  }
+
+  char status_msg[OPENUPS_SYSTEMD_STATUS_SIZE];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(status_msg, sizeof(status_msg), fmt, args);
+  va_end(args);
+
+  (void)systemd_notifier_status(&ctx->systemd, status_msg);
+}
+
+static inline bool runtime_services_notify_ready(
+    openups_ctx_t *restrict ctx) {
+  return ctx != NULL && systemd_notifier_ready(&ctx->systemd);
+}
+
+static inline bool runtime_services_notify_watchdog(
+    openups_ctx_t *restrict ctx) {
+  return ctx != NULL && systemd_notifier_watchdog(&ctx->systemd);
+}
+
+static inline bool runtime_services_notify_stopping(
+    openups_ctx_t *restrict ctx) {
+  return ctx != NULL && systemd_notifier_stopping(&ctx->systemd);
+}
 
 #define DEFINE_LOGGER(name, lvl, attrs)                                        \
   static inline void attrs name(const logger_t *restrict logger,               \
