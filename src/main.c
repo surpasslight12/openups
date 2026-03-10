@@ -627,10 +627,11 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
     return -1;
   }
 
-  int exit_code = -1;
+  int exit_code = 0;
   size_t packet_len = 0;
   if (!monitor_prepare_packet(ctx, &packet_len)) {
     logger_error(&ctx->logger, "Failed to prepare ICMP packet buffer");
+    exit_code = 1;
     goto cleanup;
   }
 
@@ -638,6 +639,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   const uint64_t interval_ms = config_interval_ms(&ctx->config);
   if (now_ms == UINT64_MAX || interval_ms == 0 || interval_ms == UINT64_MAX) {
     logger_error(&ctx->logger, "Failed to initialize monotonic timing state");
+    exit_code = 1;
     goto cleanup;
   }
 
@@ -669,6 +671,11 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   };
 
   while (!ctx->stop_flag) {
+    uint64_t refreshed_now_ms = get_monotonic_ms();
+    if (refreshed_now_ms != UINT64_MAX) {
+      now_ms = refreshed_now_ms;
+    }
+
     if (monitor_handle_shutdown_countdown(ctx, &state, now_ms)) {
       break;
     }
@@ -709,6 +716,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
           next_ping_deadline(state.next_ping_ms, now_ms, interval_ms);
       if (state.next_ping_ms == UINT64_MAX) {
         logger_error(&ctx->logger, "Failed to compute next ping deadline");
+        exit_code = 1;
         break;
       }
     }
@@ -717,6 +725,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
     int poll_result = poll(fds, 2, wait_timeout_ms);
     if (poll_result < 0 && errno != EINTR) {
       logger_error(&ctx->logger, "poll error: %s", strerror(errno));
+      exit_code = 1;
       break;
     }
 
@@ -727,10 +736,12 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
 
     if (pollfd_has_error(fds[0].revents)) {
       logger_error(&ctx->logger, "Signal fd entered error state");
+      exit_code = 1;
       break;
     }
     if (pollfd_has_error(fds[1].revents)) {
       logger_error(&ctx->logger, "ICMP socket entered error state");
+      exit_code = 1;
       break;
     }
 
@@ -739,6 +750,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
     }
     if ((fds[1].revents & POLLIN) != 0) {
       if (!drain_icmp_replies(ctx, now_ms, &state)) {
+        exit_code = 1;
         break;
       }
     }
@@ -756,7 +768,6 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
 
   openups_ctx_print_stats(ctx);
   logger_info(&ctx->logger, "OpenUPS monitor stopped");
-  exit_code = 0;
 
 cleanup:
   signal_channel_destroy(&signals, &ctx->logger);
