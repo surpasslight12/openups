@@ -50,6 +50,21 @@ static void log_message(const logger_t *restrict logger, log_level_t level,
   }
 }
 
+void logger_write(log_level_t level, bool enable_timestamp,
+                  const char *restrict fmt, ...) {
+  if (fmt == NULL) {
+    return;
+  }
+
+  logger_t logger;
+  logger_init(&logger, level, enable_timestamp);
+
+  va_list args;
+  va_start(args, fmt);
+  logger_log_va(&logger, level, fmt, args);
+  va_end(args);
+}
+
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
                    const char *restrict fmt, va_list ap) {
   char buffer[OPENUPS_LOG_BUFFER_SIZE];

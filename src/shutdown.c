@@ -76,6 +76,35 @@ static bool shutdown_sleep_retry_window(void) {
   return true;
 }
 
+static shutdown_result_t shutdown_consume_child_status(
+    pid_t child_pid, pid_t wait_result, int status,
+    const char *restrict command_path, const logger_t *restrict logger) {
+  if (wait_result != child_pid) {
+    return SHUTDOWN_RESULT_NO_ACTION;
+  }
+
+  if (WIFEXITED(status)) {
+    int exit_code = WEXITSTATUS(status);
+    if (exit_code == 0) {
+      logger_info(logger, "Shutdown command executed successfully");
+      return SHUTDOWN_RESULT_TRIGGERED;
+    }
+
+    logger_error(logger, "Shutdown command failed with exit code %d: %s",
+                 exit_code, command_path);
+    return SHUTDOWN_RESULT_FAILED;
+  }
+
+  if (WIFSIGNALED(status)) {
+    logger_error(logger, "Shutdown command terminated by signal %d",
+                 WTERMSIG(status));
+    return SHUTDOWN_RESULT_FAILED;
+  }
+
+  logger_error(logger, "Shutdown command exited unexpectedly");
+  return SHUTDOWN_RESULT_FAILED;
+}
+
 static shutdown_result_t shutdown_observe_startup(
     pid_t child_pid, const char *restrict command_path,
     const logger_t *restrict logger) {
@@ -85,7 +114,27 @@ static shutdown_result_t shutdown_observe_startup(
 
   uint64_t start_ms = get_monotonic_ms();
   if (start_ms == UINT64_MAX) {
-    logger_info(logger, "Shutdown command started successfully");
+    int status = 0;
+    pid_t result = waitpid(child_pid, &status, WNOHANG);
+    if (result < 0) {
+      if (errno == EINTR) {
+        logger_warn(logger,
+                    "Monotonic clock unavailable while observing shutdown startup; assuming command started");
+        return SHUTDOWN_RESULT_TRIGGERED;
+      }
+
+      logger_error(logger, "waitpid() failed: %s", strerror(errno));
+      return SHUTDOWN_RESULT_FAILED;
+    }
+
+    shutdown_result_t immediate_result = shutdown_consume_child_status(
+        child_pid, result, status, command_path, logger);
+    if (immediate_result != SHUTDOWN_RESULT_NO_ACTION) {
+      return immediate_result;
+    }
+
+    logger_warn(logger,
+                "Monotonic clock unavailable while observing shutdown startup; assuming command started");
     return SHUTDOWN_RESULT_TRIGGERED;
   }
 
@@ -93,27 +142,10 @@ static shutdown_result_t shutdown_observe_startup(
   int status = 0;
   while (true) {
     pid_t result = waitpid(child_pid, &status, WNOHANG);
-    if (result == child_pid) {
-      if (WIFEXITED(status)) {
-        int exit_code = WEXITSTATUS(status);
-        if (exit_code == 0) {
-          logger_info(logger, "Shutdown command executed successfully");
-          return SHUTDOWN_RESULT_TRIGGERED;
-        }
-
-        logger_error(logger, "Shutdown command failed with exit code %d: %s",
-                     exit_code, command_path);
-        return SHUTDOWN_RESULT_FAILED;
-      }
-
-      if (WIFSIGNALED(status)) {
-        logger_error(logger, "Shutdown command terminated by signal %d",
-                     WTERMSIG(status));
-        return SHUTDOWN_RESULT_FAILED;
-      }
-
-      logger_error(logger, "Shutdown command exited unexpectedly");
-      return SHUTDOWN_RESULT_FAILED;
+    shutdown_result_t child_result = shutdown_consume_child_status(
+        child_pid, result, status, command_path, logger);
+    if (child_result != SHUTDOWN_RESULT_NO_ACTION) {
+      return child_result;
     }
 
     if (result < 0) {

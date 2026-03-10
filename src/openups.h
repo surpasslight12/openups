@@ -135,6 +135,8 @@ static_assert(sizeof(sig_atomic_t) >= sizeof(int),
 char *get_timestamp_str(char *restrict buffer, size_t size);
 void logger_init(logger_t *restrict logger, log_level_t level,
                  bool enable_timestamp);
+void logger_write(log_level_t level, bool enable_timestamp,
+                  const char *restrict fmt, ...);
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
                    const char *restrict fmt, va_list ap);
 void metrics_init(metrics_t *metrics);

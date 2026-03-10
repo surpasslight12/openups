@@ -758,7 +758,7 @@ int main(int argc, char **argv) {
 
   if (!config_resolve(&config, argc, argv, &exit_requested, error_msg,
                       sizeof(error_msg))) {
-    fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
+    logger_write(LOG_LEVEL_ERROR, false, "OpenUPS failed: %s", error_msg);
     return 1;
   }
 
@@ -768,14 +768,15 @@ int main(int argc, char **argv) {
 
   openups_ctx_t ctx;
   if (!openups_ctx_init(&ctx, &config, error_msg, sizeof(error_msg))) {
-    fprintf(stderr, "OpenUPS failed: %s\n", error_msg);
+    logger_write(LOG_LEVEL_ERROR, config_log_timestamps_enabled(&config),
+                 "OpenUPS failed: %s", error_msg);
     return 1;
   }
 
   int rc = openups_reactor_run(&ctx);
-  openups_ctx_destroy(&ctx);
   if (rc != 0) {
-    fprintf(stderr, "OpenUPS exited with code %d\n", rc);
+    logger_error(&ctx.logger, "OpenUPS exited with code %d", rc);
   }
+  openups_ctx_destroy(&ctx);
   return rc;
 }
