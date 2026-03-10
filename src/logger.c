@@ -1,5 +1,7 @@
 #include "openups.h"
 
+#include <stdio.h>
+
 void logger_init(logger_t *restrict logger, log_level_t level,
                  bool enable_timestamp) {
   if (logger == NULL) {

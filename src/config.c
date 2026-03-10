@@ -1,5 +1,14 @@
 #include "openups.h"
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+
 #define OPENUPS_DEFAULT_TARGET "1.1.1.1"
 #define OPENUPS_DEFAULT_INTERVAL_SEC 10
 #define OPENUPS_DEFAULT_FAIL_THRESHOLD 5

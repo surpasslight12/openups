@@ -1,5 +1,7 @@
 #include "openups.h"
 
+#include <stdio.h>
+
 /* Monotonic clock in milliseconds; returns UINT64_MAX on overflow or error. */
 uint64_t get_monotonic_ms(void) {
   struct timespec ts;

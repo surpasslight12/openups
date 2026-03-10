@@ -1,17 +1,8 @@
 #ifndef OPENUPS_H
 #define OPENUPS_H
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <getopt.h>
-#include <inttypes.h>
-#include <limits.h>
 #include <netinet/icmp6.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
-#include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
 
@@ -19,15 +10,8 @@
 #include <stdckdint.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/signalfd.h>
 #include <sys/socket.h>
-#include <sys/un.h>
-#include <sys/wait.h>
 #include <time.h>
-#include <unistd.h>
 
 #define OPENUPS_VERSION "1.2.0"
 #define OPENUPS_PROGRAM_NAME "openups"

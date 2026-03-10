@@ -1,5 +1,12 @@
 #include "openups.h"
 
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/un.h>
+#include <unistd.h>
+
 #define OPENUPS_NOTIFY_RETRY_COUNT 3
 #define OPENUPS_NOTIFY_RETRY_NS 10000000L
 
@@ -202,7 +209,7 @@ bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
   if (ok) {
     snprintf(notifier->last_status, sizeof(notifier->last_status), "%s",
              status);
-    notifier->last_status_ms = now_ms;
+    notifier->last_status_ms = (now_ms == UINT64_MAX) ? 0 : now_ms;
   }
   return ok;
 }

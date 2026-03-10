@@ -1,5 +1,13 @@
 #include "openups.h"
+
+#include <arpa/inet.h>
+#include <errno.h>
 #include <linux/filter.h>
+
+#include <netinet/ip.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 uint16_t calculate_checksum(const void *data, size_t len) {
   const uint8_t *bytes = (const uint8_t *)data;

@@ -1,5 +1,12 @@
 #include "openups.h"
+
+#include <errno.h>
+#include <fcntl.h>
 #include <spawn.h>
+
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #define OPENUPS_SHUTDOWN_STARTUP_GRACE_MS 1000U
 #define OPENUPS_SHUTDOWN_POLL_INTERVAL_NS 50000000L

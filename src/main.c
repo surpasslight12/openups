@@ -1,5 +1,14 @@
 #include "openups.h"
 
+#include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <poll.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/signalfd.h>
+#include <unistd.h>
+
 #define OPENUPS_PACKET_SIZE 64U
 #define OPENUPS_MAX_REPLY_DRAIN_PER_TICK 32U
 
@@ -19,6 +28,12 @@ typedef struct {
   bool waiting_for_reply;
   bool shutdown_countdown_pending;
 } monitor_state_t;
+
+typedef enum {
+  MONITOR_STEP_CONTINUE = 0,
+  MONITOR_STEP_STOP = 1,
+  MONITOR_STEP_ERROR = 2,
+} monitor_step_result_t;
 
 static uint64_t monotonic_add_ms(uint64_t base_ms, uint64_t delta_ms) {
   uint64_t result = 0;
@@ -461,6 +476,27 @@ static void handle_ping_failure(openups_ctx_t *restrict ctx,
   }
 }
 
+__attribute__((format(printf, 2, 3)))
+static monitor_step_result_t monitor_runtime_error(
+    openups_ctx_t *restrict ctx, const char *restrict fmt, ...) {
+  if (ctx == NULL || fmt == NULL) {
+    return MONITOR_STEP_ERROR;
+  }
+
+  char error_msg[OPENUPS_LOG_BUFFER_SIZE];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(error_msg, sizeof(error_msg), fmt, args);
+  va_end(args);
+
+  logger_error(&ctx->logger, "%s", error_msg);
+  if (ctx->systemd_enabled) {
+    notify_systemd_status(ctx, "ERROR: %s", error_msg);
+  }
+
+  return MONITOR_STEP_ERROR;
+}
+
 static bool monitor_handle_threshold(openups_ctx_t *restrict ctx,
                                      monitor_state_t *restrict state,
                                      uint64_t now_ms) {
@@ -481,11 +517,12 @@ static bool monitor_handle_threshold(openups_ctx_t *restrict ctx,
   return monitor_execute_shutdown(ctx);
 }
 
-static bool monitor_send_ping(openups_ctx_t *restrict ctx,
-                              monitor_state_t *restrict state,
-                              uint64_t now_ms, size_t packet_len) {
+static monitor_step_result_t monitor_send_ping(openups_ctx_t *restrict ctx,
+                                               monitor_state_t *restrict state,
+                                               uint64_t now_ms,
+                                               size_t packet_len) {
   if (ctx == NULL || state == NULL) {
-    return false;
+    return MONITOR_STEP_ERROR;
   }
 
   ping_result_t error_result = {false, -1.0, {0}};
@@ -493,24 +530,22 @@ static bool monitor_send_ping(openups_ctx_t *restrict ctx,
                              ctx->cached_pid, packet_len,
                              error_result.error_msg,
                              sizeof(error_result.error_msg))) {
-    handle_ping_failure(ctx, &error_result);
-    return !monitor_handle_threshold(ctx, state, now_ms);
+    return monitor_runtime_error(ctx, "Failed to send ICMP echo: %s",
+                                 error_result.error_msg);
   }
 
   uint64_t reply_deadline_ms =
       monotonic_add_ms(now_ms, (uint64_t)ctx->config.timeout_ms);
   if (reply_deadline_ms == UINT64_MAX) {
-    ping_result_t overflow_error = {false, -1.0,
-                                    "Failed to compute reply deadline"};
-    handle_ping_failure(ctx, &overflow_error);
-    return !monitor_handle_threshold(ctx, state, now_ms);
+    return monitor_runtime_error(ctx,
+                                 "Failed to compute reply deadline");
   }
 
   state->waiting_for_reply = true;
   state->send_time_ms = now_ms;
   state->reply_deadline_ms = reply_deadline_ms;
   state->expected_sequence = ctx->pinger.sequence;
-  return true;
+  return MONITOR_STEP_CONTINUE;
 }
 
 static bool drain_icmp_replies(openups_ctx_t *restrict ctx, uint64_t now_ms,
@@ -648,7 +683,13 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
     }
 
     if (!state.waiting_for_reply && now_ms >= state.next_ping_ms) {
-      if (!monitor_send_ping(ctx, &state, now_ms, packet_len)) {
+      monitor_step_result_t send_result =
+          monitor_send_ping(ctx, &state, now_ms, packet_len);
+      if (send_result == MONITOR_STEP_ERROR) {
+        exit_code = 1;
+        break;
+      }
+      if (send_result == MONITOR_STEP_STOP) {
         break;
       }
 
