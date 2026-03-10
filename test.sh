@@ -205,7 +205,7 @@ write_monitor_error_harness() {
     state.ping.expected_sequence = 7;
     state.ping.waiting = true;
 
-    monitor_step_result_t result = drain_icmp_replies(&ctx, 1200, &state);'
+    monitor_step_result_t result = monitor_drain_icmp_replies(&ctx, 1200, &state);'
                         state_assertions='  if (state.ping.waiting || state.ping.deadline_ms != 0 ||
             state.ping.send_time_ms != 0 || state.ping.expected_sequence != 0) {
         fprintf(stderr, "reply state was not cleared after receive error\n");
@@ -252,6 +252,9 @@ write_monitor_error_harness() {
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/monitor_state.h"
+#include "src/monitor_runtime.h"
+#include "src/shutdown_fsm.h"
 #include "src/monitor.c"
 
 static char last_log[OPENUPS_LOG_BUFFER_SIZE];
@@ -640,6 +643,9 @@ write_monitor_shutdown_failure_harness() {
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/monitor_state.h"
+#include "src/monitor_runtime.h"
+#include "src/shutdown_fsm.h"
 #include "src/monitor.c"
 
 static char last_log[OPENUPS_LOG_BUFFER_SIZE];
@@ -982,6 +988,7 @@ run_internal_c_test \
     "${MONITOR_RECEIVE_TEST_SRC}" \
     "${MONITOR_RECEIVE_TEST_BIN}" \
     "${MONITOR_RECEIVE_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
     "${ROOT_DIR}/src/shutdown_fsm.c" \
     "${ROOT_DIR}/src/runtime_services.c"
@@ -996,6 +1003,7 @@ run_internal_c_test \
     "${MONITOR_SEND_TEST_SRC}" \
     "${MONITOR_SEND_TEST_BIN}" \
     "${MONITOR_SEND_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
     "${ROOT_DIR}/src/shutdown_fsm.c" \
     "${ROOT_DIR}/src/runtime_services.c"
@@ -1010,6 +1018,7 @@ run_internal_c_test \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_SRC}" \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_BIN}" \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_runtime.c" \
     "${ROOT_DIR}/src/monitor_state.c" \
     "${ROOT_DIR}/src/shutdown_fsm.c" \
     "${ROOT_DIR}/src/runtime_services.c"
