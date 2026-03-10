@@ -5,6 +5,7 @@
 #define OPENUPS_DEFAULT_FAIL_THRESHOLD 5
 #define OPENUPS_DEFAULT_TIMEOUT_MS 2000
 #define OPENUPS_DEFAULT_DELAY_MINUTES 0
+#define OPENUPS_MAX_DELAY_MINUTES (365 * 24 * 60)
 #define OPENUPS_DEFAULT_SYSTEMD true
 
 typedef struct {
@@ -20,6 +21,16 @@ typedef struct {
   const char *label;
   size_t offset;
 } config_env_bool_option_t;
+
+typedef struct {
+  const char *name;
+  log_level_t level;
+} config_log_level_option_t;
+
+typedef struct {
+  const char *name;
+  shutdown_mode_t mode;
+} config_shutdown_mode_option_t;
 
 static const struct option CONFIG_LONG_OPTIONS[] = {
     {"target", required_argument, 0, 't'},
@@ -53,8 +64,28 @@ static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
    offsetof(config_t, enable_systemd)},
 };
 
+static const config_log_level_option_t CONFIG_LOG_LEVEL_OPTIONS[] = {
+  {"silent", LOG_LEVEL_SILENT},
+  {"none", LOG_LEVEL_SILENT},
+  {"error", LOG_LEVEL_ERROR},
+  {"warn", LOG_LEVEL_WARN},
+  {"info", LOG_LEVEL_INFO},
+  {"debug", LOG_LEVEL_DEBUG},
+};
+
+static const config_shutdown_mode_option_t CONFIG_SHUTDOWN_MODE_OPTIONS[] = {
+  {"dry-run", SHUTDOWN_MODE_DRY_RUN},
+  {"true-off", SHUTDOWN_MODE_TRUE_OFF},
+  {"log-only", SHUTDOWN_MODE_LOG_ONLY},
+};
+
 static bool shutdown_mode_parse(const char *restrict str,
                 shutdown_mode_t *restrict out_mode);
+
+static bool string_equals_ignore_case(const char *restrict lhs,
+                                      const char *restrict rhs) {
+  return lhs != NULL && rhs != NULL && strcasecmp(lhs, rhs) == 0;
+}
 
 static bool set_error(char *restrict error_msg, size_t error_size,
                       const char *restrict fmt, ...) {
@@ -103,12 +134,12 @@ static bool parse_bool_value(const char *restrict arg,
     return true;
   }
 
-  if (strcasecmp(arg, "true") == 0) {
+  if (string_equals_ignore_case(arg, "true")) {
     *out_value = true;
     return true;
   }
 
-  if (strcasecmp(arg, "false") == 0) {
+  if (string_equals_ignore_case(arg, "false")) {
     *out_value = false;
     return true;
   }
@@ -122,25 +153,14 @@ static bool parse_log_level_value(const char *restrict arg,
     return false;
   }
 
-  if (strcasecmp(arg, "silent") == 0 || strcasecmp(arg, "none") == 0) {
-    *out_value = LOG_LEVEL_SILENT;
-    return true;
-  }
-  if (strcasecmp(arg, "error") == 0) {
-    *out_value = LOG_LEVEL_ERROR;
-    return true;
-  }
-  if (strcasecmp(arg, "warn") == 0) {
-    *out_value = LOG_LEVEL_WARN;
-    return true;
-  }
-  if (strcasecmp(arg, "info") == 0) {
-    *out_value = LOG_LEVEL_INFO;
-    return true;
-  }
-  if (strcasecmp(arg, "debug") == 0) {
-    *out_value = LOG_LEVEL_DEBUG;
-    return true;
+  for (size_t i = 0;
+       i < sizeof(CONFIG_LOG_LEVEL_OPTIONS) / sizeof(CONFIG_LOG_LEVEL_OPTIONS[0]);
+       i++) {
+    const config_log_level_option_t *option = &CONFIG_LOG_LEVEL_OPTIONS[i];
+    if (string_equals_ignore_case(arg, option->name)) {
+      *out_value = option->level;
+      return true;
+    }
   }
 
   return false;
@@ -295,6 +315,52 @@ static bool load_env_bool(const char *restrict env_name,
   return true;
 }
 
+static bool load_env_shutdown_mode(const char *restrict env_name,
+                                   shutdown_mode_t *restrict out_value,
+                                   char *restrict error_msg,
+                                   size_t error_size) {
+  if (env_name == NULL || out_value == NULL) {
+    return false;
+  }
+
+  const char *value = getenv(env_name);
+  if (value == NULL) {
+    return true;
+  }
+
+  if (!shutdown_mode_parse(value, out_value)) {
+    return set_error(
+        error_msg, error_size,
+        "Invalid value for %s: %s (use dry-run|true-off|log-only)", env_name,
+        value);
+  }
+
+  return true;
+}
+
+static bool load_env_log_level(const char *restrict env_name,
+                               log_level_t *restrict out_value,
+                               char *restrict error_msg,
+                               size_t error_size) {
+  if (env_name == NULL || out_value == NULL) {
+    return false;
+  }
+
+  const char *value = getenv(env_name);
+  if (value == NULL) {
+    return true;
+  }
+
+  if (!parse_log_level_value(value, out_value)) {
+    return set_error(
+        error_msg, error_size,
+        "Invalid value for %s: %s (use silent|error|warn|info|debug)",
+        env_name, value);
+  }
+
+  return true;
+}
+
 static int *config_int_field(config_t *restrict config, size_t offset) {
   if (config == NULL || offset > sizeof(*config) - sizeof(int)) {
     return NULL;
@@ -390,17 +456,16 @@ static bool shutdown_mode_parse(const char *restrict str,
     return false;
   }
 
-  if (strcasecmp(str, "dry-run") == 0) {
-    *out_mode = SHUTDOWN_MODE_DRY_RUN;
-    return true;
-  }
-  if (strcasecmp(str, "true-off") == 0) {
-    *out_mode = SHUTDOWN_MODE_TRUE_OFF;
-    return true;
-  }
-  if (strcasecmp(str, "log-only") == 0) {
-    *out_mode = SHUTDOWN_MODE_LOG_ONLY;
-    return true;
+  for (size_t i = 0;
+       i < sizeof(CONFIG_SHUTDOWN_MODE_OPTIONS) /
+               sizeof(CONFIG_SHUTDOWN_MODE_OPTIONS[0]);
+       i++) {
+    const config_shutdown_mode_option_t *option =
+        &CONFIG_SHUTDOWN_MODE_OPTIONS[i];
+    if (string_equals_ignore_case(str, option->name)) {
+      *out_mode = option->mode;
+      return true;
+    }
   }
 
   return false;
@@ -451,27 +516,15 @@ bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
     return false;
   }
 
-  value = getenv("OPENUPS_SHUTDOWN_MODE");
-  if (value != NULL) {
-    shutdown_mode_t parsed_mode;
-    if (!shutdown_mode_parse(value, &parsed_mode)) {
-      return set_error(
-          error_msg, error_size,
-          "Invalid value for OPENUPS_SHUTDOWN_MODE: %s (use dry-run|true-off|log-only)",
-          value);
-    }
-    config->shutdown_mode = parsed_mode;
+  if (!load_env_shutdown_mode("OPENUPS_SHUTDOWN_MODE",
+                              &config->shutdown_mode, error_msg,
+                              error_size)) {
+    return false;
   }
 
-  value = getenv("OPENUPS_LOG_LEVEL");
-  if (value != NULL) {
-    log_level_t parsed_level;
-    if (!parse_log_level_value(value, &parsed_level)) {
-      return set_error(error_msg, error_size,
-                       "Invalid value for OPENUPS_LOG_LEVEL: %s (use silent|error|warn|info|debug)",
-                       value);
-    }
-    config->log_level = parsed_level;
+  if (!load_env_log_level("OPENUPS_LOG_LEVEL", &config->log_level,
+                          error_msg, error_size)) {
+    return false;
   }
 
   return true;
@@ -647,7 +700,7 @@ bool config_validate(const config_t *restrict config, char *restrict error_msg,
     return set_error(error_msg, error_size,
                      "Delay minutes cannot be negative");
   }
-  if (config->delay_minutes > 60 * 24 * 365) {
+  if (config->delay_minutes > OPENUPS_MAX_DELAY_MINUTES) {
     return set_error(error_msg, error_size,
                      "Delay minutes too large (max 525600)");
   }
