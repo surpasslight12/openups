@@ -117,6 +117,7 @@ run_internal_c_test() {
     local source_path="$2"
     local binary_path="$3"
     local build_log="$4"
+    shift 4
 
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
     echo "[${TESTS_TOTAL}] ${name}..."
@@ -125,7 +126,7 @@ run_internal_c_test() {
         -std=c23 -Wall -Wextra -Werror \
         -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE \
         -I"${ROOT_DIR}" -I"${ROOT_DIR}/src" \
-        "${source_path}" -o "${binary_path}" >"${build_log}" 2>&1; then
+        "${source_path}" "$@" -o "${binary_path}" >"${build_log}" 2>&1; then
         echo "  ❌ ${name}（编译失败）"
         cat "${build_log}"
         exit 1
@@ -197,16 +198,16 @@ write_monitor_error_harness() {
     }
     return ICMP_RECEIVE_ERROR;
 }'
-                        exercise_body='  monitor_state_t state = {
-            .reply_deadline_ms = 4321,
-            .send_time_ms = 1000,
-            .expected_sequence = 7,
-            .waiting_for_reply = true,
-    };
+                        exercise_body='  monitor_state_t state;
+    monitor_state_init(&state, 1200, OPENUPS_MS_PER_SEC, 0);
+    state.ping.deadline_ms = 4321;
+    state.ping.send_time_ms = 1000;
+    state.ping.expected_sequence = 7;
+    state.ping.waiting = true;
 
     monitor_step_result_t result = drain_icmp_replies(&ctx, 1200, &state);'
-                        state_assertions='  if (state.waiting_for_reply || state.reply_deadline_ms != 0 ||
-            state.send_time_ms != 0 || state.expected_sequence != 0) {
+                        state_assertions='  if (state.ping.waiting || state.ping.deadline_ms != 0 ||
+            state.ping.send_time_ms != 0 || state.ping.expected_sequence != 0) {
         fprintf(stderr, "reply state was not cleared after receive error\n");
         return EXIT_FAILURE;
     }'
@@ -230,8 +231,8 @@ write_monitor_error_harness() {
                         exercise_body='  monitor_state_t state = {0};
 
     monitor_step_result_t result = monitor_send_ping(&ctx, &state, 1200, 64);'
-                        state_assertions='  if (state.waiting_for_reply || state.reply_deadline_ms != 0 ||
-            state.send_time_ms != 0 || state.expected_sequence != 0) {
+                        state_assertions='  if (state.ping.waiting || state.ping.deadline_ms != 0 ||
+            state.ping.send_time_ms != 0 || state.ping.expected_sequence != 0) {
         fprintf(stderr, "send failure unexpectedly armed reply tracking\n");
         return EXIT_FAILURE;
     }'
@@ -609,6 +610,252 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
+    reset_test_state();
+    monotonic_values[0] = UINT64_MAX - 10;
+    monotonic_len = 1;
+
+    result = shutdown_observe_startup(777, "/sbin/shutdown", &logger);
+    if (result != SHUTDOWN_RESULT_TRIGGERED) {
+        fprintf(stderr, "expected assumed-started result on deadline overflow\n");
+        return EXIT_FAILURE;
+    }
+    if (!assert_log_contains(
+                    "Unable to confirm shutdown command startup: startup observation deadline overflow; assuming command started")) {
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+EOF
+}
+
+write_monitor_shutdown_failure_harness() {
+        local source_path="$1"
+
+        cat <<'EOF' > "${source_path}"
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "src/monitor.c"
+
+static char last_log[OPENUPS_LOG_BUFFER_SIZE];
+static log_level_t last_log_level = LOG_LEVEL_SILENT;
+
+void logger_init(logger_t *restrict logger, log_level_t level,
+                 bool enable_timestamp) {
+    if (logger == NULL) {
+        return;
+    }
+    logger->level = level;
+    logger->enable_timestamp = enable_timestamp;
+}
+
+void logger_log_va(const logger_t *restrict logger, log_level_t level,
+                   const char *restrict fmt, va_list ap) {
+    (void)logger;
+    last_log_level = level;
+    vsnprintf(last_log, sizeof(last_log), fmt, ap);
+}
+
+void config_print(const config_t *restrict config,
+                  const logger_t *restrict logger) {
+    (void)config;
+    (void)logger;
+}
+
+bool config_log_timestamps_enabled(const config_t *restrict config) {
+    (void)config;
+    return false;
+}
+
+void metrics_init(metrics_t *metrics) {
+    if (metrics != NULL) {
+        memset(metrics, 0, sizeof(*metrics));
+    }
+}
+
+void metrics_record_success(metrics_t *metrics, double latency_ms) {
+    (void)metrics;
+    (void)latency_ms;
+}
+
+void metrics_record_failure(metrics_t *metrics) {
+    (void)metrics;
+}
+
+double metrics_success_rate(const metrics_t *metrics) {
+    (void)metrics;
+    return 0.0;
+}
+
+double metrics_avg_latency(const metrics_t *metrics) {
+    (void)metrics;
+    return 0.0;
+}
+
+uint64_t metrics_uptime_seconds(const metrics_t *metrics) {
+    (void)metrics;
+    return 0;
+}
+
+bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
+                      char *restrict error_msg, size_t error_size) {
+    (void)pinger;
+    (void)family;
+    (void)error_msg;
+    (void)error_size;
+    return true;
+}
+
+void icmp_pinger_destroy(icmp_pinger_t *restrict pinger) {
+    (void)pinger;
+}
+
+bool icmp_pinger_send_echo(icmp_pinger_t *restrict pinger,
+                           const struct sockaddr_storage *restrict dest_addr,
+                           socklen_t dest_addr_len, uint16_t identifier,
+                           size_t packet_len, char *restrict error_msg,
+                           size_t error_size) {
+    (void)pinger;
+    (void)dest_addr;
+    (void)dest_addr_len;
+    (void)identifier;
+    (void)packet_len;
+    (void)error_msg;
+    (void)error_size;
+    return true;
+}
+
+icmp_receive_status_t icmp_pinger_receive_reply(
+    const icmp_pinger_t *restrict pinger,
+    const struct sockaddr_storage *restrict dest_addr, uint16_t identifier,
+    uint16_t expected_sequence, uint64_t send_time_ms, uint64_t now_ms,
+    ping_result_t *restrict out_result) {
+    (void)pinger;
+    (void)dest_addr;
+    (void)identifier;
+    (void)expected_sequence;
+    (void)send_time_ms;
+    (void)now_ms;
+    (void)out_result;
+    return ICMP_RECEIVE_NO_MORE;
+}
+
+bool resolve_target(const char *restrict target,
+                    struct sockaddr_storage *restrict addr,
+                    socklen_t *restrict addr_len, char *restrict error_msg,
+                    size_t error_size) {
+    (void)target;
+    (void)addr;
+    (void)addr_len;
+    (void)error_msg;
+    (void)error_size;
+    return true;
+}
+
+shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
+                                   bool use_systemctl_poweroff) {
+    (void)config;
+    (void)logger;
+    (void)use_systemctl_poweroff;
+    return SHUTDOWN_RESULT_FAILED;
+}
+
+void systemd_notifier_init(systemd_notifier_t *restrict notifier) {
+    if (notifier != NULL) {
+        memset(notifier, 0, sizeof(*notifier));
+    }
+}
+
+void systemd_notifier_destroy(systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+}
+
+bool systemd_notifier_is_enabled(
+    const systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+    return false;
+}
+
+bool systemd_notifier_ready(systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+    return true;
+}
+
+bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
+                             const char *restrict status) {
+    (void)notifier;
+    (void)status;
+    return true;
+}
+
+bool systemd_notifier_stopping(systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+    return true;
+}
+
+bool systemd_notifier_watchdog(systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+    return true;
+}
+
+uint64_t systemd_notifier_watchdog_interval_ms(
+    const systemd_notifier_t *restrict notifier) {
+    (void)notifier;
+    return 0;
+}
+
+const char *shutdown_mode_to_string(shutdown_mode_t mode) {
+    (void)mode;
+    return "true-off";
+}
+
+void log_shutdown_countdown(const logger_t *restrict logger,
+                            shutdown_mode_t mode, int delay_minutes) {
+    (void)logger;
+    (void)mode;
+    (void)delay_minutes;
+}
+
+uint64_t get_monotonic_ms(void) { return 1234; }
+
+void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
+                          size_t payload_size) {
+    (void)pinger;
+    (void)header_size;
+    (void)payload_size;
+}
+
+int main(void) {
+    openups_ctx_t ctx;
+    monitor_state_t state;
+    memset(&ctx, 0, sizeof(ctx));
+    monitor_state_init(&state, 1234, OPENUPS_MS_PER_SEC, 0);
+    ctx.config.shutdown_mode = SHUTDOWN_MODE_TRUE_OFF;
+    ctx.config.fail_threshold = 5;
+    ctx.consecutive_fails = 5;
+    ctx.logger.level = LOG_LEVEL_DEBUG;
+
+    if (shutdown_fsm_handle_threshold(&ctx, &state, 1234)) {
+        fprintf(stderr, "shutdown failure should not stop the monitor\n");
+        return EXIT_FAILURE;
+    }
+    if (ctx.consecutive_fails != 5) {
+        fprintf(stderr, "failure count should be preserved, got %d\n",
+                ctx.consecutive_fails);
+        return EXIT_FAILURE;
+    }
+    if (last_log_level != LOG_LEVEL_ERROR ||
+        strstr(last_log,
+               "Shutdown command failed; continuing monitoring with failure count preserved") == NULL) {
+        fprintf(stderr, "unexpected shutdown failure log: %s\n", last_log);
+        return EXIT_FAILURE;
+    }
+
     return EXIT_SUCCESS;
 }
 EOF
@@ -734,7 +981,10 @@ run_internal_c_test \
         "ICMP_RECEIVE_ERROR 走 runtime error 而不是 timeout" \
     "${MONITOR_RECEIVE_TEST_SRC}" \
     "${MONITOR_RECEIVE_TEST_BIN}" \
-    "${MONITOR_RECEIVE_TEST_LOG}"
+    "${MONITOR_RECEIVE_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_state.c" \
+    "${ROOT_DIR}/src/shutdown_fsm.c" \
+    "${ROOT_DIR}/src/runtime_services.c"
 
 MONITOR_SEND_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test.c"
 MONITOR_SEND_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test"
@@ -745,7 +995,24 @@ run_internal_c_test \
     "ICMP send 失败走 runtime error 而不是 timeout" \
     "${MONITOR_SEND_TEST_SRC}" \
     "${MONITOR_SEND_TEST_BIN}" \
-    "${MONITOR_SEND_TEST_LOG}"
+    "${MONITOR_SEND_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_state.c" \
+    "${ROOT_DIR}/src/shutdown_fsm.c" \
+    "${ROOT_DIR}/src/runtime_services.c"
+
+MONITOR_SHUTDOWN_FAILURE_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test.c"
+MONITOR_SHUTDOWN_FAILURE_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test"
+MONITOR_SHUTDOWN_FAILURE_TEST_LOG="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test.log"
+write_monitor_shutdown_failure_harness "${MONITOR_SHUTDOWN_FAILURE_TEST_SRC}"
+
+run_internal_c_test \
+    "shutdown 命令失败时保留连续失败计数" \
+    "${MONITOR_SHUTDOWN_FAILURE_TEST_SRC}" \
+    "${MONITOR_SHUTDOWN_FAILURE_TEST_BIN}" \
+    "${MONITOR_SHUTDOWN_FAILURE_TEST_LOG}" \
+    "${ROOT_DIR}/src/monitor_state.c" \
+    "${ROOT_DIR}/src/shutdown_fsm.c" \
+    "${ROOT_DIR}/src/runtime_services.c"
 
 SHUTDOWN_CLOCK_TEST_SRC="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test.c"
 SHUTDOWN_CLOCK_TEST_BIN="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test"

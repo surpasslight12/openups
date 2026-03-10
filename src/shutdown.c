@@ -87,6 +87,16 @@ static shutdown_result_t shutdown_assume_started(
   return SHUTDOWN_RESULT_TRIGGERED;
 }
 
+static bool shutdown_deadline_ms(uint64_t start_ms,
+                                 uint64_t *restrict out_deadline_ms) {
+  if (out_deadline_ms == NULL) {
+    return false;
+  }
+
+  return !ckd_add(out_deadline_ms, start_ms,
+                  (uint64_t)OPENUPS_SHUTDOWN_STARTUP_GRACE_MS);
+}
+
 static shutdown_result_t shutdown_consume_child_status(
     pid_t child_pid, pid_t wait_result, int status,
     const char *restrict command_path, const logger_t *restrict logger) {
@@ -147,7 +157,12 @@ static shutdown_result_t shutdown_observe_startup(
         logger, "monotonic clock unavailable during startup observation");
   }
 
-  uint64_t deadline_ms = start_ms + OPENUPS_SHUTDOWN_STARTUP_GRACE_MS;
+  uint64_t deadline_ms = 0;
+  if (!shutdown_deadline_ms(start_ms, &deadline_ms)) {
+    return shutdown_assume_started(
+        logger, "startup observation deadline overflow");
+  }
+
   int status = 0;
   while (true) {
     pid_t result = waitpid(child_pid, &status, WNOHANG);
