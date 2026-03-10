@@ -9,6 +9,7 @@
 #   ./test.sh --all        # 运行全部测试（基础 + 灰度 + systemd 灰度）
 
 set -e  # 遇到错误立即退出
+set -o pipefail  # 让管道中的编译失败和 grep 失败都能正确传播
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_PATH="${ROOT_DIR}/bin/openups"
@@ -49,13 +50,18 @@ expect_output_match() {
     local name="$1"
     local pattern="$2"
     shift 2
+    local output
     TESTS_TOTAL=$((TESTS_TOTAL + 1))
     echo "[${TESTS_TOTAL}] ${name}..."
-    if "$@" 2>&1 | grep -Eq "${pattern}"; then
+    output="$("$@" 2>&1 || true)"
+    if grep -Eq "${pattern}" <<< "${output}"; then
         echo "  ✓ ${name}"
         TESTS_PASSED=$((TESTS_PASSED + 1))
     else
         echo "  ❌ ${name}"
+        if [ -n "${output}" ]; then
+            echo "${output}"
+        fi
         exit 1
     fi
 }

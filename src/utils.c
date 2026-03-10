@@ -16,7 +16,7 @@ uint64_t get_monotonic_ms(void) {
 #endif
   uint64_t seconds_ms = 0;
   if (OPENUPS_UNLIKELY(
-          ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, UINT64_C(1000)))) {
+      ckd_mul(&seconds_ms, (uint64_t)ts.tv_sec, OPENUPS_MS_PER_SEC))) {
     return UINT64_MAX;
   }
   uint64_t nsec_ms = (uint64_t)ts.tv_nsec / UINT64_C(1000000);
@@ -44,6 +44,6 @@ char *get_timestamp_str(char *restrict buffer, size_t size) {
   snprintf(buffer, size, "%04d-%02d-%02d %02d:%02d:%02d.%03ld",
            tm_info.tm_year + 1900, tm_info.tm_mon + 1, tm_info.tm_mday,
            tm_info.tm_hour, tm_info.tm_min, tm_info.tm_sec,
-           ts.tv_nsec / 1000000);
+           ts.tv_nsec / (long)UINT64_C(1000000));
   return buffer;
 }

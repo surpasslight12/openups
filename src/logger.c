@@ -50,7 +50,7 @@ static void log_message(const logger_t *restrict logger, log_level_t level,
 
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
                    const char *restrict fmt, va_list ap) {
-  char buffer[1024];
+  char buffer[OPENUPS_LOG_BUFFER_SIZE];
   vsnprintf(buffer, sizeof(buffer), fmt, ap);
   log_message(logger, level, buffer);
 }

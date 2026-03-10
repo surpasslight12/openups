@@ -191,7 +191,7 @@ bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
       (strncmp(notifier->last_status, status, sizeof(notifier->last_status)) ==
        0);
   if (same && notifier->last_status_ms != 0 && now_ms != UINT64_MAX &&
-      now_ms - notifier->last_status_ms < 2000) {
+      now_ms - notifier->last_status_ms < OPENUPS_STATUS_DEDUP_WINDOW_MS) {
     return true;
   }
 
@@ -225,7 +225,7 @@ uint64_t systemd_notifier_watchdog_interval_ms(
     return 0;
   }
 
-  uint64_t interval_ms = notifier->watchdog_usec / 2000ULL;
+  uint64_t interval_ms = notifier->watchdog_usec / (OPENUPS_MS_PER_SEC * 2);
   if (interval_ms == 0) {
     interval_ms = 1;
   }

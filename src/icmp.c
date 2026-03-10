@@ -342,11 +342,11 @@ uint16_t next_sequence(icmp_pinger_t *restrict pinger) {
     return 1;
   }
 
-  /* Skip sequence number 0 */
-  if (pinger->sequence == 0xFFFF) {
+  /* Sequence 0 is reserved as the "not waiting" sentinel in the monitor. */
+  pinger->sequence = (uint16_t)(pinger->sequence + 1);
+  if (pinger->sequence == 0) {
     pinger->sequence = 1;
-  } else {
-    pinger->sequence = (uint16_t)(pinger->sequence + 1);
   }
+
   return pinger->sequence;
 }

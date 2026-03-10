@@ -62,5 +62,5 @@ uint64_t metrics_uptime_seconds(const metrics_t *metrics) {
       now_ms < metrics->start_time_ms) {
     return 0;
   }
-  return (now_ms - metrics->start_time_ms) / 1000ULL;
+  return (now_ms - metrics->start_time_ms) / OPENUPS_MS_PER_SEC;
 }

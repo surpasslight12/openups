@@ -41,32 +41,33 @@ static int deadline_timeout_ms(uint64_t now_ms, uint64_t deadline_ms) {
   return (int)remaining_ms;
 }
 
-static uint64_t config_interval_ms(const config_t *restrict config) {
-  if (config == NULL || config->interval_sec <= 0) {
+static uint64_t config_duration_ms(int value, uint64_t scale_ms) {
+  if (value <= 0) {
     return 0;
   }
 
-  uint64_t interval_ms = 0;
-  if (OPENUPS_UNLIKELY(
-          ckd_mul(&interval_ms, (uint64_t)config->interval_sec, UINT64_C(1000)))) {
+  uint64_t duration_ms = 0;
+  if (OPENUPS_UNLIKELY(ckd_mul(&duration_ms, (uint64_t)value, scale_ms))) {
     return UINT64_MAX;
   }
 
-  return interval_ms;
+  return duration_ms;
+}
+
+static uint64_t config_interval_ms(const config_t *restrict config) {
+  if (config == NULL) {
+    return 0;
+  }
+
+  return config_duration_ms(config->interval_sec, OPENUPS_MS_PER_SEC);
 }
 
 static uint64_t config_delay_ms(const config_t *restrict config) {
-  if (config == NULL || config->delay_minutes <= 0) {
+  if (config == NULL) {
     return 0;
   }
 
-  uint64_t delay_ms = 0;
-  if (OPENUPS_UNLIKELY(ckd_mul(&delay_ms, (uint64_t)config->delay_minutes,
-                               UINT64_C(60000)))) {
-    return UINT64_MAX;
-  }
-
-  return delay_ms;
+  return config_duration_ms(config->delay_minutes, OPENUPS_MS_PER_MINUTE);
 }
 
 static uint64_t next_ping_deadline(uint64_t current_deadline_ms,
