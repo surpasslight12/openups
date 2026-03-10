@@ -112,8 +112,6 @@ typedef struct openups_context {
   volatile sig_atomic_t stop_flag;
   int consecutive_fails;
 
-  bool systemd_enabled;
-  uint64_t watchdog_interval_ms;
   uint16_t
       cached_pid; /* cached getpid() & 0xFFFF, avoids syscall in hot path */
 

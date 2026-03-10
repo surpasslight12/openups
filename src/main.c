@@ -95,6 +95,18 @@ static uint64_t next_ping_deadline(uint64_t current_deadline_ms,
   return candidate_ms;
 }
 
+static bool ctx_systemd_enabled(const openups_ctx_t *restrict ctx) {
+  return ctx != NULL && systemd_notifier_is_enabled(&ctx->systemd);
+}
+
+static uint64_t ctx_watchdog_interval_ms(const openups_ctx_t *restrict ctx) {
+  if (ctx == NULL) {
+    return 0;
+  }
+
+  return systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+}
+
 static int compute_wait_timeout_ms(const openups_ctx_t *restrict ctx,
                                    const monitor_state_t *restrict state,
                                    uint64_t now_ms) {
@@ -114,9 +126,10 @@ static int compute_wait_timeout_ms(const openups_ctx_t *restrict ctx,
     }
   }
 
-  if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0) {
+  uint64_t watchdog_interval_ms = ctx_watchdog_interval_ms(ctx);
+  if (watchdog_interval_ms > 0) {
     uint64_t watchdog_deadline_ms =
-        monotonic_add_ms(state->last_watchdog_ms, ctx->watchdog_interval_ms);
+        monotonic_add_ms(state->last_watchdog_ms, watchdog_interval_ms);
     int watchdog_timeout_ms = deadline_timeout_ms(now_ms, watchdog_deadline_ms);
     if (watchdog_deadline_ms == UINT64_MAX) {
       watchdog_timeout_ms = INT_MAX;
@@ -156,7 +169,7 @@ static bool pollfd_has_error(short revents) {
 __attribute__((format(printf, 2, 3)))
 static void notify_systemd_status(openups_ctx_t *restrict ctx,
                                   const char *restrict fmt, ...) {
-  if (ctx == NULL || !ctx->systemd_enabled || fmt == NULL) {
+  if (ctx == NULL || !ctx_systemd_enabled(ctx) || fmt == NULL) {
     return;
   }
 
@@ -277,18 +290,16 @@ static bool openups_ctx_init(openups_ctx_t *restrict ctx,
   }
 
   systemd_notifier_init(&ctx->systemd);
-  ctx->systemd_enabled = systemd_notifier_is_enabled(&ctx->systemd);
-  if (!ctx->systemd_enabled) {
+  if (!ctx_systemd_enabled(ctx)) {
     logger_debug(&ctx->logger, "systemd not detected, integration disabled");
     return true;
   }
 
-  ctx->watchdog_interval_ms =
-      systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+  uint64_t watchdog_interval_ms = ctx_watchdog_interval_ms(ctx);
   logger_debug(&ctx->logger, "systemd integration enabled");
-  if (ctx->watchdog_interval_ms > 0) {
+  if (watchdog_interval_ms > 0) {
     logger_debug(&ctx->logger, "watchdog interval: %" PRIu64 "ms",
-                 ctx->watchdog_interval_ms);
+                 watchdog_interval_ms);
   }
 
   return true;
@@ -340,7 +351,7 @@ static void monitor_cancel_shutdown_countdown(openups_ctx_t *restrict ctx,
   monitor_clear_shutdown_countdown(state);
   logger_info(&ctx->logger,
               "Connectivity restored; cancelled pending shutdown countdown");
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(ctx,
                           "Recovery detected; shutdown countdown cancelled");
   }
@@ -352,7 +363,7 @@ static bool monitor_execute_shutdown(openups_ctx_t *restrict ctx) {
   }
 
   shutdown_result_t result =
-      shutdown_trigger(&ctx->config, &ctx->logger, ctx->systemd_enabled);
+      shutdown_trigger(&ctx->config, &ctx->logger, ctx_systemd_enabled(ctx));
 
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
     ctx->consecutive_fails = 0;
@@ -406,7 +417,7 @@ static bool monitor_arm_shutdown_countdown(openups_ctx_t *restrict ctx,
   state->shutdown_countdown_deadline_ms = deadline_ms;
   log_shutdown_countdown(&ctx->logger, ctx->config.shutdown_mode,
                          ctx->config.delay_minutes);
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(
         ctx, "%s countdown started: %d minutes",
         shutdown_mode_to_string(ctx->config.shutdown_mode),
@@ -430,7 +441,7 @@ static bool monitor_handle_shutdown_countdown(openups_ctx_t *restrict ctx,
   logger_warn(&ctx->logger,
               "%s countdown elapsed; executing shutdown now",
               shutdown_mode_to_string(ctx->config.shutdown_mode));
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(ctx, "%s countdown elapsed; executing shutdown",
                           shutdown_mode_to_string(ctx->config.shutdown_mode));
   }
@@ -450,7 +461,7 @@ static void handle_ping_success(openups_ctx_t *restrict ctx,
   logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                ctx->config.target, result->latency_ms);
 
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(
         ctx, "OK: %" PRIu64 "/%" PRIu64 " pings (%.1f%%), latency %.2fms",
         ctx->metrics.successful_pings, ctx->metrics.total_pings,
@@ -469,7 +480,7 @@ static void handle_ping_failure(openups_ctx_t *restrict ctx,
   logger_warn(&ctx->logger, "Ping failed to %s: %s (consecutive failures: %d)",
               ctx->config.target, result->error_msg, ctx->consecutive_fails);
 
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(ctx,
                           "WARNING: %d consecutive failures, threshold is %d",
                           ctx->consecutive_fails, ctx->config.fail_threshold);
@@ -490,7 +501,7 @@ static monitor_step_result_t monitor_runtime_error(
   va_end(args);
 
   logger_error(&ctx->logger, "%s", error_msg);
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     notify_systemd_status(ctx, "ERROR: %s", error_msg);
   }
 
@@ -644,7 +655,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
   logger_info(&ctx->logger, "Starting OpenUPS for target %s, every %ds",
               ctx->config.target, ctx->config.interval_sec);
 
-  if (ctx->systemd_enabled) {
+  if (ctx_systemd_enabled(ctx)) {
     if (!systemd_notifier_ready(&ctx->systemd)) {
       logger_warn(&ctx->logger,
                   "Failed to send systemd READY notification");
@@ -662,8 +673,9 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
       break;
     }
 
-    if (ctx->systemd_enabled && ctx->watchdog_interval_ms > 0 &&
-        now_ms - state.last_watchdog_ms >= ctx->watchdog_interval_ms) {
+    uint64_t watchdog_interval_ms = ctx_watchdog_interval_ms(ctx);
+    if (watchdog_interval_ms > 0 &&
+        now_ms - state.last_watchdog_ms >= watchdog_interval_ms) {
       if (systemd_notifier_watchdog(&ctx->systemd)) {
         state.last_watchdog_ms = now_ms;
       } else {
@@ -737,7 +749,7 @@ static int openups_reactor_run(openups_ctx_t *restrict ctx) {
 
   if (ctx->stop_flag) {
     logger_info(&ctx->logger, "Received shutdown signal, stopping gracefully...");
-    if (ctx->systemd_enabled) {
+    if (ctx_systemd_enabled(ctx)) {
       (void)systemd_notifier_stopping(&ctx->systemd);
     }
   }
