@@ -324,10 +324,6 @@ static bool shutdown_fsm_execute(openups_ctx_t *restrict ctx) {
   shutdown_result_t result =
       shutdown_trigger(&ctx->config, &ctx->logger,
                        runtime_services_is_enabled(&ctx->services));
-  if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
-    shutdown_fsm_reset_failures(ctx);
-    return false;
-  }
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_DRY_RUN) {
     logger_info(&ctx->logger, "Shutdown triggered, exiting monitor loop");
     return true;

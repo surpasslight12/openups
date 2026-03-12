@@ -88,6 +88,10 @@ static void log_message(const logger_t *restrict logger, log_level_t level,
   if (OPENUPS_UNLIKELY(logger->level == LOG_LEVEL_SILENT)) {
     return;
   }
+  /* Suppress messages whose verbosity exceeds the configured level. */
+  if (level > logger->level) {
+    return;
+  }
   char timestamp[64];
   if (logger->enable_timestamp) {
     if (get_timestamp_str(timestamp, sizeof(timestamp)) == NULL) {
