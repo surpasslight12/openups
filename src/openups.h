@@ -111,6 +111,17 @@ typedef struct {
   char last_status[OPENUPS_SYSTEMD_STATUS_SIZE];
 } systemd_notifier_t;
 
+typedef struct {
+  void *backend_ctx;
+  bool enabled;
+  bool (*ready)(void *backend_ctx);
+  bool (*status)(void *backend_ctx, const char *status);
+  bool (*stopping)(void *backend_ctx);
+  bool (*watchdog)(void *backend_ctx);
+  uint64_t (*watchdog_interval_ms)(const void *backend_ctx);
+  void (*destroy)(void *backend_ctx);
+} runtime_services_t;
+
 typedef struct openups_context {
   volatile sig_atomic_t stop_flag;
   int consecutive_fails;
@@ -125,6 +136,7 @@ typedef struct openups_context {
   metrics_t metrics;
   icmp_pinger_t pinger;
   systemd_notifier_t systemd;
+  runtime_services_t services;
 } openups_ctx_t;
 
 static_assert(sizeof(uint64_t) == 8, "uint64_t must be 8 bytes");
@@ -192,24 +204,114 @@ bool systemd_notifier_watchdog(systemd_notifier_t *restrict notifier);
 uint64_t systemd_notifier_watchdog_interval_ms(
     const systemd_notifier_t *restrict notifier);
 
-static inline bool runtime_services_systemd_enabled(
-    const openups_ctx_t *restrict ctx) {
-  return ctx != NULL && systemd_notifier_is_enabled(&ctx->systemd);
+static inline bool runtime_services_noop_ready(void *backend_ctx) {
+  (void)backend_ctx;
+  return true;
+}
+
+static inline bool runtime_services_noop_status(void *backend_ctx,
+                                                const char *status) {
+  (void)backend_ctx;
+  (void)status;
+  return true;
+}
+
+static inline bool runtime_services_noop_stopping(void *backend_ctx) {
+  (void)backend_ctx;
+  return true;
+}
+
+static inline bool runtime_services_noop_watchdog(void *backend_ctx) {
+  (void)backend_ctx;
+  return true;
+}
+
+static inline uint64_t runtime_services_noop_watchdog_interval_ms(
+    const void *backend_ctx) {
+  (void)backend_ctx;
+  return 0;
+}
+
+static inline void runtime_services_noop_destroy(void *backend_ctx) {
+  (void)backend_ctx;
+}
+
+static inline void runtime_services_set_null(
+    runtime_services_t *restrict services) {
+  if (services == NULL) {
+    return;
+  }
+
+  services->backend_ctx = NULL;
+  services->enabled = false;
+  services->ready = runtime_services_noop_ready;
+  services->status = runtime_services_noop_status;
+  services->stopping = runtime_services_noop_stopping;
+  services->watchdog = runtime_services_noop_watchdog;
+  services->watchdog_interval_ms = runtime_services_noop_watchdog_interval_ms;
+  services->destroy = runtime_services_noop_destroy;
+}
+
+static inline void runtime_services_init(runtime_services_t *restrict services,
+                                         systemd_notifier_t *restrict systemd,
+                                         bool enable_systemd) {
+  if (services == NULL) {
+    return;
+  }
+
+  runtime_services_set_null(services);
+  if (!enable_systemd || systemd == NULL) {
+    return;
+  }
+
+  systemd_notifier_init(systemd);
+  if (!systemd_notifier_is_enabled(systemd)) {
+    return;
+  }
+
+  services->backend_ctx = systemd;
+  services->enabled = true;
+  services->ready = (bool (*)(void *))systemd_notifier_ready;
+  services->status = (bool (*)(void *, const char *))systemd_notifier_status;
+  services->stopping = (bool (*)(void *))systemd_notifier_stopping;
+  services->watchdog = (bool (*)(void *))systemd_notifier_watchdog;
+  services->watchdog_interval_ms =
+      (uint64_t(*)(const void *))systemd_notifier_watchdog_interval_ms;
+  services->destroy = (void (*)(void *))systemd_notifier_destroy;
+}
+
+static inline void runtime_services_destroy(
+    runtime_services_t *restrict services) {
+  if (services == NULL) {
+    return;
+  }
+
+  services->destroy(services->backend_ctx);
+  runtime_services_set_null(services);
+}
+
+static inline bool runtime_services_is_enabled(
+    const runtime_services_t *restrict services) {
+  return services != NULL && services->enabled;
 }
 
 static inline uint64_t runtime_services_watchdog_interval_ms(
-    const openups_ctx_t *restrict ctx) {
-  if (ctx == NULL) {
+    const runtime_services_t *restrict services) {
+  if (services == NULL) {
     return 0;
   }
 
-  return systemd_notifier_watchdog_interval_ms(&ctx->systemd);
+  return services->watchdog_interval_ms(services->backend_ctx);
 }
 
-static inline void runtime_services_notify_statusf(
-    openups_ctx_t *restrict ctx, const char *restrict fmt, ...) {
-  if (ctx == NULL || !runtime_services_systemd_enabled(ctx) || fmt == NULL) {
-    return;
+static inline bool runtime_services_notify_statusf(
+    runtime_services_t *restrict services, const char *restrict fmt, ...) {
+  if (services == NULL || fmt == NULL) {
+    return false;
+  }
+
+  if (!runtime_services_is_enabled(services)) {
+    return true;
   }
 
   char status_msg[OPENUPS_SYSTEMD_STATUS_SIZE];
@@ -218,22 +320,23 @@ static inline void runtime_services_notify_statusf(
   vsnprintf(status_msg, sizeof(status_msg), fmt, args);
   va_end(args);
 
-  (void)systemd_notifier_status(&ctx->systemd, status_msg);
+  status_msg[sizeof(status_msg) - 1] = '\0';
+  return services->status(services->backend_ctx, status_msg);
 }
 
 static inline bool runtime_services_notify_ready(
-    openups_ctx_t *restrict ctx) {
-  return ctx != NULL && systemd_notifier_ready(&ctx->systemd);
+    runtime_services_t *restrict services) {
+  return services != NULL && services->ready(services->backend_ctx);
 }
 
 static inline bool runtime_services_notify_watchdog(
-    openups_ctx_t *restrict ctx) {
-  return ctx != NULL && systemd_notifier_watchdog(&ctx->systemd);
+    runtime_services_t *restrict services) {
+  return services != NULL && services->watchdog(services->backend_ctx);
 }
 
 static inline bool runtime_services_notify_stopping(
-    openups_ctx_t *restrict ctx) {
-  return ctx != NULL && systemd_notifier_stopping(&ctx->systemd);
+    runtime_services_t *restrict services) {
+  return services != NULL && services->stopping(services->backend_ctx);
 }
 
 #define DEFINE_LOGGER(name, lvl, attrs)                                        \

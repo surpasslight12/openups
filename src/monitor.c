@@ -17,6 +17,14 @@ typedef struct {
   bool previous_mask_valid;
 } signal_channel_t;
 
+typedef struct {
+  signal_channel_t signals;
+  monitor_state_t state;
+  struct pollfd fds[2];
+  size_t packet_len;
+  uint64_t now_ms;
+} monitor_runtime_t;
+
 static uint64_t config_duration_ms(int value, uint64_t scale_ms) {
   if (value <= 0) {
     return 0;
@@ -44,6 +52,20 @@ static int monitor_failure_exit_code(void) {
 
 static bool pollfd_has_error(short revents) {
   return (revents & (POLLERR | POLLHUP | POLLNVAL)) != 0;
+}
+
+static bool monitor_refresh_time(uint64_t *restrict now_ms) {
+  if (now_ms == NULL) {
+    return false;
+  }
+
+  uint64_t refreshed_now_ms = get_monotonic_ms();
+  if (refreshed_now_ms == UINT64_MAX) {
+    return false;
+  }
+
+  *now_ms = refreshed_now_ms;
+  return true;
 }
 
 static bool signal_channel_init(signal_channel_t *restrict channel,
@@ -121,11 +143,11 @@ static void monitor_handle_signal(openups_ctx_t *restrict ctx,
 }
 
 static bool monitor_notify_ready(openups_ctx_t *restrict ctx) {
-  if (ctx == NULL || !runtime_services_systemd_enabled(ctx)) {
+  if (ctx == NULL || !runtime_services_is_enabled(&ctx->services)) {
     return true;
   }
 
-  if (runtime_services_notify_ready(ctx)) {
+  if (runtime_services_notify_ready(&ctx->services)) {
     return true;
   }
 
@@ -140,7 +162,7 @@ static monitor_step_result_t monitor_handle_watchdog(
     return MONITOR_STEP_CONTINUE;
   }
 
-  if (runtime_services_notify_watchdog(ctx)) {
+  if (runtime_services_notify_watchdog(&ctx->services)) {
     monitor_watchdog_mark_sent(state, now_ms);
     return MONITOR_STEP_CONTINUE;
   }
@@ -189,10 +211,7 @@ static monitor_step_result_t monitor_handle_poll_events(
     return MONITOR_STEP_ERROR;
   }
 
-  uint64_t updated_now_ms = get_monotonic_ms();
-  if (updated_now_ms != UINT64_MAX) {
-    *now_ms = updated_now_ms;
-  }
+  (void)monitor_refresh_time(now_ms);
 
   if (pollfd_has_error(fds[0].revents)) {
     logger_error(&ctx->logger, "Signal fd entered error state");
@@ -217,6 +236,116 @@ static monitor_step_result_t monitor_handle_poll_events(
   fds[0].revents = 0;
   fds[1].revents = 0;
   return MONITOR_STEP_CONTINUE;
+}
+
+static bool monitor_runtime_init(openups_ctx_t *restrict ctx,
+                                 monitor_runtime_t *restrict runtime) {
+  if (ctx == NULL || runtime == NULL) {
+    return false;
+  }
+
+  memset(runtime, 0, sizeof(*runtime));
+  runtime->signals.fd = -1;
+
+  if (!signal_channel_init(&runtime->signals, &ctx->logger)) {
+    return false;
+  }
+
+  if (!monitor_prepare_packet(ctx, &runtime->packet_len)) {
+    logger_error(&ctx->logger, "Failed to prepare ICMP packet buffer");
+    signal_channel_destroy(&runtime->signals, &ctx->logger);
+    return false;
+  }
+
+  uint64_t interval_ms = config_interval_ms(&ctx->config);
+  if (!monitor_refresh_time(&runtime->now_ms) || interval_ms == 0 ||
+      interval_ms == UINT64_MAX) {
+    logger_error(&ctx->logger, "Failed to initialize monotonic timing state");
+    signal_channel_destroy(&runtime->signals, &ctx->logger);
+    return false;
+  }
+
+  monitor_state_init(&runtime->state, runtime->now_ms, interval_ms,
+                     runtime_services_watchdog_interval_ms(&ctx->services));
+  runtime->fds[0] = (struct pollfd){
+      .fd = runtime->signals.fd,
+      .events = POLLIN,
+      .revents = 0,
+  };
+  runtime->fds[1] = (struct pollfd){
+      .fd = ctx->pinger.sockfd,
+      .events = POLLIN,
+      .revents = 0,
+  };
+
+  return true;
+}
+
+static void monitor_runtime_destroy(openups_ctx_t *restrict ctx,
+                                    monitor_runtime_t *restrict runtime) {
+  if (runtime == NULL) {
+    return;
+  }
+
+  signal_channel_destroy(&runtime->signals,
+                         ctx != NULL ? &ctx->logger : NULL);
+}
+
+static monitor_step_result_t monitor_run_due_work(
+    openups_ctx_t *restrict ctx, monitor_runtime_t *restrict runtime) {
+  if (ctx == NULL || runtime == NULL) {
+    return MONITOR_STEP_ERROR;
+  }
+
+  if (shutdown_fsm_handle_tick(ctx, &runtime->state, runtime->now_ms)) {
+    return MONITOR_STEP_STOP;
+  }
+
+  monitor_step_result_t step_result =
+      monitor_handle_watchdog(ctx, &runtime->state, runtime->now_ms);
+  if (step_result != MONITOR_STEP_CONTINUE) {
+    return step_result;
+  }
+
+  step_result =
+      monitor_handle_ping_timeout(ctx, &runtime->state, runtime->now_ms);
+  if (step_result != MONITOR_STEP_CONTINUE) {
+    return step_result;
+  }
+
+  return monitor_handle_scheduler(ctx, &runtime->state, runtime->now_ms,
+                                  runtime->packet_len);
+}
+
+static void monitor_log_startup(openups_ctx_t *restrict ctx) {
+  if (ctx == NULL) {
+    return;
+  }
+
+  logger_info(&ctx->logger, "Starting OpenUPS for target %s, every %ds",
+              ctx->config.target, ctx->config.interval_sec);
+  (void)monitor_notify_ready(ctx);
+  (void)runtime_services_notify_statusf(&ctx->services, "Monitoring %s",
+                                        ctx->config.target);
+}
+
+static void monitor_log_shutdown(openups_ctx_t *restrict ctx, int exit_code) {
+  if (ctx == NULL) {
+    return;
+  }
+
+  if (ctx->stop_flag) {
+    logger_info(&ctx->logger,
+                "Received shutdown signal, stopping gracefully...");
+    if (runtime_services_is_enabled(&ctx->services)) {
+      (void)runtime_services_notify_stopping(&ctx->services);
+    }
+  }
+
+  monitor_log_stats(ctx);
+  if (exit_code == OPENUPS_EXIT_SUCCESS) {
+    logger_info(&ctx->logger, "OpenUPS monitor stopped");
+  }
 }
 
 bool openups_ctx_init(openups_ctx_t *restrict ctx,
@@ -252,17 +381,15 @@ bool openups_ctx_init(openups_ctx_t *restrict ctx,
 
   metrics_init(&ctx->metrics);
 
-  if (!ctx->config.enable_systemd) {
-    return true;
-  }
-
-  systemd_notifier_init(&ctx->systemd);
-  if (!runtime_services_systemd_enabled(ctx)) {
+  runtime_services_init(&ctx->services, &ctx->systemd,
+                        ctx->config.enable_systemd);
+  if (!runtime_services_is_enabled(&ctx->services)) {
     logger_debug(&ctx->logger, "systemd not detected, integration disabled");
     return true;
   }
 
-  uint64_t watchdog_interval_ms = runtime_services_watchdog_interval_ms(ctx);
+  uint64_t watchdog_interval_ms =
+      runtime_services_watchdog_interval_ms(&ctx->services);
   logger_debug(&ctx->logger, "systemd integration enabled");
   if (watchdog_interval_ms > 0) {
     logger_debug(&ctx->logger, "watchdog interval: %" PRIu64 "ms",
@@ -277,8 +404,8 @@ void openups_ctx_destroy(openups_ctx_t *restrict ctx) {
     return;
   }
 
+  runtime_services_destroy(&ctx->services);
   icmp_pinger_destroy(&ctx->pinger);
-  systemd_notifier_destroy(&ctx->systemd);
   memset(ctx, 0, sizeof(*ctx));
 }
 
@@ -287,59 +414,18 @@ int openups_reactor_run(openups_ctx_t *restrict ctx) {
     return monitor_failure_exit_code();
   }
 
-  signal_channel_t signals;
-  if (!signal_channel_init(&signals, &ctx->logger)) {
+  monitor_runtime_t runtime;
+  if (!monitor_runtime_init(ctx, &runtime)) {
     return monitor_failure_exit_code();
   }
 
   int exit_code = OPENUPS_EXIT_SUCCESS;
-  size_t packet_len = 0;
-  if (!monitor_prepare_packet(ctx, &packet_len)) {
-    logger_error(&ctx->logger, "Failed to prepare ICMP packet buffer");
-    exit_code = monitor_failure_exit_code();
-    goto cleanup;
-  }
-
-  uint64_t now_ms = get_monotonic_ms();
-  uint64_t interval_ms = config_interval_ms(&ctx->config);
-  if (now_ms == UINT64_MAX || interval_ms == 0 || interval_ms == UINT64_MAX) {
-    logger_error(&ctx->logger, "Failed to initialize monotonic timing state");
-    exit_code = monitor_failure_exit_code();
-    goto cleanup;
-  }
-
-  monitor_state_t state;
-  monitor_state_init(&state, now_ms, interval_ms,
-                     runtime_services_watchdog_interval_ms(ctx));
-
-  logger_info(&ctx->logger, "Starting OpenUPS for target %s, every %ds",
-              ctx->config.target, ctx->config.interval_sec);
-  (void)monitor_notify_ready(ctx);
-  runtime_services_notify_statusf(ctx, "Monitoring %s", ctx->config.target);
-
-  struct pollfd fds[2] = {
-      {.fd = signals.fd, .events = POLLIN, .revents = 0},
-      {.fd = ctx->pinger.sockfd, .events = POLLIN, .revents = 0},
-  };
+  monitor_log_startup(ctx);
 
   while (!ctx->stop_flag) {
-    uint64_t refreshed_now_ms = get_monotonic_ms();
-    if (refreshed_now_ms != UINT64_MAX) {
-      now_ms = refreshed_now_ms;
-    }
+    (void)monitor_refresh_time(&runtime.now_ms);
 
-    if (shutdown_fsm_handle_tick(ctx, &state, now_ms)) {
-      break;
-    }
-
-    monitor_step_result_t step_result =
-        monitor_handle_watchdog(ctx, &state, now_ms);
-    if (step_result == MONITOR_STEP_ERROR) {
-      exit_code = monitor_failure_exit_code();
-      break;
-    }
-
-    step_result = monitor_handle_ping_timeout(ctx, &state, now_ms);
+    monitor_step_result_t step_result = monitor_run_due_work(ctx, &runtime);
     if (step_result == MONITOR_STEP_ERROR) {
       exit_code = monitor_failure_exit_code();
       break;
@@ -348,17 +434,9 @@ int openups_reactor_run(openups_ctx_t *restrict ctx) {
       break;
     }
 
-    step_result = monitor_handle_scheduler(ctx, &state, now_ms, packet_len);
-    if (step_result == MONITOR_STEP_ERROR) {
-      exit_code = monitor_failure_exit_code();
-      break;
-    }
-    if (step_result == MONITOR_STEP_STOP) {
-      break;
-    }
-
-    step_result =
-        monitor_handle_poll_events(ctx, &signals, &state, fds, &now_ms);
+    step_result = monitor_handle_poll_events(ctx, &runtime.signals,
+                                             &runtime.state, runtime.fds,
+                                             &runtime.now_ms);
     if (step_result == MONITOR_STEP_ERROR) {
       exit_code = monitor_failure_exit_code();
       break;
@@ -368,20 +446,7 @@ int openups_reactor_run(openups_ctx_t *restrict ctx) {
     }
   }
 
-  if (ctx->stop_flag) {
-    logger_info(&ctx->logger,
-                "Received shutdown signal, stopping gracefully...");
-    if (runtime_services_systemd_enabled(ctx)) {
-      (void)runtime_services_notify_stopping(ctx);
-    }
-  }
-
-  monitor_log_stats(ctx);
-  if (exit_code == OPENUPS_EXIT_SUCCESS) {
-    logger_info(&ctx->logger, "OpenUPS monitor stopped");
-  }
-
-cleanup:
-  signal_channel_destroy(&signals, &ctx->logger);
+  monitor_log_shutdown(ctx, exit_code);
+  monitor_runtime_destroy(ctx, &runtime);
   return exit_code;
 }

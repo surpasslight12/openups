@@ -22,8 +22,8 @@ static void handle_ping_success(openups_ctx_t *restrict ctx,
   logger_debug(&ctx->logger, "Ping successful to %s, latency: %.2fms",
                ctx->config.target, result->latency_ms);
 
-  runtime_services_notify_statusf(
-      ctx, "OK: %" PRIu64 "/%" PRIu64 " pings (%.1f%%), latency %.2fms",
+    (void)runtime_services_notify_statusf(
+      &ctx->services, "OK: %" PRIu64 "/%" PRIu64 " pings (%.1f%%), latency %.2fms",
       ctx->metrics.successful_pings, ctx->metrics.total_pings,
       metrics_success_rate(&ctx->metrics), result->latency_ms);
 }
@@ -40,8 +40,8 @@ static void handle_ping_failure(openups_ctx_t *restrict ctx,
               "Ping failed to %s: %s (consecutive failures: %d)",
               ctx->config.target, result->error_msg, ctx->consecutive_fails);
 
-  runtime_services_notify_statusf(
-      ctx, "WARNING: %d consecutive failures, threshold is %d",
+    (void)runtime_services_notify_statusf(
+      &ctx->services, "WARNING: %d consecutive failures, threshold is %d",
       ctx->consecutive_fails, ctx->config.fail_threshold);
 }
 
@@ -59,7 +59,8 @@ static monitor_step_result_t monitor_runtime_error(
   va_end(args);
 
   logger_error(&ctx->logger, "%s", error_msg);
-  runtime_services_notify_statusf(ctx, "ERROR: %s", error_msg);
+  (void)runtime_services_notify_statusf(&ctx->services, "ERROR: %s",
+                                        error_msg);
 
   return MONITOR_STEP_ERROR;
 }
@@ -112,15 +113,17 @@ void monitor_log_stats(openups_ctx_t *restrict ctx) {
 monitor_step_result_t monitor_handle_ping_timeout(
     openups_ctx_t *restrict ctx, monitor_state_t *restrict state,
     uint64_t now_ms) {
-  if (ctx == NULL || state == NULL || !monitor_ping_deadline_elapsed(state, now_ms)) {
+  if (ctx == NULL || state == NULL ||
+      !monitor_ping_deadline_elapsed(state, now_ms)) {
     return MONITOR_STEP_CONTINUE;
   }
 
   ping_result_t timeout_result = {false, -1.0, "Timeout waiting for ICMP reply"};
   handle_ping_failure(ctx, &timeout_result);
   monitor_ping_clear(state);
-  return shutdown_fsm_handle_threshold(ctx, state, now_ms) ? MONITOR_STEP_STOP
-                                                            : MONITOR_STEP_CONTINUE;
+  return shutdown_fsm_handle_threshold(ctx, state, now_ms)
+             ? MONITOR_STEP_STOP
+             : MONITOR_STEP_CONTINUE;
 }
 
 monitor_step_result_t monitor_send_ping(openups_ctx_t *restrict ctx,
@@ -158,15 +161,10 @@ monitor_step_result_t monitor_drain_icmp_replies(
   ping_result_t reply = {0};
   for (size_t processed = 0; processed < OPENUPS_MAX_REPLY_DRAIN_PER_TICK;
        processed++) {
-    uint64_t receive_time_ms = get_monotonic_ms();
-    if (receive_time_ms == UINT64_MAX) {
-      receive_time_ms = now_ms;
-    }
-
     icmp_receive_status_t status = icmp_pinger_receive_reply(
         &ctx->pinger, &ctx->dest_addr, ctx->cached_pid,
         monitor_ping_expected_sequence(state), monitor_ping_send_time_ms(state),
-        receive_time_ms, &reply);
+        now_ms, &reply);
     if (status == ICMP_RECEIVE_NO_MORE) {
       return MONITOR_STEP_CONTINUE;
     }

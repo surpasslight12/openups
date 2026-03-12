@@ -31,6 +31,20 @@ static bool is_valid_ip_literal(const char *restrict target) {
   return false;
 }
 
+static bool timeout_fits_interval(const config_t *restrict config) {
+  if (config == NULL || config->interval_sec <= 0 || config->timeout_ms <= 0) {
+    return false;
+  }
+
+  uint64_t interval_ms = 0;
+  if (ckd_mul(&interval_ms, (uint64_t)config->interval_sec,
+              OPENUPS_MS_PER_SEC)) {
+    return false;
+  }
+
+  return (uint64_t)config->timeout_ms < interval_ms;
+}
+
 bool config_validate(const config_t *restrict config, char *restrict error_msg,
                      size_t error_size) {
   if (config == NULL || error_msg == NULL || error_size == 0) {
@@ -62,6 +76,15 @@ bool config_validate(const config_t *restrict config, char *restrict error_msg,
   if (config->delay_minutes > OPENUPS_MAX_DELAY_MINUTES) {
     return set_error(error_msg, error_size,
                      "Delay minutes too large (max 525600)");
+  }
+  if (!timeout_fits_interval(config)) {
+    return set_error(error_msg, error_size,
+                     "Timeout must be smaller than interval to avoid overlapping probes");
+  }
+  if (config->shutdown_mode == SHUTDOWN_MODE_LOG_ONLY &&
+      config->delay_minutes != 0) {
+    return set_error(error_msg, error_size,
+                     "Delay is only valid with dry-run or true-off shutdown modes");
   }
 
   return true;
