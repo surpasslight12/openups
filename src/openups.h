@@ -156,12 +156,6 @@ void logger_write(log_level_t level, bool enable_timestamp,
     __attribute__((format(printf, 3, 4)));
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
                    const char *restrict fmt, va_list ap);
-void metrics_init(metrics_t *metrics);
-void metrics_record_success(metrics_t *metrics, double latency_ms);
-void metrics_record_failure(metrics_t *metrics);
-double metrics_success_rate(const metrics_t *metrics);
-double metrics_avg_latency(const metrics_t *metrics);
-uint64_t metrics_uptime_seconds(const metrics_t *metrics);
 void config_init_default(config_t *restrict config);
 [[nodiscard]] bool config_load_from_env(config_t *restrict config,
                                         char *restrict error_msg,

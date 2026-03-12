@@ -252,14 +252,10 @@ write_monitor_error_harness() {
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/monitor_state.h"
-#include "src/monitor_runtime.h"
-#include "src/shutdown_fsm.h"
 #include "src/monitor.c"
 
 static char last_log[OPENUPS_LOG_BUFFER_SIZE];
 static log_level_t last_log_level = LOG_LEVEL_SILENT;
-static int metrics_failure_calls = 0;
 
 void logger_init(logger_t *restrict logger, log_level_t level,
                                  bool enable_timestamp) {
@@ -286,40 +282,6 @@ void config_print(const config_t *restrict config,
 bool config_log_timestamps_enabled(const config_t *restrict config) {
     (void)config;
     return false;
-}
-
-void metrics_init(metrics_t *metrics) {
-    if (metrics != NULL) {
-        memset(metrics, 0, sizeof(*metrics));
-    }
-}
-
-void metrics_record_success(metrics_t *metrics, double latency_ms) {
-    (void)metrics;
-    (void)latency_ms;
-}
-
-void metrics_record_failure(metrics_t *metrics) {
-    metrics_failure_calls++;
-    if (metrics != NULL) {
-        metrics->total_pings++;
-        metrics->failed_pings++;
-    }
-}
-
-double metrics_success_rate(const metrics_t *metrics) {
-    (void)metrics;
-    return 0.0;
-}
-
-double metrics_avg_latency(const metrics_t *metrics) {
-    (void)metrics;
-    return 0.0;
-}
-
-uint64_t metrics_uptime_seconds(const metrics_t *metrics) {
-    (void)metrics;
-    return 0;
 }
 
 bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
@@ -417,13 +379,6 @@ void log_shutdown_countdown(const logger_t *restrict logger,
 
 uint64_t get_monotonic_ms(void) { return 1234; }
 
-void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
-                                                    size_t payload_size) {
-    (void)pinger;
-    (void)header_size;
-    (void)payload_size;
-}
-
 int main(void) {
     openups_ctx_t ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -437,7 +392,7 @@ ${exercise_body}
     }
 
 ${state_assertions}
-    if (ctx.consecutive_fails != 0 || metrics_failure_calls != 0) {
+    if (ctx.consecutive_fails != 0 || ctx.metrics.failed_pings != 0) {
         fprintf(stderr,
                         "runtime error was misclassified as timeout/failure accounting\n");
         return EXIT_FAILURE;
@@ -643,9 +598,6 @@ write_monitor_shutdown_failure_harness() {
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/monitor_state.h"
-#include "src/monitor_runtime.h"
-#include "src/shutdown_fsm.h"
 #include "src/monitor.c"
 
 static char last_log[OPENUPS_LOG_BUFFER_SIZE];
@@ -676,36 +628,6 @@ void config_print(const config_t *restrict config,
 bool config_log_timestamps_enabled(const config_t *restrict config) {
     (void)config;
     return false;
-}
-
-void metrics_init(metrics_t *metrics) {
-    if (metrics != NULL) {
-        memset(metrics, 0, sizeof(*metrics));
-    }
-}
-
-void metrics_record_success(metrics_t *metrics, double latency_ms) {
-    (void)metrics;
-    (void)latency_ms;
-}
-
-void metrics_record_failure(metrics_t *metrics) {
-    (void)metrics;
-}
-
-double metrics_success_rate(const metrics_t *metrics) {
-    (void)metrics;
-    return 0.0;
-}
-
-double metrics_avg_latency(const metrics_t *metrics) {
-    (void)metrics;
-    return 0.0;
-}
-
-uint64_t metrics_uptime_seconds(const metrics_t *metrics) {
-    (void)metrics;
-    return 0;
 }
 
 bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
@@ -828,13 +750,6 @@ void log_shutdown_countdown(const logger_t *restrict logger,
 }
 
 uint64_t get_monotonic_ms(void) { return 1234; }
-
-void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
-                          size_t payload_size) {
-    (void)pinger;
-    (void)header_size;
-    (void)payload_size;
-}
 
 int main(void) {
     openups_ctx_t ctx;
@@ -988,9 +903,6 @@ run_internal_c_test \
     "${MONITOR_RECEIVE_TEST_SRC}" \
     "${MONITOR_RECEIVE_TEST_BIN}" \
     "${MONITOR_RECEIVE_TEST_LOG}" \
-    "${ROOT_DIR}/src/monitor_runtime.c" \
-    "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 MONITOR_SEND_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test.c"
 MONITOR_SEND_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_send_runtime_error_test"
@@ -1002,9 +914,6 @@ run_internal_c_test \
     "${MONITOR_SEND_TEST_SRC}" \
     "${MONITOR_SEND_TEST_BIN}" \
     "${MONITOR_SEND_TEST_LOG}" \
-    "${ROOT_DIR}/src/monitor_runtime.c" \
-    "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 MONITOR_SHUTDOWN_FAILURE_TEST_SRC="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test.c"
 MONITOR_SHUTDOWN_FAILURE_TEST_BIN="${INTERNAL_TEST_DIR}/monitor_shutdown_failure_semantics_test"
@@ -1016,9 +925,6 @@ run_internal_c_test \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_SRC}" \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_BIN}" \
     "${MONITOR_SHUTDOWN_FAILURE_TEST_LOG}" \
-    "${ROOT_DIR}/src/monitor_runtime.c" \
-    "${ROOT_DIR}/src/monitor_state.c" \
-    "${ROOT_DIR}/src/shutdown_fsm.c"
 
 SHUTDOWN_CLOCK_TEST_SRC="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test.c"
 SHUTDOWN_CLOCK_TEST_BIN="${INTERNAL_TEST_DIR}/shutdown_clock_fallback_test"
