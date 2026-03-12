@@ -25,6 +25,7 @@ static int monitor_deadline_timeout_ms(uint64_t now_ms, uint64_t deadline_ms) {
 }
 
 static int monitor_timeout_min(int lhs, int rhs) {
+  /* Both are effective upper bounds; prefer the tighter one. */
   return rhs < lhs ? rhs : lhs;
 }
 

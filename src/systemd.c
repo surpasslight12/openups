@@ -194,9 +194,10 @@ bool systemd_notifier_status(systemd_notifier_t *restrict notifier,
   }
 
   uint64_t now_ms = get_monotonic_ms();
-  bool same =
-      (strncmp(notifier->last_status, status, sizeof(notifier->last_status)) ==
-       0);
+  /* Deduplicate identical status messages within the window to reduce socket
+   * traffic.  Use strcmp (not strncmp) since both strings are NUL-terminated
+   * within their respective buffers. */
+  bool same = (strcmp(notifier->last_status, status) == 0);
   if (same && notifier->last_status_ms != 0 && now_ms != UINT64_MAX &&
       now_ms - notifier->last_status_ms < OPENUPS_STATUS_DEDUP_WINDOW_MS) {
     return true;

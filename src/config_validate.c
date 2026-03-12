@@ -4,6 +4,10 @@
 #include <stdio.h>
 
 static bool set_error(char *restrict error_msg, size_t error_size,
+                      const char *restrict fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+
+static bool set_error(char *restrict error_msg, size_t error_size,
                       const char *restrict fmt, ...) {
   if (error_msg == NULL || error_size == 0 || fmt == NULL) {
     return false;

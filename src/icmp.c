@@ -9,7 +9,8 @@
 #include <string.h>
 #include <unistd.h>
 
-uint16_t calculate_checksum(const void *data, size_t len) {
+/* ICMP checksum — RFC 1071 one's-complement sum.  Internal to icmp.c. */
+static uint16_t calculate_checksum(const void *data, size_t len) {
   const uint8_t *bytes = (const uint8_t *)data;
   uint32_t sum = 0;
 
@@ -205,6 +206,20 @@ void icmp_pinger_destroy(icmp_pinger_t *restrict pinger) {
   }
 }
 
+/* Sequence 0 is reserved as the "not waiting" sentinel in monitor state. */
+static uint16_t next_sequence(icmp_pinger_t *restrict pinger) {
+  if (pinger == NULL) {
+    return 1;
+  }
+
+  pinger->sequence = (uint16_t)(pinger->sequence + 1);
+  if (pinger->sequence == 0) {
+    pinger->sequence = 1;
+  }
+
+  return pinger->sequence;
+}
+
 bool icmp_pinger_send_echo(icmp_pinger_t *restrict pinger,
                            const struct sockaddr_storage *restrict dest_addr,
                            socklen_t dest_addr_len, uint16_t identifier,
@@ -264,7 +279,9 @@ icmp_receive_status_t icmp_pinger_receive_reply(
     return ICMP_RECEIVE_ERROR;
   }
 
-  uint8_t recv_buf[4096] __attribute__((aligned(16)));
+  /* 1500 bytes covers the largest standard Ethernet-MTU ICMP reply we expect.
+   * Align to 16 so IP/ICMP header accesses are naturally aligned. */
+  uint8_t recv_buf[1500] __attribute__((aligned(16)));
   struct sockaddr_storage recv_addr;
   socklen_t recv_addr_len = sizeof(recv_addr);
 
@@ -297,7 +314,10 @@ icmp_receive_status_t icmp_pinger_receive_reply(
 
   if (status == ICMP_RECEIVE_MATCHED) {
     out_result->success = true;
-    out_result->latency_ms = (double)(now_ms - send_time_ms);
+    /* Guard against impossible clock skew before recording latency. */
+    out_result->latency_ms = (now_ms >= send_time_ms)
+                                 ? (double)(now_ms - send_time_ms)
+                                 : 0.0;
     out_result->error_msg[0] = '\0';
   }
 
@@ -332,29 +352,4 @@ bool resolve_target(const char *restrict target,
   snprintf(error_msg, error_size,
            "Invalid IPv4/IPv6 address (DNS disabled): %s", target);
   return false;
-}
-
-void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
-                          size_t payload_size) {
-  if (pinger == NULL || payload_size == 0) {
-    return;
-  }
-
-  for (size_t i = 0; i < payload_size; i++) {
-    pinger->send_buf[header_size + i] = (uint8_t)(i & 0xFFU);
-  }
-}
-
-uint16_t next_sequence(icmp_pinger_t *restrict pinger) {
-  if (pinger == NULL) {
-    return 1;
-  }
-
-  /* Sequence 0 is reserved as the "not waiting" sentinel in the monitor. */
-  pinger->sequence = (uint16_t)(pinger->sequence + 1);
-  if (pinger->sequence == 0) {
-    pinger->sequence = 1;
-  }
-
-  return pinger->sequence;
 }

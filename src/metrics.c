@@ -17,6 +17,10 @@ void metrics_record_success(metrics_t *metrics, double latency_ms) {
   if (OPENUPS_UNLIKELY(metrics == NULL)) {
     return;
   }
+  /* Negative latency can arise from clock adjustment or rounding; clamp to 0. */
+  if (OPENUPS_UNLIKELY(latency_ms < 0.0)) {
+    latency_ms = 0.0;
+  }
   metrics->total_pings++;
   metrics->successful_pings++;
   metrics->total_latency += latency_ms;

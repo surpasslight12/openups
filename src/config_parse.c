@@ -9,20 +9,6 @@
 #include <strings.h>
 
 typedef struct {
-  const char *env_name;
-  const char *label;
-  size_t offset;
-  int min_value;
-  int max_value;
-} config_env_int_option_t;
-
-typedef struct {
-  const char *env_name;
-  const char *label;
-  size_t offset;
-} config_env_bool_option_t;
-
-typedef struct {
   const char *name;
   log_level_t level;
 } config_log_level_option_t;
@@ -33,48 +19,32 @@ typedef struct {
 } config_shutdown_mode_option_t;
 
 static const struct option CONFIG_LONG_OPTIONS[] = {
-    {"target", required_argument, 0, 't'},
-    {"interval", required_argument, 0, 'i'},
-    {"threshold", required_argument, 0, 'n'},
-    {"timeout", required_argument, 0, 'w'},
+    {"target",        required_argument, 0, 't'},
+    {"interval",      required_argument, 0, 'i'},
+    {"threshold",     required_argument, 0, 'n'},
+    {"timeout",       required_argument, 0, 'w'},
     {"shutdown-mode", required_argument, 0, 'S'},
-    {"delay", required_argument, 0, 'D'},
-    {"log-level", required_argument, 0, 'L'},
-    {"systemd", optional_argument, 0, 'M'},
-    {"version", no_argument, 0, 'v'},
-    {"help", no_argument, 0, 'h'},
+    {"delay",         required_argument, 0, 'D'},
+    {"log-level",     required_argument, 0, 'L'},
+    {"systemd",       optional_argument, 0, 'M'},
+    {"version",       no_argument,       0, 'v'},
+    {"help",          no_argument,       0, 'h'},
     {0, 0, 0, 0},
 };
 
 static const char *const CONFIG_OPTSTRING = "t:i:n:w:S:D:L:M::vh";
 
-static const config_env_int_option_t CONFIG_ENV_INT_OPTIONS[] = {
-  {"OPENUPS_INTERVAL", "OPENUPS_INTERVAL", offsetof(config_t, interval_sec),
-   1, INT_MAX},
-  {"OPENUPS_THRESHOLD", "OPENUPS_THRESHOLD",
-   offsetof(config_t, fail_threshold), 1, INT_MAX},
-  {"OPENUPS_TIMEOUT", "OPENUPS_TIMEOUT", offsetof(config_t, timeout_ms), 1,
-   INT_MAX},
-  {"OPENUPS_DELAY_MINUTES", "OPENUPS_DELAY_MINUTES",
-   offsetof(config_t, delay_minutes), 0, INT_MAX},
-};
-
-static const config_env_bool_option_t CONFIG_ENV_BOOL_OPTIONS[] = {
-  {"OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
-   offsetof(config_t, enable_systemd)},
-};
-
 static const config_log_level_option_t CONFIG_LOG_LEVEL_OPTIONS[] = {
   {"silent", LOG_LEVEL_SILENT},
-  {"none", LOG_LEVEL_SILENT},
-  {"error", LOG_LEVEL_ERROR},
-  {"warn", LOG_LEVEL_WARN},
-  {"info", LOG_LEVEL_INFO},
-  {"debug", LOG_LEVEL_DEBUG},
+  {"none",   LOG_LEVEL_SILENT},
+  {"error",  LOG_LEVEL_ERROR},
+  {"warn",   LOG_LEVEL_WARN},
+  {"info",   LOG_LEVEL_INFO},
+  {"debug",  LOG_LEVEL_DEBUG},
 };
 
 static const config_shutdown_mode_option_t CONFIG_SHUTDOWN_MODE_OPTIONS[] = {
-  {"dry-run", SHUTDOWN_MODE_DRY_RUN},
+  {"dry-run",  SHUTDOWN_MODE_DRY_RUN},
   {"true-off", SHUTDOWN_MODE_TRUE_OFF},
   {"log-only", SHUTDOWN_MODE_LOG_ONLY},
 };
@@ -83,6 +53,10 @@ static bool string_equals_ignore_case(const char *restrict lhs,
                                       const char *restrict rhs) {
   return lhs != NULL && rhs != NULL && strcasecmp(lhs, rhs) == 0;
 }
+
+static bool set_error(char *restrict error_msg, size_t error_size,
+                      const char *restrict fmt, ...)
+    __attribute__((format(printf, 3, 4)));
 
 static bool set_error(char *restrict error_msg, size_t error_size,
                       const char *restrict fmt, ...) {
@@ -379,22 +353,8 @@ static bool load_env_log_level(const char *restrict env_name,
   return true;
 }
 
-static int *config_int_field(config_t *restrict config, size_t offset) {
-  if (config == NULL || offset > sizeof(*config) - sizeof(int)) {
-    return NULL;
-  }
-
-  return (int *)((char *)config + offset);
-}
-
-static bool *config_bool_field(config_t *restrict config, size_t offset) {
-  if (config == NULL || offset > sizeof(*config) - sizeof(bool)) {
-    return NULL;
-  }
-
-  return (bool *)((char *)config + offset);
-}
-
+/* Load integer environment variables directly by field pointer to avoid
+   pointer-arithmetic indirection and keep the code self-documenting. */
 static bool load_env_int_options(config_t *restrict config,
                                  char *restrict error_msg,
                                  size_t error_size) {
@@ -402,19 +362,10 @@ static bool load_env_int_options(config_t *restrict config,
     return false;
   }
 
-  for (size_t i = 0;
-       i < sizeof(CONFIG_ENV_INT_OPTIONS) / sizeof(CONFIG_ENV_INT_OPTIONS[0]);
-       i++) {
-    const config_env_int_option_t *option = &CONFIG_ENV_INT_OPTIONS[i];
-    int *field = config_int_field(config, option->offset);
-    if (field == NULL ||
-        !load_env_int(option->env_name, option->label, option->min_value,
-                      option->max_value, field, error_msg, error_size)) {
-      return false;
-    }
-  }
-
-  return true;
+  return load_env_int("OPENUPS_INTERVAL",      "OPENUPS_INTERVAL",      1, INT_MAX, &config->interval_sec,    error_msg, error_size) &&
+         load_env_int("OPENUPS_THRESHOLD",     "OPENUPS_THRESHOLD",     1, INT_MAX, &config->fail_threshold,  error_msg, error_size) &&
+         load_env_int("OPENUPS_TIMEOUT",       "OPENUPS_TIMEOUT",       1, INT_MAX, &config->timeout_ms,      error_msg, error_size) &&
+         load_env_int("OPENUPS_DELAY_MINUTES", "OPENUPS_DELAY_MINUTES", 0, INT_MAX, &config->delay_minutes,   error_msg, error_size);
 }
 
 static bool load_env_bool_options(config_t *restrict config,
@@ -424,20 +375,8 @@ static bool load_env_bool_options(config_t *restrict config,
     return false;
   }
 
-  for (size_t i = 0;
-       i < sizeof(CONFIG_ENV_BOOL_OPTIONS) /
-               sizeof(CONFIG_ENV_BOOL_OPTIONS[0]);
-       i++) {
-    const config_env_bool_option_t *option = &CONFIG_ENV_BOOL_OPTIONS[i];
-    bool *field = config_bool_field(config, option->offset);
-    if (field == NULL ||
-        !load_env_bool(option->env_name, option->label, field, error_msg,
-                       error_size)) {
-      return false;
-    }
-  }
-
-  return true;
+  return load_env_bool("OPENUPS_SYSTEMD", "OPENUPS_SYSTEMD",
+                       &config->enable_systemd, error_msg, error_size);
 }
 
 void config_init_default(config_t *restrict config) {

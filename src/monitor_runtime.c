@@ -79,7 +79,12 @@ bool monitor_prepare_packet(openups_ctx_t *restrict ctx,
     return false;
   }
 
-  fill_payload_pattern(&ctx->pinger, header_len, *packet_len - header_len);
+  /* Write 0x00, 0x01, 0x02, … pattern into ICMP payload bytes. */
+  uint8_t *payload = ctx->pinger.send_buf + header_len;
+  size_t payload_len = *packet_len - header_len;
+  for (size_t i = 0; i < payload_len; i++) {
+    payload[i] = (uint8_t)(i & 0xFFU);
+  }
   return true;
 }
 
@@ -118,7 +123,7 @@ monitor_step_result_t monitor_handle_ping_timeout(
     return MONITOR_STEP_CONTINUE;
   }
 
-  ping_result_t timeout_result = {false, -1.0, "Timeout waiting for ICMP reply"};
+  ping_result_t timeout_result = {false, 0.0, "ICMP reply deadline exceeded"};
   handle_ping_failure(ctx, &timeout_result);
   monitor_ping_clear(state);
   return shutdown_fsm_handle_threshold(ctx, state, now_ms)

@@ -25,8 +25,10 @@
 #define OPENUPS_EXIT_SUCCESS 0
 #define OPENUPS_EXIT_FAILURE 1
 
+/* Branch-prediction hints */
 #define OPENUPS_UNLIKELY(x) __builtin_expect(!!(x), 0)
-#define OPENUPS_COLD __attribute__((cold))
+#define OPENUPS_LIKELY(x)   __builtin_expect(!!(x), 1)
+#define OPENUPS_COLD        __attribute__((cold))
 
 typedef enum {
   LOG_LEVEL_SILENT = -1, /* completely silent, suitable for systemd */
@@ -57,9 +59,10 @@ typedef enum {
   SHUTDOWN_MODE_LOG_ONLY
 } shutdown_mode_t;
 
+/* Target buffer: IPv6 max literal is 45 chars; 64 is ample. */
 typedef struct {
   /* Network */
-  char target[256];
+  char target[64];
   int interval_sec;
   int fail_threshold;
   int timeout_ms;
@@ -145,11 +148,12 @@ static_assert(sizeof(struct icmphdr) >= 8, "icmphdr must be at least 8 bytes");
 static_assert(sizeof(sig_atomic_t) >= sizeof(int),
               "sig_atomic_t must be at least int size");
 
-char *get_timestamp_str(char *restrict buffer, size_t size);
+[[nodiscard]] char *get_timestamp_str(char *restrict buffer, size_t size);
 void logger_init(logger_t *restrict logger, log_level_t level,
                  bool enable_timestamp);
 void logger_write(log_level_t level, bool enable_timestamp,
-                  const char *restrict fmt, ...);
+                  const char *restrict fmt, ...)
+    __attribute__((format(printf, 3, 4)));
 void logger_log_va(const logger_t *restrict logger, log_level_t level,
                    const char *restrict fmt, va_list ap);
 void metrics_init(metrics_t *metrics);
@@ -159,37 +163,41 @@ double metrics_success_rate(const metrics_t *metrics);
 double metrics_avg_latency(const metrics_t *metrics);
 uint64_t metrics_uptime_seconds(const metrics_t *metrics);
 void config_init_default(config_t *restrict config);
-bool config_load_from_env(config_t *restrict config, char *restrict error_msg,
-                          size_t error_size);
-bool config_load_from_cmdline(config_t *restrict config, int argc,
-                              char **restrict argv,
-                              bool *restrict exit_requested,
-                              char *restrict error_msg, size_t error_size);
-bool config_resolve(config_t *restrict config, int argc, char **restrict argv,
-                    bool *restrict exit_requested,
-                    char *restrict error_msg, size_t error_size);
-bool config_validate(const config_t *restrict config, char *restrict error_msg,
-                     size_t error_size);
+[[nodiscard]] bool config_load_from_env(config_t *restrict config,
+                                        char *restrict error_msg,
+                                        size_t error_size);
+[[nodiscard]] bool config_load_from_cmdline(config_t *restrict config,
+                                            int argc, char **restrict argv,
+                                            bool *restrict exit_requested,
+                                            char *restrict error_msg,
+                                            size_t error_size);
+[[nodiscard]] bool config_resolve(config_t *restrict config, int argc,
+                                  char **restrict argv,
+                                  bool *restrict exit_requested,
+                                  char *restrict error_msg, size_t error_size);
+[[nodiscard]] bool config_validate(const config_t *restrict config,
+                                   char *restrict error_msg, size_t error_size);
 bool config_log_timestamps_enabled(const config_t *restrict config);
 void config_print(const config_t *restrict config,
                   const logger_t *restrict logger);
-bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
-                      char *restrict error_msg, size_t error_size);
+[[nodiscard]] bool icmp_pinger_init(icmp_pinger_t *restrict pinger, int family,
+                                    char *restrict error_msg,
+                                    size_t error_size);
 void icmp_pinger_destroy(icmp_pinger_t *restrict pinger);
-bool icmp_pinger_send_echo(icmp_pinger_t *restrict pinger,
-                           const struct sockaddr_storage *restrict dest_addr,
-                           socklen_t dest_addr_len, uint16_t identifier,
-                           size_t packet_len, char *restrict error_msg,
-                           size_t error_size);
+[[nodiscard]] bool icmp_pinger_send_echo(
+    icmp_pinger_t *restrict pinger,
+    const struct sockaddr_storage *restrict dest_addr, socklen_t dest_addr_len,
+    uint16_t identifier, size_t packet_len, char *restrict error_msg,
+    size_t error_size);
 icmp_receive_status_t icmp_pinger_receive_reply(
     const icmp_pinger_t *restrict pinger,
     const struct sockaddr_storage *restrict dest_addr, uint16_t identifier,
     uint16_t expected_sequence, uint64_t send_time_ms, uint64_t now_ms,
     ping_result_t *restrict out_result);
-bool resolve_target(const char *restrict target,
-                    struct sockaddr_storage *restrict addr,
-                    socklen_t *restrict addr_len, char *restrict error_msg,
-                    size_t error_size);
+[[nodiscard]] bool resolve_target(const char *restrict target,
+                                  struct sockaddr_storage *restrict addr,
+                                  socklen_t *restrict addr_len,
+                                  char *restrict error_msg, size_t error_size);
 shutdown_result_t shutdown_trigger(const config_t *config, logger_t *logger,
                                    bool use_systemctl_poweroff);
 void systemd_notifier_init(systemd_notifier_t *restrict notifier);
@@ -305,6 +313,10 @@ static inline uint64_t runtime_services_watchdog_interval_ms(
 }
 
 static inline bool runtime_services_notify_statusf(
+    runtime_services_t *restrict services, const char *restrict fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+
+static inline bool runtime_services_notify_statusf(
     runtime_services_t *restrict services, const char *restrict fmt, ...) {
   if (services == NULL || fmt == NULL) {
     return false;
@@ -320,7 +332,6 @@ static inline bool runtime_services_notify_statusf(
   vsnprintf(status_msg, sizeof(status_msg), fmt, args);
   va_end(args);
 
-  status_msg[sizeof(status_msg) - 1] = '\0';
   return services->status(services->backend_ctx, status_msg);
 }
 
@@ -339,14 +350,20 @@ static inline bool runtime_services_notify_stopping(
   return services != NULL && services->stopping(services->backend_ctx);
 }
 
+/* logger_error / logger_warn are marked cold since they fire rarely.
+   The level check avoids any formatting cost when the level is filtered.
+   NULL logger is silently ignored so callers need not guard every call. */
 #define DEFINE_LOGGER(name, lvl, attrs)                                        \
   static inline void attrs name(const logger_t *restrict logger,               \
+                                const char *restrict fmt, ...)                 \
+      __attribute__((format(printf, 2, 3)));                                   \
+  static inline void attrs name(const logger_t *restrict logger,               \
                                 const char *restrict fmt, ...) {               \
-    if (OPENUPS_UNLIKELY(logger->level >= (lvl))) {                            \
-      va_list args;                                                            \
-      va_start(args, fmt);                                                     \
+    if (OPENUPS_LIKELY(logger != NULL) && logger->level >= (lvl)) {            \
+      va_list args;                                                             \
+      va_start(args, fmt);                                                      \
       logger_log_va(logger, (lvl), fmt, args);                                 \
-      va_end(args);                                                            \
+      va_end(args);                                                             \
     }                                                                          \
   }
 
@@ -361,9 +378,5 @@ const char *shutdown_mode_to_string(shutdown_mode_t mode);
 void log_shutdown_countdown(const logger_t *restrict logger,
                             shutdown_mode_t mode, int delay_minutes);
 uint64_t get_monotonic_ms(void);
-uint16_t calculate_checksum(const void *data, size_t len);
-void fill_payload_pattern(icmp_pinger_t *restrict pinger, size_t header_size,
-                          size_t payload_size);
-uint16_t next_sequence(icmp_pinger_t *restrict pinger);
 
 #endif // OPENUPS_H
