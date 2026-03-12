@@ -7,16 +7,24 @@ StartLimitIntervalSec=300
 StartLimitBurst=3
 
 [Service]
+# ── Runtime ──────────────────────────────────────────────────────────────────
 Type=notify
 NotifyAccess=main
+SyslogIdentifier=openups
+StandardOutput=journal
+StandardError=journal
 
 ExecStart=/usr/local/bin/openups
 
 TimeoutStartSec=30
 TimeoutStopSec=10
+WatchdogSec=30
+
+# ── Restart ───────────────────────────────────────────────────────────────────
 Restart=on-failure
 RestartSec=10
 
+# ── Configuration ─────────────────────────────────────────────────────────────
 Environment="OPENUPS_TARGET=1.1.1.1"
 Environment="OPENUPS_INTERVAL=10"
 Environment="OPENUPS_THRESHOLD=5"
@@ -25,31 +33,50 @@ Environment="OPENUPS_SHUTDOWN_MODE=dry-run"
 Environment="OPENUPS_DELAY_MINUTES=0"
 Environment="OPENUPS_LOG_LEVEL=info"
 Environment="OPENUPS_SYSTEMD=true"
-WatchdogSec=30
 
-# Base Security Hardening
+# ── Privilege Containment ─────────────────────────────────────────────────────
 User=root
-CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT CAP_KILL
+UMask=0027
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
+# CAP_NET_RAW: ICMP raw socket; CAP_SYS_BOOT: reboot() via /sbin/shutdown fallback
+CapabilityBoundingSet=CAP_NET_RAW CAP_SYS_BOOT
+
+# ── Filesystem / Namespace Isolation ──────────────────────────────────────────
 PrivateTmp=true
 PrivateDevices=true
+PrivateMounts=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
 ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
-RestrictNamespaces=true
-RestrictSUIDSGID=true
+ProtectProc=invisible
+ProcSubset=pid
+
+# ── Address Space / IPC Restrictions ──────────────────────────────────────────
 LockPersonality=true
 MemoryDenyWriteExecute=true
+RestrictNamespaces=true
 RestrictRealtime=true
+RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-SystemCallArchitectures=native
+KeyringMode=private
+RemoveIPC=true
 
-# Resource Limits
+# ── Syscall Filtering ─────────────────────────────────────────────────────────
+SystemCallArchitectures=native
+# Allow: common service ops + network sockets + process mgmt + reboot() for
+# /sbin/shutdown fallback (systemctl path uses D-Bus and does not call reboot)
+SystemCallFilter=@system-service @network-io @process @reboot
+SystemCallFilter=~@debug @module @mount @swap @obsolete @cpu-emulation
+
+# ── Resource Limits ───────────────────────────────────────────────────────────
 MemoryMax=50M
 TasksMax=10
+OOMScoreAdjust=-100
 
 [Install]
 WantedBy=multi-user.target
