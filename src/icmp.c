@@ -9,18 +9,21 @@
 #include <string.h>
 #include <unistd.h>
 
-/* ICMP checksum — RFC 1071 one's-complement sum.  Internal to icmp.c. */
+/* ICMP checksum — RFC 1071 one's-complement sum.  Internal to icmp.c.
+ * Reads 16-bit words in native byte order (matches how the kernel verifies),
+ * stores the result as a native uint16_t — no htons() needed. */
 static uint16_t calculate_checksum(const void *data, size_t len) {
   const uint8_t *bytes = (const uint8_t *)data;
   uint32_t sum = 0;
 
   for (size_t i = 0; i + 1 < len; i += 2) {
-    uint16_t word = (uint16_t)((uint16_t)bytes[i] << 8) | bytes[i + 1];
+    uint16_t word;
+    memcpy(&word, bytes + i, sizeof(word));
     sum += word;
   }
 
   if (len % 2) {
-    sum += (uint32_t)bytes[len - 1] << 8;
+    sum += bytes[len - 1];
   }
 
   while (sum >> 16) {

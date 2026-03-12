@@ -14,7 +14,7 @@
 #include <sys/socket.h>
 #include <time.h>
 
-#define OPENUPS_VERSION "1.3.0"
+#define OPENUPS_VERSION "1.3.1"
 #define OPENUPS_PROGRAM_NAME "openups"
 #define OPENUPS_MS_PER_SEC UINT64_C(1000)
 #define OPENUPS_MS_PER_MINUTE (UINT64_C(60) * OPENUPS_MS_PER_SEC)
