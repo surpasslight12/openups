@@ -1169,6 +1169,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     PHASE3_WRAPPER_PID="$(launch_background_monitor "${PHASE3_PID_FILE}" "${PHASE3_LOG}" \
         --target 127.0.0.1 \
         --interval 1 \
+        --timeout 700 \
         --threshold 10 \
         --shutdown-mode dry-run \
         --log-level debug)"
@@ -1196,6 +1197,7 @@ if [[ "${RUN_GRAY}" -eq 1 ]]; then
     PHASE4_WRAPPER_PID="$(launch_background_monitor "${PHASE4_PID_FILE}" "${PHASE4_LOG}" \
         --target 127.0.0.1 \
         --interval 1 \
+        --timeout 700 \
         --threshold 10 \
         --shutdown-mode dry-run \
         --log-level debug)"

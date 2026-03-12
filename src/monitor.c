@@ -358,6 +358,8 @@ static bool shutdown_fsm_handle_threshold(openups_ctx_t *restrict ctx,
     return false;
   }
   if (ctx->config.shutdown_mode == SHUTDOWN_MODE_LOG_ONLY) {
+    logger_warn(&ctx->logger,
+                "Log-only mode: failure threshold reached, continuing monitoring without shutdown");
     shutdown_fsm_reset_failures(ctx);
     return false;
   }
