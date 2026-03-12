@@ -189,38 +189,3 @@ systemd/
 ## 许可证
 
 本项目采用 MIT 许可证，详见 [LICENSE](LICENSE)。
-
-## 更新日志
-
-### v1.3.1 ICMP 校验和修复
-
-- **关键 Bug 修复**：`calculate_checksum` 在小端（x86_64）机器上字节序错误，导致所有 ICMP 探测包发出后内核静默丢弃，永远无法收到 echo reply，监控逻辑实际失效
-  - 原实现以大端方式逐字节拼接 16 位字，再将结果直接存入 `uint16_t`，在小端系统上等价于字节反转
-  - 修复后改用 `memcpy` 以原生字节序读取，与 Linux 内核校验和验证路径一致
-- 修复后 127.0.0.1 / 192.168.1.1 均可正常收到 echo reply，延迟测量功能恢复正常
-- 所有 27 项基础测试 + 6 阶段灰度测试全部通过
-
-### v1.3.0 架构合并与安全审计
-
-- **文件结构精简**：21 个源文件合并为 9 个，消除过度拆分；`monitor.c` 内聚所有监控逻辑（metrics、状态机、shutdown FSM、reactor）
-- **代码审计修复**：
-  - `log_message` 新增日志级别过滤（直接调用 `logger_log_va` 时曾绕过级别检查）
-  - `shutdown_fsm_execute` 移除不可达的 `LOG_ONLY` 死代码分支
-  - `shutdown_fsm_handle_threshold` 的 log-only 路径补全警告日志，使触发行为可观测
-- **测试覆盖**：27 项基础测试 + 6 阶段进程级灰度测试全部通过
-- **systemd 单元强化**：新增 `ProtectProc=invisible`、`ProcSubset=pid`、`ProtectHostname`、`ProtectClock`、`PrivateMounts`、`KeyringMode=private`、`RemoveIPC`、`OOMScoreAdjust=-100`、`SystemCallFilter` 白/黑名单；移除多余的 `CAP_KILL`；补全 `SyslogIdentifier`、`UMask`
-
-### v1.2.0 配置精简与风格统一
-
-- **关机策略优化**：systemd 环境下自动使用 `systemctl poweroff`，非 systemd 回退到 `/sbin/shutdown`
-- **watchdog 合并**：移除独立的 `--watchdog` / `OPENUPS_WATCHDOG`，watchdog 随 systemd 集成自动启用
-- **时间戳合并**：移除独立的 `OPENUPS_TIMESTAMP`，改为从 `OPENUPS_SYSTEMD` 派生
-- **代码风格统一**：全项目统一为 always-braces 风格
-
-### v1.1.0 架构升级与内核优化
-
-- **内核级优化**：引入 BPF `SO_ATTACH_FILTER` 过滤无关 ICMP 流量，高噪声环境下零 CPU 占用
-- **系统调用削减**：主循环时钟切换至 `CLOCK_MONOTONIC_COARSE`，利用 vDSO 免陷入优化
-- **灾变抗性**：关机逻辑改用 `posix_spawn` + fd redirect，替代传统 `fork/exec`，应对 OOM 场景
-- **配置精简**：移除 `PAYLOAD_SIZE`，自动推导 64 字节固定探测包
-
